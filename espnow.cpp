@@ -12,26 +12,11 @@
 // Logging TAG
 static const char *TAG = "EspNow";
 
-// Singleton static members
-EspNow *EspNow::instance_ptr_              = nullptr;
-SemaphoreHandle_t EspNow::singleton_mutex_ = nullptr;
-
 // --- Singleton ---
 EspNow &EspNow::instance()
 {
-    if (instance_ptr_ == nullptr) {
-        if (singleton_mutex_ == nullptr) {
-            singleton_mutex_ = xSemaphoreCreateMutex();
-        }
-
-        if (xSemaphoreTake(singleton_mutex_, portMAX_DELAY) == pdTRUE) {
-            if (instance_ptr_ == nullptr) {
-                instance_ptr_ = new EspNow();
-            }
-            xSemaphoreGive(singleton_mutex_);
-        }
-    }
-    return *instance_ptr_;
+    static EspNow instance;
+    return instance;
 }
 
 // --- Constructor & Destructor ---
@@ -42,10 +27,6 @@ EspNow::EspNow()
 EspNow::~EspNow()
 {
     deinit();
-    if (singleton_mutex_ != nullptr) {
-        vSemaphoreDelete(singleton_mutex_);
-        singleton_mutex_ = nullptr;
-    }
     ESP_LOGI(TAG, "Resources released.");
 }
 
@@ -58,6 +39,29 @@ esp_err_t EspNow::deinit()
     is_initialized_ = false;
     ESP_LOGI(TAG, "Deinitializing EspNow component...");
 
+    // 1. Stop and Delete Timers
+    if (heartbeat_timer_handle_ != nullptr) {
+        xTimerStop(heartbeat_timer_handle_, portMAX_DELAY);
+        xTimerDelete(heartbeat_timer_handle_, portMAX_DELAY);
+        heartbeat_timer_handle_ = nullptr;
+    }
+    if (ack_timeout_timer_handle_ != nullptr) {
+        xTimerStop(ack_timeout_timer_handle_, portMAX_DELAY);
+        xTimerDelete(ack_timeout_timer_handle_, portMAX_DELAY);
+        ack_timeout_timer_handle_ = nullptr;
+    }
+    if (pairing_timer_handle_ != nullptr) {
+        xTimerStop(pairing_timer_handle_, portMAX_DELAY);
+        xTimerDelete(pairing_timer_handle_, portMAX_DELAY);
+        pairing_timer_handle_ = nullptr;
+    }
+    if (pairing_timeout_timer_handle_ != nullptr) {
+        xTimerStop(pairing_timeout_timer_handle_, portMAX_DELAY);
+        xTimerDelete(pairing_timeout_timer_handle_, portMAX_DELAY);
+        pairing_timeout_timer_handle_ = nullptr;
+    }
+
+    // 2. Signal tasks to stop
     if (rx_dispatch_task_handle_ != nullptr) {
         xTaskNotify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
     }
@@ -68,10 +72,25 @@ esp_err_t EspNow::deinit()
         xTaskNotify(tx_manager_task_handle_, NOTIFY_STOP, eSetBits);
     }
 
-    // Give tasks time to exit
-    vTaskDelay(pdMS_TO_TICKS(100));
+    // 3. Wake up tasks blocked on queues by sending dummy packets
+    RxPacket stop_packet = {};
+    // Note: We don't strictly need a special type if the tasks check NOTIFY_STOP
+    // after every xQueueReceive or via a timeout. But let's follow the dummy packet advice.
+    if (rx_dispatch_queue_ != nullptr) {
+        xQueueSend(rx_dispatch_queue_, &stop_packet, 0);
+    }
+    if (transport_worker_queue_ != nullptr) {
+        xQueueSend(transport_worker_queue_, &stop_packet, 0);
+    }
+    TxPacket stop_tx_packet = {};
+    if (tx_queue_ != nullptr) {
+        xQueueSend(tx_queue_, &stop_tx_packet, 0);
+    }
 
-    // Force delete any remaining tasks
+    // 4. Give tasks time to exit gracefully
+    vTaskDelay(pdMS_TO_TICKS(150));
+
+    // 5. Force delete any remaining tasks (fallback)
     if (rx_dispatch_task_handle_ != nullptr) {
         vTaskDelete(rx_dispatch_task_handle_);
         rx_dispatch_task_handle_ = nullptr;
@@ -84,23 +103,17 @@ esp_err_t EspNow::deinit()
         vTaskDelete(tx_manager_task_handle_);
         tx_manager_task_handle_ = nullptr;
     }
-    if (heartbeat_timer_handle_ != nullptr) {
-        xTimerDelete(heartbeat_timer_handle_, portMAX_DELAY);
-        heartbeat_timer_handle_ = nullptr;
-    }
-    if (ack_timeout_timer_handle_ != nullptr) {
-        xTimerDelete(ack_timeout_timer_handle_, portMAX_DELAY);
-        ack_timeout_timer_handle_ = nullptr;
-    }
-    if (pairing_timer_handle_ != nullptr) {
-        xTimerDelete(pairing_timer_handle_, portMAX_DELAY);
-        pairing_timer_handle_ = nullptr;
-    }
-    if (pairing_timeout_timer_handle_ != nullptr) {
-        xTimerDelete(pairing_timeout_timer_handle_, portMAX_DELAY);
-        pairing_timeout_timer_handle_ = nullptr;
-    }
 
+    // 6. Remove peers and deinit ESP-NOW
+    if (xSemaphoreTake(peers_mutex_, pdMS_TO_TICKS(100)) == pdTRUE) {
+        for (const auto &peer : peers_) {
+            esp_now_del_peer(peer.mac);
+        }
+        xSemaphoreGive(peers_mutex_);
+    }
+    esp_now_deinit();
+
+    // 7. Delete Queues
     if (rx_dispatch_queue_ != nullptr) {
         vQueueDelete(rx_dispatch_queue_);
         rx_dispatch_queue_ = nullptr;
@@ -114,8 +127,7 @@ esp_err_t EspNow::deinit()
         tx_queue_ = nullptr;
     }
 
-    esp_now_deinit();
-
+    // 8. Delete Mutexes
     if (peers_mutex_ != nullptr) {
         vSemaphoreDelete(peers_mutex_);
         peers_mutex_ = nullptr;
@@ -129,7 +141,12 @@ esp_err_t EspNow::deinit()
         ack_mutex_ = nullptr;
     }
 
-    is_initialized_ = false;
+    // 9. Reset state
+    peers_.clear();
+    is_pairing_active_ = false;
+    last_header_requiring_ack_.reset();
+    config_ = EspNowConfig();
+
     ESP_LOGI(TAG, "EspNow component deinitialized.");
     return ESP_OK;
 }
@@ -371,7 +388,7 @@ std::vector<NodeId> EspNow::get_offline_peers() const
 {
     std::vector<NodeId> offline_peers;
     if (xSemaphoreTake(peers_mutex_, pdMS_TO_TICKS(100)) == pdTRUE) {
-        const uint32_t now_ms = get_time_ms();
+        const uint64_t now_ms = get_time_ms();
         for (const auto &peer : peers_) {
             if (peer.heartbeat_interval_ms > 0) {
                 uint32_t timeout =
@@ -702,7 +719,7 @@ void EspNow::esp_now_recv_cb(const esp_now_recv_info_t *info,
     packet.rssi         = info->rx_ctrl->rssi;
     packet.timestamp_us = esp_timer_get_time();
 
-    if (xQueueSendFromISR(instance_ptr_->rx_dispatch_queue_, &packet, 0) != pdTRUE) {
+    if (xQueueSendFromISR(instance().rx_dispatch_queue_, &packet, 0) != pdTRUE) {
         // Log dropped packet
     }
 }
@@ -711,9 +728,8 @@ void EspNow::esp_now_send_cb(const esp_now_send_info_t *info,
                              esp_now_send_status_t status)
 {
     if (info->tx_status == WIFI_SEND_FAIL) {
-        if (instance_ptr_ != nullptr &&
-            instance_ptr_->tx_manager_task_handle_ != nullptr) {
-            xTaskNotify(instance_ptr_->tx_manager_task_handle_, NOTIFY_PHYSICAL_FAIL,
+        if (instance().tx_manager_task_handle_ != nullptr) {
+            xTaskNotify(instance().tx_manager_task_handle_, NOTIFY_PHYSICAL_FAIL,
                         eSetBits);
             ESP_EARLY_LOGW(TAG, "ESP-NOW send failed to " MACSTR,
                            MAC2STR(info->des_addr));
@@ -794,6 +810,7 @@ void EspNow::rx_dispatch_task(void *arg)
         }
     }
     ESP_LOGI(TAG, "rx_dispatch_task exiting.");
+    self->rx_dispatch_task_handle_ = nullptr;
     vTaskDelete(NULL);
 }
 
@@ -1154,6 +1171,7 @@ void EspNow::transport_worker_task(void *arg)
         }
     }
     ESP_LOGI(TAG, "transport_worker_task exiting.");
+    self->transport_worker_task_handle_ = nullptr;
     vTaskDelete(NULL);
 }
 
@@ -1183,7 +1201,7 @@ void EspNow::periodic_heartbeat_cb(TimerHandle_t xTimer)
     }
 }
 
-uint32_t EspNow::get_time_ms() const
+uint64_t EspNow::get_time_ms() const
 {
     return esp_timer_get_time() / 1000;
 }
@@ -1500,7 +1518,7 @@ void EspNow::tx_manager_task(void *arg)
             if (current_channel < 1 || current_channel > 13) {
                 current_channel = 1;
             }
-            uint32_t scan_start_time = self->get_time_ms();
+            uint64_t scan_start_time = self->get_time_ms();
 
             for (uint8_t offset = 0; offset < 13 && !hub_found; ++offset) {
                 uint8_t channel = ((current_channel - 1 + offset) % 13) + 1;
@@ -1544,7 +1562,7 @@ void EspNow::tx_manager_task(void *arg)
                 if (offset < 12 && !hub_found) {
                     vTaskDelay(pdMS_TO_TICKS(2));
                 }
-                uint32_t current_time = self->get_time_ms();
+                uint64_t current_time = self->get_time_ms();
                 if (current_time - scan_start_time > MAX_SCAN_TIME_MS) {
                     break;
                 }
@@ -1570,5 +1588,6 @@ void EspNow::tx_manager_task(void *arg)
 
 exit:
     ESP_LOGI(TAG, "tx_manager_task exiting.");
+    self->tx_manager_task_handle_ = nullptr;
     vTaskDelete(NULL);
 }

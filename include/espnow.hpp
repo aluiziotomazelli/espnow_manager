@@ -69,7 +69,7 @@ public:
         NodeType type;
         NodeId node_id;
         uint8_t channel;
-        uint32_t last_seen_ms;
+        uint64_t last_seen_ms;
         bool paired;
         uint32_t heartbeat_interval_ms;
     };
@@ -136,7 +136,7 @@ private:
     struct PendingAck
     {
         uint16_t sequence_number;
-        uint32_t timestamp_ms;
+        uint64_t timestamp_ms;
         uint8_t retries_left;
         TxPacket packet;
     };
@@ -163,9 +163,6 @@ private:
     TaskHandle_t transport_worker_task_handle_ = nullptr;
     TaskHandle_t tx_manager_task_handle_       = nullptr;
 
-    static EspNow *instance_ptr_;
-    static SemaphoreHandle_t singleton_mutex_;
-
     // --- Private Methods ---
     esp_err_t add_peer_internal(NodeId node_id,
                                 const uint8_t *mac,
@@ -175,7 +172,7 @@ private:
     void send_pair_request();
     esp_err_t send_packet(const uint8_t *mac_addr, const void *data, size_t len);
     bool find_peer_mac(NodeId node_id, uint8_t *mac);
-    uint32_t get_time_ms() const;
+    uint64_t get_time_ms() const;
 
     // Persistence helpers
     EspNowStorage::Peer info_to_storage(const PeerInfo &info);
