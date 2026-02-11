@@ -1,4 +1,5 @@
 idf_component_register(
+    NAME espnow_manager
     SRCS
         "espnow_manager.cpp"
         "espnow_storage.cpp"

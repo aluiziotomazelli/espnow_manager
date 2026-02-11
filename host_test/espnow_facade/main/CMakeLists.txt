@@ -1,3 +1,13 @@
-idf_component_register(SRCS "test_espnow_facade.cpp"
-                       INCLUDE_DIRS "."
-                       REQUIRES espnow unity)
+idf_component_register(
+    SRCS
+        "test_main.cpp"
+        "test_espnow_facade.cpp"
+    INCLUDE_DIRS
+        "."
+        "../../common"
+    REQUIRES
+        unity
+        espnow_manager
+        esp_wifi
+        WHOLE_ARCHIVE
+)
