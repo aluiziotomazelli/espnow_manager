@@ -28,7 +28,7 @@ esp_err_t RealHeartbeatManager::init(uint32_t interval_ms, NodeType type)
     interval_ms_ = interval_ms;
     my_type_ = type;
 
-    if (my_type_ != NodeType::HUB && interval_ms_ > 0)
+    if (my_type_ != ReservedTypes::HUB && interval_ms_ > 0)
     {
         timer_ = xTimerCreate("heartbeat", pdMS_TO_TICKS(interval_ms_), pdTRUE, this, timer_cb);
         if (timer_ == nullptr) return ESP_FAIL;
@@ -83,7 +83,7 @@ void RealHeartbeatManager::handle_request(NodeId sender_id, const uint8_t *mac, 
 void RealHeartbeatManager::send_heartbeat()
 {
     TxPacket tx_packet;
-    if (!peer_mgr_.find_mac(NodeId::HUB, tx_packet.dest_mac))
+    if (!peer_mgr_.find_mac(ReservedIds::HUB, tx_packet.dest_mac))
     {
         const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
         memcpy(tx_packet.dest_mac, broadcast_mac, 6);
@@ -93,7 +93,7 @@ void RealHeartbeatManager::send_heartbeat()
     heartbeat.header.msg_type       = MessageType::HEARTBEAT;
     heartbeat.header.sender_node_id = my_id_;
     heartbeat.header.sender_type    = my_type_;
-    heartbeat.header.dest_node_id   = NodeId::HUB;
+    heartbeat.header.dest_node_id   = ReservedIds::HUB;
     heartbeat.header.sequence_number = 0;
     heartbeat.uptime_ms             = esp_timer_get_time() / 1000;
 

@@ -10,6 +10,11 @@ public:
     RealHeartbeatManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec, NodeId my_id);
     ~RealHeartbeatManager();
 
+    using IHeartbeatManager::handle_request;
+    using IHeartbeatManager::handle_response;
+    using IHeartbeatManager::init;
+    using IHeartbeatManager::update_node_id;
+
     esp_err_t init(uint32_t interval_ms, NodeType type) override;
     void update_node_id(NodeId id) override;
     esp_err_t deinit() override;

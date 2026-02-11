@@ -33,8 +33,8 @@ struct EspNowConfig
 
     // Default constructor
     EspNowConfig()
-        : node_id(NodeId::HUB)
-        , node_type(NodeType::UNKNOWN)
+        : node_id(ReservedIds::HUB)
+        , node_type(ReservedTypes::UNKNOWN)
         , app_rx_queue(nullptr)
         , wifi_channel(DEFAULT_WIFI_CHANNEL)
         , ack_timeout_ms(DEFAULT_ACK_TIMEOUT_MS)
@@ -74,16 +74,63 @@ public:
                         const void *payload,
                         size_t len,
                         bool require_ack = false);
+
+    template <typename T1, typename T2,
+              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
+              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(PayloadType)>>
+    esp_err_t send_data(T1 dest_node_id,
+                        T2 payload_type,
+                        const void *payload,
+                        size_t len,
+                        bool require_ack = false)
+    {
+        return send_data(static_cast<NodeId>(dest_node_id),
+                         static_cast<PayloadType>(payload_type),
+                         payload,
+                         len,
+                         require_ack);
+    }
+
     esp_err_t send_command(NodeId dest_node_id,
                            CommandType command_type,
                            const void *payload,
                            size_t len,
                            bool require_ack = false);
+
+    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
+    esp_err_t send_command(T dest_node_id,
+                           CommandType command_type,
+                           const void *payload,
+                           size_t len,
+                           bool require_ack = false)
+    {
+        return send_command(static_cast<NodeId>(dest_node_id),
+                            command_type,
+                            payload,
+                            len,
+                            require_ack);
+    }
+
     esp_err_t confirm_reception(AckStatus status);
 
     // Peer Management Functions
     esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type);
+
+    template <typename T1, typename T2,
+              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
+              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
+    esp_err_t add_peer(T1 node_id, const uint8_t *mac, uint8_t channel, T2 type)
+    {
+        return add_peer(static_cast<NodeId>(node_id), mac, channel, static_cast<NodeType>(type));
+    }
+
     esp_err_t remove_peer(NodeId node_id);
+
+    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
+    esp_err_t remove_peer(T node_id)
+    {
+        return remove_peer(static_cast<NodeId>(node_id));
+    }
     std::vector<PeerInfo> get_peers();
     std::vector<NodeId> get_offline_peers() const;
     esp_err_t start_pairing(uint32_t timeout_ms = 30000);

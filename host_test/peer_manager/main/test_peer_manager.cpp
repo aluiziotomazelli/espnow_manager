@@ -7,6 +7,20 @@ extern "C" {
 }
 #include <cstring>
 
+enum class TestNodeId : NodeId
+{
+    TEST_HUB      = 1,
+    TEST_SENSOR_A = 10,
+    TEST_SENSOR_B = 11,
+    NON_EXISTENT  = 99
+};
+
+enum class TestNodeType : NodeType
+{
+    HUB    = 1,
+    SENSOR = 2
+};
+
 TEST_CASE("PeerManager can add and find peers", "[peer_manager]")
 {
     esp_now_add_peer_IgnoreAndReturn(ESP_OK);
@@ -17,11 +31,11 @@ TEST_CASE("PeerManager can add and find peers", "[peer_manager]")
     RealPeerManager pm(storage);
 
     uint8_t mac1[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    esp_err_t err   = pm.add(NodeId::WATER_TANK, mac1, 1, NodeType::SENSOR);
+    esp_err_t err   = pm.add(TestNodeId::TEST_SENSOR_A, mac1, 1, TestNodeType::SENSOR);
     TEST_ASSERT_EQUAL(ESP_OK, err);
 
     uint8_t found_mac[6];
-    TEST_ASSERT_TRUE(pm.find_mac(NodeId::WATER_TANK, found_mac));
+    TEST_ASSERT_TRUE(pm.find_mac(TestNodeId::TEST_SENSOR_A, found_mac));
     TEST_ASSERT_EQUAL_MEMORY(mac1, found_mac, 6);
 }
 
@@ -36,14 +50,14 @@ TEST_CASE("PeerManager handles LRU", "[peer_manager]")
 
     for (int i = 0; i < MAX_PEERS; ++i) {
         uint8_t mac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, (uint8_t)i};
-        pm.add((NodeId)(100 + i), mac, 1, NodeType::SENSOR);
+        pm.add((NodeId)(100 + i), mac, 1, (NodeType)TestNodeType::SENSOR);
     }
 
     TEST_ASSERT_EQUAL(MAX_PEERS, pm.get_all().size());
 
     // Add one more, oldest (ID 100) should be removed
     uint8_t mac_new[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    pm.add((NodeId)200, mac_new, 1, NodeType::SENSOR);
+    pm.add((NodeId)200, mac_new, 1, (NodeType)TestNodeType::SENSOR);
 
     TEST_ASSERT_EQUAL(MAX_PEERS, pm.get_all().size());
     TEST_ASSERT_FALSE(pm.find_mac((NodeId)100, nullptr));
@@ -60,9 +74,9 @@ TEST_CASE("PeerManager detects offline peers", "[peer_manager]")
     RealPeerManager pm(storage);
 
     uint8_t mac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    pm.add(NodeId::WATER_TANK, mac, 1, NodeType::SENSOR, 1000); // 1s heartbeat
+    pm.add(TestNodeId::TEST_SENSOR_A, mac, 1, TestNodeType::SENSOR, 1000); // 1s heartbeat
 
-    pm.update_last_seen(NodeId::WATER_TANK, 10000);
+    pm.update_last_seen(TestNodeId::TEST_SENSOR_A, 10000);
 
     // Offline threshold is 2.5 * 1000 = 2500ms.
     // So at 12501ms it should be offline.
@@ -72,7 +86,7 @@ TEST_CASE("PeerManager detects offline peers", "[peer_manager]")
 
     offline = pm.get_offline(12501);
     TEST_ASSERT_EQUAL(1, offline.size());
-    TEST_ASSERT_EQUAL(NodeId::WATER_TANK, offline[0]);
+    TEST_ASSERT_EQUAL(to_node_id(TestNodeId::TEST_SENSOR_A), offline[0]);
 }
 
 TEST_CASE("PeerManager persists to storage on add", "[peer_manager]")
@@ -85,12 +99,12 @@ TEST_CASE("PeerManager persists to storage on add", "[peer_manager]")
 
     // Add a peer
     uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    pm.add(NodeId::WATER_TANK, mac, 1, NodeType::SENSOR);
+    pm.add(TestNodeId::TEST_SENSOR_A, mac, 1, TestNodeType::SENSOR);
 
     // Check if it was saved
     TEST_ASSERT_TRUE(storage.save_called);
     TEST_ASSERT_EQUAL(1, storage.saved_peers.size());
-    TEST_ASSERT_EQUAL(NodeId::WATER_TANK, storage.saved_peers[0].node_id);
+    TEST_ASSERT_EQUAL(to_node_id(TestNodeId::TEST_SENSOR_A), storage.saved_peers[0].node_id);
     TEST_ASSERT_EQUAL_MEMORY(mac, storage.saved_peers[0].mac, 6);
 }
 
@@ -103,9 +117,9 @@ TEST_CASE("PeerManager loads peers from storage", "[peer_manager]")
     // Pre populate storage
     PersistentPeer p1;
     memcpy(p1.mac, "\xAA\xBB\xCC\xDD\xEE\xFF", 6);
-    p1.node_id               = NodeId::WATER_TANK;
+    p1.node_id               = to_node_id(TestNodeId::TEST_SENSOR_A);
     p1.channel               = 6;
-    p1.type                  = NodeType::SENSOR;
+    p1.type                  = to_node_type(TestNodeType::SENSOR);
     p1.paired                = true;
     p1.heartbeat_interval_ms = 5000;
 
@@ -126,7 +140,7 @@ TEST_CASE("PeerManager loads peers from storage", "[peer_manager]")
 
     // Check peer
     uint8_t found_mac[6];
-    TEST_ASSERT_TRUE(pm.find_mac(NodeId::WATER_TANK, found_mac));
+    TEST_ASSERT_TRUE(pm.find_mac(TestNodeId::TEST_SENSOR_A, found_mac));
     TEST_ASSERT_EQUAL_MEMORY(p1.mac, found_mac, 6);
 }
 
@@ -141,18 +155,18 @@ TEST_CASE("PeerManager updates existing peer", "[peer_manager]")
 
     // Add peer
     uint8_t mac_old[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    pm.add(NodeId::WATER_TANK, mac_old, 1, NodeType::SENSOR);
+    pm.add(TestNodeId::TEST_SENSOR_A, mac_old, 1, TestNodeType::SENSOR);
 
     // Change mac from same peerId (simulating changin a vroken device with a new one)
     uint8_t mac_new[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    pm.add(NodeId::WATER_TANK, mac_new, 1, NodeType::SENSOR); // Same NodeId!
+    pm.add(TestNodeId::TEST_SENSOR_A, mac_new, 1, TestNodeType::SENSOR); // Same NodeId!
 
     // Must be only one peer, not duplicated
     TEST_ASSERT_EQUAL(1, pm.get_all().size());
 
     // MAC must be the new one
     uint8_t found_mac[6];
-    pm.find_mac(NodeId::WATER_TANK, found_mac);
+    pm.find_mac(TestNodeId::TEST_SENSOR_A, found_mac);
     TEST_ASSERT_EQUAL_MEMORY(mac_new, found_mac, 6);
 }
 
@@ -166,18 +180,18 @@ TEST_CASE("PeerManager removes peer", "[peer_manager]")
 
     // Add a peer
     uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    pm.add(NodeId::WATER_TANK, mac, 1, NodeType::SENSOR);
+    pm.add(TestNodeId::TEST_SENSOR_A, mac, 1, TestNodeType::SENSOR);
 
     // Check if it was saved
     TEST_ASSERT_EQUAL(1, pm.get_all().size());
 
     // Remove the peer
-    esp_err_t err = pm.remove(NodeId::WATER_TANK);
+    esp_err_t err = pm.remove(TestNodeId::TEST_SENSOR_A);
     TEST_ASSERT_EQUAL(ESP_OK, err);
 
     // Check if it was removed
     TEST_ASSERT_EQUAL(0, pm.get_all().size());
-    TEST_ASSERT_FALSE(pm.find_mac(NodeId::WATER_TANK, nullptr));
+    TEST_ASSERT_FALSE(pm.find_mac(TestNodeId::TEST_SENSOR_A, nullptr));
 }
 
 TEST_CASE("PeerManager returns error removing non-existent peer", "[peer_manager]")
@@ -190,13 +204,13 @@ TEST_CASE("PeerManager returns error removing non-existent peer", "[peer_manager
 
     // Add a peer
     uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    pm.add(NodeId::WATER_TANK, mac, 1, NodeType::SENSOR);
+    pm.add(TestNodeId::TEST_SENSOR_A, mac, 1, TestNodeType::SENSOR);
 
     // Check if it was saved
     TEST_ASSERT_EQUAL(1, pm.get_all().size());
 
     // Try to remove non-existent peer
-    esp_err_t err = pm.remove(NodeId::SOLAR_SENSOR);
+    esp_err_t err = pm.remove(TestNodeId::TEST_SENSOR_B);
     TEST_ASSERT_EQUAL(ESP_ERR_NOT_FOUND, err);
 }
 
@@ -210,8 +224,8 @@ TEST_CASE("PeerManager saves on every add", "[peer_manager]")
     // Save two peers
     uint8_t mac1[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     uint8_t mac2[6] = {0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
-    pm.add(NodeId::WATER_TANK, mac1, 1, NodeType::SENSOR);
-    pm.add(NodeId::SOLAR_SENSOR, mac2, 1, NodeType::SENSOR);
+    pm.add(TestNodeId::TEST_SENSOR_A, mac1, 1, TestNodeType::SENSOR);
+    pm.add(TestNodeId::TEST_SENSOR_B, mac2, 1, TestNodeType::SENSOR);
 
     // Should have been saved twice
     TEST_ASSERT_EQUAL(2, storage.save_call_count);
@@ -231,20 +245,20 @@ TEST_CASE("PeerManager moves accessed peer to front (LRU)", "[peer_manager]")
     uint8_t mac2[6] = {0x02, 0x02, 0x02, 0x02, 0x02, 0x02};
     uint8_t mac3[6] = {0x03, 0x03, 0x03, 0x03, 0x03, 0x03};
 
-    pm.add(NodeId::HUB, mac1, 1, NodeType::HUB);
-    pm.add(NodeId::WATER_TANK, mac2, 1, NodeType::SENSOR);
-    pm.add(NodeId::SOLAR_SENSOR, mac3, 1, NodeType::SENSOR);
+    pm.add(TestNodeId::TEST_HUB, mac1, 1, TestNodeType::HUB);
+    pm.add(TestNodeId::TEST_SENSOR_A, mac2, 1, TestNodeType::SENSOR);
+    pm.add(TestNodeId::TEST_SENSOR_B, mac3, 1, TestNodeType::SENSOR);
 
     auto peers = pm.get_all();
     // The last peer add must be first on vector list
-    TEST_ASSERT_EQUAL(NodeId::SOLAR_SENSOR, peers[0].node_id);
+    TEST_ASSERT_EQUAL(to_node_id(TestNodeId::TEST_SENSOR_B), peers[0].node_id);
 
     // Re adding HUB should move it to the front
-    pm.add(NodeId::HUB, mac1, 1, NodeType::HUB);
+    pm.add(TestNodeId::TEST_HUB, mac1, 1, TestNodeType::HUB);
 
     peers = pm.get_all();
     // HUB must be the first
-    TEST_ASSERT_EQUAL(NodeId::HUB, peers[0].node_id);
+    TEST_ASSERT_EQUAL(to_node_id(TestNodeId::TEST_HUB), peers[0].node_id);
 }
 
 TEST_CASE("PeerManager updates peer channel", "[peer_manager]")
@@ -257,10 +271,10 @@ TEST_CASE("PeerManager updates peer channel", "[peer_manager]")
 
     // Add a peer with channel 1
     uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    pm.add(NodeId::WATER_TANK, mac, 1, NodeType::SENSOR);
+    pm.add(TestNodeId::TEST_SENSOR_A, mac, 1, TestNodeType::SENSOR);
 
     // Change channel to 6 but same MAC
-    pm.add(NodeId::WATER_TANK, mac, 6, NodeType::SENSOR);
+    pm.add(TestNodeId::TEST_SENSOR_A, mac, 6, TestNodeType::SENSOR);
 
     auto peers = pm.get_all();
     TEST_ASSERT_EQUAL(1, peers.size());
@@ -284,11 +298,11 @@ TEST_CASE("PeerManager handles MAC update failure gracefully", "[peer_manager]")
 
     // First add with ESP_OK return
     uint8_t mac_old[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    pm.add(NodeId::WATER_TANK, mac_old, 1, NodeType::SENSOR); // OK
+    pm.add(TestNodeId::TEST_SENSOR_A, mac_old, 1, TestNodeType::SENSOR); // OK
 
     // Second add with ESP_FAIL simulating internal espnow criver error
     uint8_t mac_new[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    esp_err_t err      = pm.add(NodeId::WATER_TANK, mac_new, 1, NodeType::SENSOR); // FAIL
+    esp_err_t err      = pm.add(TestNodeId::TEST_SENSOR_A, mac_new, 1, TestNodeType::SENSOR); // FAIL
 
     // Error must be ESP_FAIL
     TEST_ASSERT_EQUAL(ESP_FAIL, err);
@@ -297,7 +311,7 @@ TEST_CASE("PeerManager handles MAC update failure gracefully", "[peer_manager]")
 
     // Old peer must exist and MAC must be the old one
     uint8_t found_mac[6];
-    TEST_ASSERT_TRUE(pm.find_mac(NodeId::WATER_TANK, found_mac));
+    TEST_ASSERT_TRUE(pm.find_mac(TestNodeId::TEST_SENSOR_A, found_mac));
     TEST_ASSERT_EQUAL_MEMORY(mac_old, found_mac, 6);
 }
 
@@ -317,7 +331,7 @@ TEST_CASE("PeerManager handles storage save failure", "[peer_manager]")
     RealPeerManager pm(storage);
 
     uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    esp_err_t err  = pm.add(NodeId::WATER_TANK, mac, 1, NodeType::SENSOR);
+    esp_err_t err  = pm.add(TestNodeId::TEST_SENSOR_A, mac, 1, TestNodeType::SENSOR);
 
     // pm.add with save (to storage) failure, still returns ESP_OK
     TEST_ASSERT_EQUAL(ESP_OK, err);

@@ -7,6 +7,8 @@ class RealChannelScanner : public IChannelScanner
 public:
     RealChannelScanner(IWiFiHAL &wifi_hal, IMessageCodec &message_codec, NodeId my_node_id, NodeType my_node_type);
 
+    using IChannelScanner::update_node_info;
+
     ScanResult scan(uint8_t start_channel) override;
     void update_node_info(NodeId id, NodeType type) override;
 
