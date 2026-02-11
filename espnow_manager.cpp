@@ -12,15 +12,66 @@
 // Logging TAG
 static const char *TAG = "EspNow";
 
+// --- Placeholder Implementations ---
+class DefaultPeerManager : public IPeerManager
+{
+public:
+    esp_err_t add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type) override { return ESP_OK; }
+    esp_err_t remove(NodeId id) override { return ESP_OK; }
+    bool find_mac(NodeId id, uint8_t *mac) override { return false; }
+    std::vector<PeerInfo> get_all() override { return {}; }
+    std::vector<NodeId> get_offline(uint64_t now_ms) override { return {}; }
+    void update_last_seen(NodeId id, uint64_t now_ms) override {}
+};
+
+class DefaultTxStateMachine : public ITxStateMachine
+{
+public:
+    TxState on_tx_success(bool requires_ack) override { return TxState::IDLE; }
+    TxState on_ack_received() override { return TxState::IDLE; }
+    TxState on_ack_timeout() override { return TxState::RETRYING; }
+    TxState on_physical_fail() override { return TxState::IDLE; }
+    TxState on_max_retries() override { return TxState::IDLE; }
+    TxState get_state() const override { return TxState::IDLE; }
+    void reset() override {}
+    void set_pending_ack(const PendingAck &pending_ack) override {}
+    std::optional<PendingAck> get_pending_ack() const override { return std::nullopt; }
+};
+
+class DefaultChannelScanner : public IChannelScanner
+{
+public:
+    ScanResult scan(uint8_t start_channel) override { return {start_channel, false}; }
+};
+
+class DefaultMessageCodec : public IMessageCodec
+{
+public:
+    std::vector<uint8_t> encode(const MessageHeader &header, const void *payload, size_t len) override
+    {
+        return std::vector<uint8_t>();
+    }
+    std::optional<MessageHeader> decode_header(const uint8_t *data, size_t len) override { return std::nullopt; }
+    bool validate_crc(const uint8_t *data, size_t len) override { return true; }
+};
+
 // --- Singleton ---
 EspNow &EspNow::instance()
 {
-    static EspNow instance;
+    static EspNow instance(std::make_unique<DefaultPeerManager>(), std::make_unique<DefaultTxStateMachine>(),
+                           std::make_unique<DefaultChannelScanner>(), std::make_unique<DefaultMessageCodec>());
     return instance;
 }
 
 // --- Constructor & Destructor ---
-EspNow::EspNow()
+EspNow::EspNow(std::unique_ptr<IPeerManager> peer_manager,
+               std::unique_ptr<ITxStateMachine> tx_state_machine,
+               std::unique_ptr<IChannelScanner> channel_scanner,
+               std::unique_ptr<IMessageCodec> message_codec)
+    : peer_manager_(std::move(peer_manager))
+    , tx_state_machine_(std::move(tx_state_machine))
+    , channel_scanner_(std::move(channel_scanner))
+    , message_codec_(std::move(message_codec))
 {
 }
 
@@ -360,7 +411,7 @@ esp_err_t EspNow::send_command(NodeId dest_node_id,
     return ESP_OK;
 }
 
-std::vector<EspNow::PeerInfo> EspNow::get_peers()
+std::vector<PeerInfo> EspNow::get_peers()
 {
     std::vector<PeerInfo> peers_copy;
     if (xSemaphoreTake(peers_mutex_, portMAX_DELAY) == pdTRUE) {
@@ -1149,7 +1200,7 @@ EspNowStorage::Peer EspNow::info_to_storage(const PeerInfo &info)
     return storage;
 }
 
-EspNow::PeerInfo EspNow::storage_to_info(const EspNowStorage::Peer &storage)
+PeerInfo EspNow::storage_to_info(const EspNowStorage::Peer &storage)
 {
     PeerInfo info;
     memcpy(info.mac, storage.mac, 6);

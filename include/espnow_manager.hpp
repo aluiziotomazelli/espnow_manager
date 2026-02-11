@@ -1,10 +1,13 @@
 #pragma once
 
 #include "esp_now.h"
+#include "espnow_interfaces.hpp"
 #include "espnow_storage.hpp"
+#include "espnow_types.hpp"
 #include "protocol_messages.hpp"
 #include "protocol_types.hpp"
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 #include "freertos/FreeRTOS.h"
@@ -48,31 +51,15 @@ public:
     // Singleton
     static EspNow &instance();
 
+    // Dependency injection constructor for testing
+    EspNow(std::unique_ptr<IPeerManager> peer_manager,
+           std::unique_ptr<ITxStateMachine> tx_state_machine,
+           std::unique_ptr<IChannelScanner> channel_scanner,
+           std::unique_ptr<IMessageCodec> message_codec);
+
     EspNow(const EspNow &)            = delete;
     EspNow &operator=(const EspNow &) = delete;
     ~EspNow();
-
-    // Generic structure for received packets used in queues
-    struct RxPacket
-    {
-        uint8_t src_mac[6];
-        uint8_t data[ESP_NOW_MAX_DATA_LEN];
-        size_t len;
-        int8_t rssi;
-        int64_t timestamp_us;
-    };
-
-    // Public information about a peer, safe to be used by the application
-    struct PeerInfo
-    {
-        uint8_t mac[6];
-        NodeType type;
-        NodeId node_id;
-        uint8_t channel;
-        uint64_t last_seen_ms;
-        bool paired;
-        uint32_t heartbeat_interval_ms;
-    };
 
     // Public API
     static constexpr int MAX_PEERS = 19;
@@ -102,7 +89,6 @@ public:
     esp_err_t start_pairing(uint32_t timeout_ms = 30000);
 
 private:
-    EspNow();
     // --- Notification Bits ---
     static constexpr uint32_t NOTIFY_LOGICAL_ACK     = 0x01;
     static constexpr uint32_t NOTIFY_PHYSICAL_FAIL   = 0x02;
@@ -115,35 +101,15 @@ private:
     static constexpr uint32_t NOTIFY_STOP            = 0x100;
     static constexpr uint32_t NOTIFY_LINK_ALIVE      = 0x200;
 
-    // --- FSM and TX Task Structures ---
-    struct TxPacket
-    {
-        uint8_t dest_mac[6];
-        uint8_t data[ESP_NOW_MAX_DATA_LEN];
-        size_t len;
-        bool requires_ack;
-    };
-
-    enum class TxState
-    {
-        IDLE,
-        SENDING,
-        WAITING_FOR_ACK,
-        RETRYING,
-        SCANNING
-    };
-
-    struct PendingAck
-    {
-        uint16_t sequence_number;
-        uint64_t timestamp_ms;
-        uint8_t retries_left;
-        TxPacket packet;
-    };
-
     // --- Private Members ---
     EspNowConfig config_{};
     EspNowStorage storage_;
+
+    std::unique_ptr<IPeerManager> peer_manager_;
+    std::unique_ptr<ITxStateMachine> tx_state_machine_;
+    std::unique_ptr<IChannelScanner> channel_scanner_;
+    std::unique_ptr<IMessageCodec> message_codec_;
+
     std::vector<PeerInfo> peers_;
     SemaphoreHandle_t peers_mutex_   = nullptr;
     SemaphoreHandle_t pairing_mutex_ = nullptr;
