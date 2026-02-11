@@ -20,14 +20,16 @@ class RealRtcBackend : public IPersistenceBackend
 public:
     esp_err_t load(void *data, size_t size) override
     {
-        if (size > sizeof(PersistentData)) return ESP_ERR_INVALID_SIZE;
+        if (size > sizeof(PersistentData))
+            return ESP_ERR_INVALID_SIZE;
         memcpy(data, &g_rtc_storage, size);
         return ESP_OK;
     }
 
     esp_err_t save(const void *data, size_t size) override
     {
-        if (size > sizeof(PersistentData)) return ESP_ERR_INVALID_SIZE;
+        if (size > sizeof(PersistentData))
+            return ESP_ERR_INVALID_SIZE;
         memcpy(&g_rtc_storage, data, size);
         return ESP_OK;
     }
@@ -40,18 +42,22 @@ public:
     esp_err_t load(void *data, size_t size) override
     {
         esp_err_t err = init_nvs();
-        if (err != ESP_OK) return err;
+        if (err != ESP_OK)
+            return err;
 
         nvs_handle_t handle;
         err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
-        if (err != ESP_OK) return err;
+        if (err != ESP_OK)
+            return err;
 
         size_t actual_size = size;
-        err = nvs_get_blob(handle, NVS_KEY, data, &actual_size);
+        err                = nvs_get_blob(handle, NVS_KEY, data, &actual_size);
         nvs_close(handle);
 
-        if (err != ESP_OK) return err;
-        if (actual_size != size) return ESP_ERR_INVALID_SIZE;
+        if (err != ESP_OK)
+            return err;
+        if (actual_size != size)
+            return ESP_ERR_INVALID_SIZE;
 
         return ESP_OK;
     }
@@ -59,17 +65,24 @@ public:
     esp_err_t save(const void *data, size_t size) override
     {
         esp_err_t err = init_nvs();
-        if (err != ESP_OK) return err;
+        if (err != ESP_OK)
+            return err;
 
         nvs_handle_t handle;
         err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
-        if (err != ESP_OK) return err;
+        if (err != ESP_OK)
+            return err;
 
         err = nvs_set_blob(handle, NVS_KEY, data, size);
         if (err == ESP_OK) {
             err = nvs_commit(handle);
         }
         nvs_close(handle);
+
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to save data to NVS: 0x%x", err);
+        }
+
         return err;
     }
 
@@ -77,14 +90,16 @@ private:
     esp_err_t init_nvs()
     {
         static bool nvs_initialized = false;
-        if (nvs_initialized) return ESP_OK;
+        if (nvs_initialized)
+            return ESP_OK;
 
         esp_err_t err = nvs_flash_init();
         if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
             ESP_ERROR_CHECK(nvs_flash_erase());
             err = nvs_flash_init();
         }
-        if (err == ESP_OK) nvs_initialized = true;
+        if (err == ESP_OK)
+            nvs_initialized = true;
         return err;
     }
 };
@@ -94,11 +109,15 @@ private:
 EspNowStorage::EspNowStorage(std::unique_ptr<IPersistenceBackend> rtc_backend,
                              std::unique_ptr<IPersistenceBackend> nvs_backend)
 {
-    if (rtc_backend) rtc_backend_ = std::move(rtc_backend);
-    else rtc_backend_ = std::make_unique<RealRtcBackend>();
+    if (rtc_backend)
+        rtc_backend_ = std::move(rtc_backend);
+    else
+        rtc_backend_ = std::make_unique<RealRtcBackend>();
 
-    if (nvs_backend) nvs_backend_ = std::move(nvs_backend);
-    else nvs_backend_ = std::make_unique<RealNvsBackend>();
+    if (nvs_backend)
+        nvs_backend_ = std::move(nvs_backend);
+    else
+        nvs_backend_ = std::make_unique<RealNvsBackend>();
 }
 
 EspNowStorage::~EspNowStorage()
@@ -118,8 +137,7 @@ esp_err_t EspNowStorage::load(uint8_t &wifi_channel, std::vector<PersistentPeer>
     // 1. Try RTC
     if (rtc_backend_->load(&data, sizeof(PersistentData)) == ESP_OK) {
         uint32_t calculated_crc = calculate_crc(data);
-        if (data.magic == PersistentData::MAGIC &&
-            data.version == PersistentData::VERSION &&
+        if (data.magic == PersistentData::MAGIC && data.version == PersistentData::VERSION &&
             data.crc == calculated_crc) {
             ESP_LOGI(TAG, "Loaded data from RTC");
             wifi_channel = data.wifi_channel;
@@ -134,8 +152,7 @@ esp_err_t EspNowStorage::load(uint8_t &wifi_channel, std::vector<PersistentPeer>
     // 2. Try NVS
     if (nvs_backend_->load(&data, sizeof(PersistentData)) == ESP_OK) {
         uint32_t calculated_crc = calculate_crc(data);
-        if (data.magic == PersistentData::MAGIC &&
-            data.version == PersistentData::VERSION &&
+        if (data.magic == PersistentData::MAGIC && data.version == PersistentData::VERSION &&
             data.crc == calculated_crc) {
             ESP_LOGI(TAG, "Loaded data from NVS");
             wifi_channel = data.wifi_channel;
@@ -152,9 +169,7 @@ esp_err_t EspNowStorage::load(uint8_t &wifi_channel, std::vector<PersistentPeer>
     return ESP_ERR_NOT_FOUND;
 }
 
-esp_err_t EspNowStorage::save(uint8_t wifi_channel,
-                              const std::vector<PersistentPeer> &peers,
-                              bool force_nvs_commit)
+esp_err_t EspNowStorage::save(uint8_t wifi_channel, const std::vector<PersistentPeer> &peers, bool force_nvs_commit)
 {
     PersistentData data;
     memset(&data, 0, sizeof(PersistentData));
@@ -189,7 +204,8 @@ esp_err_t EspNowStorage::save(uint8_t wifi_channel,
     esp_err_t err = nvs_backend_->save(&data, sizeof(PersistentData));
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "Saved data to NVS");
-    } else {
+    }
+    else {
         ESP_LOGE(TAG, "Failed to save data to NVS: %s", esp_err_to_name(err));
     }
 

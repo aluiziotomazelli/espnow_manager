@@ -232,7 +232,10 @@ void RealPeerManager::save_to_storage(uint8_t wifi_channel)
     for (const auto &p : peers_) {
         to_save.push_back(info_to_persistent(p));
     }
-    storage_.save(wifi_channel, to_save, true);
+    esp_err_t err = storage_.save(wifi_channel, to_save, true);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save peers to storage: %s", esp_err_to_name(err));
+    }
 }
 
 PersistentPeer RealPeerManager::info_to_persistent(const PeerInfo &info)

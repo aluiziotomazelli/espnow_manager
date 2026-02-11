@@ -290,12 +290,39 @@ TEST_CASE("PeerManager handles MAC update failure gracefully", "[peer_manager]")
     uint8_t mac_new[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     esp_err_t err      = pm.add(NodeId::WATER_TANK, mac_new, 1, NodeType::SENSOR); // FAIL
 
+    // Error must be ESP_FAIL
     TEST_ASSERT_EQUAL(ESP_FAIL, err);
+    TEST_ASSERT_EQUAL(1, pm.get_all().size());     // Only one peer
+    TEST_ASSERT_EQUAL(1, storage.save_call_count); // Only one save
 
     // Old peer must exist and MAC must be the old one
     uint8_t found_mac[6];
     TEST_ASSERT_TRUE(pm.find_mac(NodeId::WATER_TANK, found_mac));
     TEST_ASSERT_EQUAL_MEMORY(mac_old, found_mac, 6);
+}
+
+TEST_CASE("PeerManager handles storage save failure", "[peer_manager]")
+{
+    esp_now_add_peer_IgnoreAndReturn(ESP_OK);
+
+    class FailingStorage : public MockStorage
+    {
+        esp_err_t save(uint8_t, const std::vector<PersistentPeer> &, bool) override
+        {
+            return ESP_FAIL;
+        }
+    };
+
+    FailingStorage storage;
+    RealPeerManager pm(storage);
+
+    uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    esp_err_t err  = pm.add(NodeId::WATER_TANK, mac, 1, NodeType::SENSOR);
+
+    // pm.add with save (to storage) failure, still returns ESP_OK
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(1, pm.get_all().size());     // Peer list has one peer
+    TEST_ASSERT_EQUAL(0, storage.save_call_count); // Storage NVS has not saved
 }
 
 extern "C" void app_main(void)
