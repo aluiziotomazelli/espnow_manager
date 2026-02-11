@@ -6,7 +6,7 @@ idf_component_register(
         "../../mocks"
     REQUIRES
         unity
-        app
+        espnow_manager
         esp_wifi
         WHOLE_ARCHIVE
 )

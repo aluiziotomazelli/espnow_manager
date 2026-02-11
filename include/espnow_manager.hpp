@@ -1,19 +1,21 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "esp_now.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
+#include "freertos/timers.h"
+
 #include "espnow_interfaces.hpp"
 #include "espnow_storage.hpp"
 #include "espnow_types.hpp"
 #include "protocol_messages.hpp"
 #include "protocol_types.hpp"
-#include <cstdint>
-#include <memory>
-#include <optional>
-#include <vector>
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
-#include "freertos/timers.h"
 
 // Configuration to initialize the EspNow component
 struct EspNowConfig
@@ -80,10 +82,7 @@ public:
     esp_err_t confirm_reception(AckStatus status);
 
     // Peer Management Functions
-    esp_err_t add_peer(NodeId node_id,
-                       const uint8_t *mac,
-                       uint8_t channel,
-                       NodeType type);
+    esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type);
     esp_err_t remove_peer(NodeId node_id);
     std::vector<PeerInfo> get_peers();
     std::vector<NodeId> get_offline_peers() const;
@@ -91,7 +90,7 @@ public:
 
 private:
     // --- Notification Bits ---
-    static constexpr uint32_t NOTIFY_STOP            = 0x100;
+    static constexpr uint32_t NOTIFY_STOP = 0x100;
 
     // --- Private Members ---
     EspNowConfig config_{};
@@ -104,8 +103,8 @@ private:
     std::unique_ptr<IPairingManager> pairing_manager_;
     std::unique_ptr<IMessageRouter> message_router_;
 
-    SemaphoreHandle_t ack_mutex_     = nullptr;
-    bool is_initialized_             = false;
+    SemaphoreHandle_t ack_mutex_ = nullptr;
+    bool is_initialized_         = false;
     std::optional<MessageHeader> last_header_requiring_ack_{};
 
     QueueHandle_t rx_dispatch_queue_           = nullptr;
@@ -124,9 +123,6 @@ private:
     static void transport_worker_task(void *arg);
 
     // Static ESP-NOW callbacks (ISR context)
-    static void esp_now_recv_cb(const esp_now_recv_info_t *info,
-                                const uint8_t *data,
-                                int len);
-    static void esp_now_send_cb(const esp_now_send_info_t *info,
-                                esp_now_send_status_t status);
+    static void esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len);
+    static void esp_now_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status);
 };
