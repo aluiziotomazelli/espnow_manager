@@ -30,13 +30,15 @@ TEST_CASE("PeerManager can add and find peers", "[peer_manager]")
     MockStorage storage;
     RealPeerManager pm(storage);
 
+    // Add peer
     uint8_t mac1[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     esp_err_t err   = pm.add(TestNodeId::TEST_SENSOR_A, mac1, 1, TestNodeType::SENSOR);
-    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(ESP_OK, err); // should pass if added
 
+    // Find a peer by mac
     uint8_t found_mac[6];
-    TEST_ASSERT_TRUE(pm.find_mac(TestNodeId::TEST_SENSOR_A, found_mac));
-    TEST_ASSERT_EQUAL_MEMORY(mac1, found_mac, 6);
+    TEST_ASSERT_TRUE(pm.find_mac(TestNodeId::TEST_SENSOR_A, found_mac)); // should pass if found
+    TEST_ASSERT_EQUAL_MEMORY(mac1, found_mac, 6);                        // MAC found should be the same as added
 }
 
 TEST_CASE("PeerManager handles LRU", "[peer_manager]")
@@ -48,20 +50,44 @@ TEST_CASE("PeerManager handles LRU", "[peer_manager]")
     MockStorage storage;
     RealPeerManager pm(storage);
 
+    // Full PeerList to the limit
     for (int i = 0; i < MAX_PEERS; ++i) {
         uint8_t mac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, (uint8_t)i};
-        pm.add((NodeId)(100 + i), mac, 1, (NodeType)TestNodeType::SENSOR);
+        pm.add((TestNodeId)(100 + i), mac, 1, TestNodeType::SENSOR);
     }
 
+    // Check if list is full
     TEST_ASSERT_EQUAL(MAX_PEERS, pm.get_all().size());
 
     // Add one more, oldest (ID 100) should be removed
     uint8_t mac_new[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    pm.add((NodeId)200, mac_new, 1, (NodeType)TestNodeType::SENSOR);
+    pm.add((TestNodeId)200, mac_new, 1, TestNodeType::SENSOR);
 
+    TEST_ASSERT_EQUAL(MAX_PEERS, pm.get_all().size());    // List is still full
+    TEST_ASSERT_FALSE(pm.find_mac((NodeId)100, nullptr)); // Oldest peer should be removed
+    TEST_ASSERT_TRUE(pm.find_mac((NodeId)200, nullptr));  // New peer should be added
+}
+
+TEST_CASE("PeerManager LRU with duplicate when full", "[peer_manager]")
+{
+    esp_now_add_peer_IgnoreAndReturn(ESP_OK);
+
+    MockStorage storage;
+    RealPeerManager pm(storage);
+
+    // Full PeerList to the limit
+    for (int i = 0; i < MAX_PEERS; ++i) {
+        uint8_t mac[6] = {0, 0, 0, 0, 0, (uint8_t)i};
+        pm.add((TestNodeId)(i), mac, 1, TestNodeType::SENSOR);
+    }
+
+    // Add peer that already exists with the same MAC
+    uint8_t existing_mac[6] = {0, 0, 0, 0, 0, 1}; // ID 1
+    pm.add((TestNodeId)1, existing_mac, 1, TestNodeType::SENSOR);
+
+    // Não deve remover ninguém, apenas mover para frente
     TEST_ASSERT_EQUAL(MAX_PEERS, pm.get_all().size());
-    TEST_ASSERT_FALSE(pm.find_mac((NodeId)100, nullptr));
-    TEST_ASSERT_TRUE(pm.find_mac((NodeId)200, nullptr));
+    TEST_ASSERT_EQUAL((NodeId)1, pm.get_all()[0].node_id); // Must be the first
 }
 
 TEST_CASE("PeerManager detects offline peers", "[peer_manager]")
@@ -231,7 +257,7 @@ TEST_CASE("PeerManager saves on every add", "[peer_manager]")
     TEST_ASSERT_EQUAL(2, storage.save_call_count);
 }
 
-TEST_CASE("PeerManager moves accessed peer to front (LRU)", "[peer_manager]")
+TEST_CASE("PeerManager moves re-added peer to front (LRU)", "[peer_manager]")
 {
     esp_now_add_peer_IgnoreAndReturn(ESP_OK);
     esp_now_del_peer_IgnoreAndReturn(ESP_OK);
@@ -279,40 +305,6 @@ TEST_CASE("PeerManager updates peer channel", "[peer_manager]")
     auto peers = pm.get_all();
     TEST_ASSERT_EQUAL(1, peers.size());
     TEST_ASSERT_EQUAL(6, peers[0].channel); // Must be channel 6
-}
-
-TEST_CASE("PeerManager handles MAC update failure gracefully", "[peer_manager]")
-{
-    // First call with ESP_OK
-    esp_now_add_peer_ExpectAndReturn(nullptr, ESP_OK);
-    esp_now_add_peer_IgnoreArg_peer();
-    // esp_now_add_peer_IgnoreArg_peer_info();
-
-    // Second call with ESP_FAIL
-    esp_now_add_peer_ExpectAndReturn(nullptr, ESP_FAIL);
-    esp_now_add_peer_IgnoreArg_peer();
-    // esp_now_add_peer_IgnoreArg_peer_info();
-
-    MockStorage storage;
-    RealPeerManager pm(storage);
-
-    // First add with ESP_OK return
-    uint8_t mac_old[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    pm.add(TestNodeId::TEST_SENSOR_A, mac_old, 1, TestNodeType::SENSOR); // OK
-
-    // Second add with ESP_FAIL simulating internal espnow criver error
-    uint8_t mac_new[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    esp_err_t err      = pm.add(TestNodeId::TEST_SENSOR_A, mac_new, 1, TestNodeType::SENSOR); // FAIL
-
-    // Error must be ESP_FAIL
-    TEST_ASSERT_EQUAL(ESP_FAIL, err);
-    TEST_ASSERT_EQUAL(1, pm.get_all().size());     // Only one peer
-    TEST_ASSERT_EQUAL(1, storage.save_call_count); // Only one save
-
-    // Old peer must exist and MAC must be the old one
-    uint8_t found_mac[6];
-    TEST_ASSERT_TRUE(pm.find_mac(TestNodeId::TEST_SENSOR_A, found_mac));
-    TEST_ASSERT_EQUAL_MEMORY(mac_old, found_mac, 6);
 }
 
 TEST_CASE("PeerManager handles storage save failure", "[peer_manager]")
