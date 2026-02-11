@@ -44,7 +44,7 @@ uint32_t EspNowStorage::calculate_crc(const PersistentData &data)
     return esp_rom_crc32_le(0, reinterpret_cast<const uint8_t *>(&data), length);
 }
 
-esp_err_t EspNowStorage::load(uint8_t &wifi_channel, std::vector<Peer> &peers)
+esp_err_t EspNowStorage::load(uint8_t &wifi_channel, std::vector<PersistentPeer> &peers)
 {
     bool loaded_from_rtc = false;
 
@@ -123,7 +123,7 @@ esp_err_t EspNowStorage::load(uint8_t &wifi_channel, std::vector<Peer> &peers)
 }
 
 esp_err_t EspNowStorage::save(uint8_t wifi_channel,
-                              const std::vector<Peer> &peers,
+                              const std::vector<PersistentPeer> &peers,
                               bool force_nvs_commit)
 {
     PersistentData data;

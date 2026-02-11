@@ -4,6 +4,7 @@
 #include "esp_rom_crc.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#include "peer_manager.hpp"
 #include "protocol_messages.hpp"
 #include <algorithm>
 #include <cstring>
@@ -16,12 +17,13 @@ static const char *TAG = "EspNow";
 class DefaultPeerManager : public IPeerManager
 {
 public:
-    esp_err_t add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type) override { return ESP_OK; }
+    esp_err_t add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, uint32_t heartbeat_interval_ms = 0) override { return ESP_OK; }
     esp_err_t remove(NodeId id) override { return ESP_OK; }
     bool find_mac(NodeId id, uint8_t *mac) override { return false; }
     std::vector<PeerInfo> get_all() override { return {}; }
     std::vector<NodeId> get_offline(uint64_t now_ms) override { return {}; }
     void update_last_seen(NodeId id, uint64_t now_ms) override {}
+    esp_err_t load_from_storage(uint8_t &wifi_channel) override { return ESP_OK; }
 };
 
 class DefaultTxStateMachine : public ITxStateMachine
@@ -58,7 +60,9 @@ public:
 // --- Singleton ---
 EspNow &EspNow::instance()
 {
-    static EspNow instance(std::make_unique<DefaultPeerManager>(), std::make_unique<DefaultTxStateMachine>(),
+    static EspNowStorage storage;
+    static auto peer_manager = std::make_unique<RealPeerManager>(storage);
+    static EspNow instance(std::move(peer_manager), std::make_unique<DefaultTxStateMachine>(),
                            std::make_unique<DefaultChannelScanner>(), std::make_unique<DefaultMessageCodec>());
     return instance;
 }
@@ -156,11 +160,9 @@ esp_err_t EspNow::deinit()
     }
 
     // 6. Remove peers and deinit ESP-NOW
-    if (xSemaphoreTake(peers_mutex_, pdMS_TO_TICKS(100)) == pdTRUE) {
-        for (const auto &peer : peers_) {
-            esp_now_del_peer(peer.mac);
-        }
-        xSemaphoreGive(peers_mutex_);
+    std::vector<PeerInfo> peers = peer_manager_->get_all();
+    for (const auto &peer : peers) {
+        esp_now_del_peer(peer.mac);
     }
     esp_now_deinit();
 
@@ -179,10 +181,6 @@ esp_err_t EspNow::deinit()
     }
 
     // 8. Delete Mutexes
-    if (peers_mutex_ != nullptr) {
-        vSemaphoreDelete(peers_mutex_);
-        peers_mutex_ = nullptr;
-    }
     if (pairing_mutex_ != nullptr) {
         vSemaphoreDelete(pairing_mutex_);
         pairing_mutex_ = nullptr;
@@ -193,7 +191,6 @@ esp_err_t EspNow::deinit()
     }
 
     // 9. Reset state
-    peers_.clear();
     is_pairing_active_ = false;
     last_header_requiring_ack_.reset();
     config_ = EspNowConfig();
@@ -225,13 +222,10 @@ esp_err_t EspNow::init(const EspNowConfig &config)
     }
 
     // Persistence: Load peers and channel
-    std::vector<EspNowStorage::Peer> stored_peers;
     uint8_t stored_channel;
-    bool has_stored_data = false;
-    if (storage_.load(stored_channel, stored_peers) == ESP_OK) {
+    if (peer_manager_->load_from_storage(stored_channel) == ESP_OK) {
         config_.wifi_channel = stored_channel;
-        has_stored_data      = true;
-        ESP_LOGI(TAG, "Persistence: Loaded channel %d and %d peers", stored_channel, (int)stored_peers.size());
+        ESP_LOGI(TAG, "Persistence: Loaded channel %d", stored_channel);
     }
 
     ESP_ERROR_CHECK(esp_now_init());
@@ -249,10 +243,9 @@ esp_err_t EspNow::init(const EspNowConfig &config)
     broadcast_peer.encrypt = false;
     ESP_ERROR_CHECK(esp_now_add_peer(&broadcast_peer));
 
-    peers_mutex_   = xSemaphoreCreateMutex();
     pairing_mutex_ = xSemaphoreCreateMutex();
     ack_mutex_     = xSemaphoreCreateMutex();
-    if (peers_mutex_ == nullptr || pairing_mutex_ == nullptr || ack_mutex_ == nullptr) {
+    if (pairing_mutex_ == nullptr || ack_mutex_ == nullptr) {
         ESP_LOGE(TAG, "Failed to create mutexes.");
         return ESP_FAIL;
     }
@@ -285,29 +278,20 @@ esp_err_t EspNow::init(const EspNowConfig &config)
 
     is_initialized_ = true;
 
-    // Restore peers from storage
-    if (has_stored_data && !stored_peers.empty()) {
-        if (xSemaphoreTake(peers_mutex_, portMAX_DELAY) == pdTRUE) {
-            for (const auto &sp : stored_peers) {
-                PeerInfo info = storage_to_info(sp);
-
-                esp_now_peer_info_t peer_info = {};
-                memcpy(peer_info.peer_addr, info.mac, 6);
-                peer_info.channel    = info.channel;
-                peer_info.ifidx      = WIFI_IF_STA;
-                peer_info.encrypt    = false;
-                esp_err_t add_result = esp_now_add_peer(&peer_info);
-                if (add_result == ESP_OK) {
-                    info.last_seen_ms = get_time_ms();
-                    peers_.push_back(info);
-                    ESP_LOGI(TAG, "Persistence: Restored peer " MACSTR, MAC2STR(info.mac));
-                }
-                else {
-                    ESP_LOGE(TAG, "Persistence: Failed to restore peer " MACSTR ": %s", MAC2STR(info.mac),
-                             esp_err_to_name(add_result));
-                }
-            }
-            xSemaphoreGive(peers_mutex_);
+    // Restore peers from storage (ESP-NOW registration)
+    std::vector<PeerInfo> peers = peer_manager_->get_all();
+    for (auto &peer : peers) {
+        esp_now_peer_info_t peer_info = {};
+        memcpy(peer_info.peer_addr, peer.mac, 6);
+        peer_info.channel = peer.channel;
+        peer_info.ifidx   = WIFI_IF_STA;
+        peer_info.encrypt = false;
+        esp_err_t add_result = esp_now_add_peer(&peer_info);
+        if (add_result == ESP_OK) {
+            ESP_LOGI(TAG, "Persistence: Restored peer " MACSTR, MAC2STR(peer.mac));
+        } else {
+            ESP_LOGE(TAG, "Persistence: Failed to restore peer " MACSTR ": %s", MAC2STR(peer.mac),
+                        esp_err_to_name(add_result));
         }
     }
 
@@ -334,7 +318,7 @@ esp_err_t EspNow::send_data(NodeId dest_node_id,
                             bool require_ack)
 {
     TxPacket tx_packet;
-    if (!find_peer_mac(dest_node_id, tx_packet.dest_mac)) {
+    if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac)) {
         ESP_LOGE(TAG, "Could not find peer with node_id: %" PRIu8, static_cast<uint8_t>(dest_node_id));
         return ESP_ERR_NOT_FOUND;
     }
@@ -376,7 +360,7 @@ esp_err_t EspNow::send_command(NodeId dest_node_id,
                                bool require_ack)
 {
     TxPacket tx_packet;
-    if (!find_peer_mac(dest_node_id, tx_packet.dest_mac)) {
+    if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac)) {
         ESP_LOGE(TAG, "Could not find peer with node_id: %" PRIu8, static_cast<uint8_t>(dest_node_id));
         return ESP_ERR_NOT_FOUND;
     }
@@ -413,51 +397,17 @@ esp_err_t EspNow::send_command(NodeId dest_node_id,
 
 std::vector<PeerInfo> EspNow::get_peers()
 {
-    std::vector<PeerInfo> peers_copy;
-    if (xSemaphoreTake(peers_mutex_, portMAX_DELAY) == pdTRUE) {
-        peers_copy = peers_;
-        xSemaphoreGive(peers_mutex_);
-    }
-    return peers_copy;
+    return peer_manager_->get_all();
 }
 
 std::vector<NodeId> EspNow::get_offline_peers() const
 {
-    std::vector<NodeId> offline_peers;
-    if (xSemaphoreTake(peers_mutex_, pdMS_TO_TICKS(100)) == pdTRUE) {
-        const uint64_t now_ms = get_time_ms();
-        for (const auto &peer : peers_) {
-            if (peer.heartbeat_interval_ms > 0) {
-                uint32_t timeout = peer.heartbeat_interval_ms * HEARTBEAT_OFFLINE_MULTIPLIER;
-                // Only consider offline if we have seen it at least once
-                // (last_seen_ms > 0) and the timeout has expired.
-                if (peer.last_seen_ms > 0 && (now_ms - peer.last_seen_ms > timeout)) {
-                    offline_peers.push_back(peer.node_id);
-                }
-            }
-        }
-        xSemaphoreGive(peers_mutex_);
-    }
-    else {
-        ESP_LOGW(TAG, "get_offline_peers: Could not acquire mutex.");
-    }
-    return offline_peers;
+    return peer_manager_->get_offline(get_time_ms());
 }
 
 esp_err_t EspNow::add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type)
 {
-    if (mac == nullptr) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    esp_err_t result = ESP_FAIL;
-    if (xSemaphoreTake(peers_mutex_, portMAX_DELAY) == pdTRUE) {
-        result = add_peer_internal(node_id, mac, channel, type);
-        if (result == ESP_OK) {
-            save_peers(true);
-        }
-        xSemaphoreGive(peers_mutex_);
-    }
-    return result;
+    return peer_manager_->add(node_id, mac, channel, type);
 }
 
 esp_err_t EspNow::start_pairing(uint32_t timeout_ms)
@@ -516,15 +466,7 @@ esp_err_t EspNow::start_pairing(uint32_t timeout_ms)
 
 esp_err_t EspNow::remove_peer(NodeId node_id)
 {
-    esp_err_t result = ESP_FAIL;
-    if (xSemaphoreTake(peers_mutex_, portMAX_DELAY) == pdTRUE) {
-        result = remove_peer_internal(node_id);
-        if (result == ESP_OK) {
-            save_peers(true);
-        }
-        xSemaphoreGive(peers_mutex_);
-    }
-    return result;
+    return peer_manager_->remove(node_id);
 }
 
 esp_err_t EspNow::confirm_reception(AckStatus status)
@@ -550,7 +492,7 @@ esp_err_t EspNow::confirm_reception(AckStatus status)
     ack.status                = status;
 
     TxPacket tx_packet;
-    if (!find_peer_mac(header_to_ack.sender_node_id, tx_packet.dest_mac)) {
+    if (!peer_manager_->find_mac(header_to_ack.sender_node_id, tx_packet.dest_mac)) {
         ESP_LOGE(TAG, "Cannot send ACK. Peer %d not found.", static_cast<int>(header_to_ack.sender_node_id));
         last_header_requiring_ack_.reset();
         xSemaphoreGive(ack_mutex_);
@@ -579,22 +521,6 @@ esp_err_t EspNow::confirm_reception(AckStatus status)
 }
 
 // --- Private Methods ---
-bool EspNow::find_peer_mac(NodeId node_id, uint8_t *mac)
-{
-    bool peer_found = false;
-    if (xSemaphoreTake(peers_mutex_, portMAX_DELAY) == pdTRUE) {
-        for (const auto &peer : peers_) {
-            if (peer.node_id == node_id) {
-                memcpy(mac, peer.mac, 6);
-                peer_found = true;
-                break;
-            }
-        }
-        xSemaphoreGive(peers_mutex_);
-    }
-    return peer_found;
-}
-
 esp_err_t EspNow::send_packet(const uint8_t *mac_addr, const void *data, size_t len)
 {
     if (len > ESP_NOW_MAX_DATA_LEN - CRC_SIZE) {
@@ -610,111 +536,6 @@ esp_err_t EspNow::send_packet(const uint8_t *mac_addr, const void *data, size_t 
                  mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5], esp_err_to_name(result));
     }
     return result;
-}
-
-esp_err_t EspNow::remove_peer_internal(NodeId node_id)
-{
-    auto it = std::find_if(peers_.begin(), peers_.end(), [node_id](const PeerInfo &p) { return p.node_id == node_id; });
-
-    if (it == peers_.end()) {
-        ESP_LOGW(TAG, "Could not find peer with node_id: %" PRIu8, static_cast<uint8_t>(node_id));
-        return ESP_ERR_NOT_FOUND;
-    }
-
-    esp_err_t result = esp_now_del_peer(it->mac);
-    if (result != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to remove peer from ESP-NOW: %s", esp_err_to_name(result));
-    }
-
-    ESP_LOGI(TAG, "Removed peer %02X:%02X:%02X:%02X:%02X:%02X (ID: %" PRIu8 ")", it->mac[0], it->mac[1], it->mac[2],
-             it->mac[3], it->mac[4], it->mac[5], static_cast<uint8_t>(node_id));
-
-    peers_.erase(it);
-    return ESP_OK;
-}
-
-esp_err_t EspNow::add_peer_internal(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type)
-{
-    for (auto it = peers_.begin(); it != peers_.end(); ++it) {
-        if (it->node_id == node_id) {
-            ESP_LOGI(TAG, "Node ID %" PRIu8 " already exists. Updating peer info.", static_cast<uint8_t>(node_id));
-            PeerInfo updated_peer = *it;
-            bool mac_changed      = (memcmp(updated_peer.mac, mac, 6) != 0);
-            bool channel_changed  = (updated_peer.channel != channel);
-
-            if (mac_changed) {
-                // Restore error handling for deleting the old peer
-                esp_err_t del_result = esp_now_del_peer(updated_peer.mac);
-                if (del_result != ESP_OK && del_result != ESP_ERR_ESPNOW_NOT_FOUND) {
-                    ESP_LOGE(TAG, "Failed to remove old MAC for peer %" PRIu8 ": %s", static_cast<uint8_t>(node_id),
-                             esp_err_to_name(del_result));
-                }
-
-                esp_now_peer_info_t peer_info = {};
-                memcpy(peer_info.peer_addr, mac, 6);
-                peer_info.channel    = channel;
-                peer_info.ifidx      = WIFI_IF_STA;
-                peer_info.encrypt    = false;
-                esp_err_t add_result = esp_now_add_peer(&peer_info);
-                if (add_result != ESP_OK) {
-                    return add_result;
-                }
-            }
-            else if (channel_changed) {
-                esp_now_peer_info_t peer_info = {};
-                memcpy(peer_info.peer_addr, mac, 6);
-                peer_info.channel    = channel;
-                peer_info.ifidx      = WIFI_IF_STA;
-                peer_info.encrypt    = false;
-                esp_err_t mod_result = esp_now_mod_peer(&peer_info);
-                if (mod_result != ESP_OK) {
-                    return mod_result;
-                }
-            }
-
-            memcpy(updated_peer.mac, mac, 6);
-            updated_peer.type         = type;
-            updated_peer.channel      = channel;
-            updated_peer.last_seen_ms = get_time_ms();
-
-            peers_.erase(it);
-            peers_.insert(peers_.begin(), updated_peer);
-            return ESP_OK;
-        }
-    }
-
-    if (peers_.size() >= MAX_PEERS) {
-        ESP_LOGW(TAG, "Peer list is full. Removing the oldest peer.");
-        const PeerInfo &oldest_peer = peers_.back();
-        esp_err_t result            = esp_now_del_peer(oldest_peer.mac);
-        if (result != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to remove oldest peer to make space: %s", esp_err_to_name(result));
-        }
-        peers_.pop_back();
-    }
-
-    esp_now_peer_info_t peer_info = {};
-    memcpy(peer_info.peer_addr, mac, 6);
-    peer_info.channel    = channel;
-    peer_info.ifidx      = WIFI_IF_STA;
-    peer_info.encrypt    = false;
-    esp_err_t add_result = esp_now_add_peer(&peer_info);
-    if (add_result != ESP_OK) {
-        return add_result;
-    }
-
-    PeerInfo new_peer;
-    memcpy(new_peer.mac, mac, 6);
-    new_peer.node_id      = node_id;
-    new_peer.type         = type;
-    new_peer.channel      = channel;
-    new_peer.last_seen_ms = get_time_ms();
-    new_peer.paired       = true;
-    peers_.insert(peers_.begin(), new_peer);
-
-    ESP_LOGI(TAG, "New peer %02X:%02X:%02X:%02X:%02X:%02X (ID: %" PRIu8 ") added.", mac[0], mac[1], mac[2], mac[3],
-             mac[4], mac[5], static_cast<uint8_t>(node_id));
-    return ESP_OK;
 }
 
 // --- ESP-NOW Callbacks ---
@@ -888,7 +709,7 @@ void EspNow::handle_scan_probe(const RxPacket &packet)
 void EspNow::send_heartbeat()
 {
     TxPacket tx_packet;
-    if (!find_peer_mac(NodeId::HUB, tx_packet.dest_mac)) {
+    if (!peer_manager_->find_mac(NodeId::HUB, tx_packet.dest_mac)) {
         ESP_LOGD(TAG, "Hub not found, sending broadcast heartbeat.");
         const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
         memcpy(tx_packet.dest_mac, broadcast_mac, sizeof(broadcast_mac));
@@ -924,42 +745,40 @@ void EspNow::handle_heartbeat(const RxPacket &packet)
     const HeartbeatMessage *msg = reinterpret_cast<const HeartbeatMessage *>(packet.data);
     NodeId sender_id            = msg->header.sender_node_id;
 
-    if (xSemaphoreTake(peers_mutex_, portMAX_DELAY) == pdTRUE) {
-        auto it = std::find_if(peers_.begin(), peers_.end(), [&](const PeerInfo &p) { return p.node_id == sender_id; });
+    std::vector<PeerInfo> peers = peer_manager_->get_all();
+    auto it = std::find_if(peers.begin(), peers.end(), [&](const PeerInfo &p) { return p.node_id == sender_id; });
 
-        if (it != peers_.end()) {
-            it->last_seen_ms = get_time_ms();
-            ESP_LOGI(TAG, "Heartbeat received from Node ID %" PRIu8 ". Updated last_seen.",
-                     static_cast<uint8_t>(sender_id));
+    if (it != peers.end()) {
+        uint64_t now_ms = get_time_ms();
+        peer_manager_->update_last_seen(sender_id, now_ms);
+        ESP_LOGI(TAG, "Heartbeat received from Node ID %" PRIu8 ". Updated last_seen.",
+                    static_cast<uint8_t>(sender_id));
 
-            // Respond to the heartbeat
-            HeartbeatResponse response;
-            response.header.msg_type       = MessageType::HEARTBEAT_RESPONSE;
-            response.header.sender_node_id = config_.node_id;
-            response.header.sender_type    = config_.node_type;
-            response.header.dest_node_id   = sender_id;
-            response.server_time_ms        = it->last_seen_ms;
-            response.wifi_channel          = config_.wifi_channel;
+        // Respond to the heartbeat
+        HeartbeatResponse response;
+        response.header.msg_type       = MessageType::HEARTBEAT_RESPONSE;
+        response.header.sender_node_id = config_.node_id;
+        response.header.sender_type    = config_.node_type;
+        response.header.dest_node_id   = sender_id;
+        response.server_time_ms        = now_ms;
+        response.wifi_channel          = config_.wifi_channel;
 
-            TxPacket tx_packet;
-            memcpy(tx_packet.dest_mac, it->mac, 6);
-            tx_packet.len = sizeof(response);
-            memcpy(tx_packet.data, &response, tx_packet.len);
-            tx_packet.requires_ack = false;
-            if (xQueueSend(tx_queue_, &tx_packet, pdMS_TO_TICKS(10)) != pdTRUE) {
-                ESP_LOGE(TAG, "Failed to queue heartbeat response.");
-            }
-            else {
-                if (tx_manager_task_handle_ != nullptr) {
-                    xTaskNotify(tx_manager_task_handle_, NOTIFY_DATA, eSetBits);
-                }
-            }
+        TxPacket tx_packet;
+        memcpy(tx_packet.dest_mac, it->mac, 6);
+        tx_packet.len = sizeof(response);
+        memcpy(tx_packet.data, &response, tx_packet.len);
+        tx_packet.requires_ack = false;
+        if (xQueueSend(tx_queue_, &tx_packet, pdMS_TO_TICKS(10)) != pdTRUE) {
+            ESP_LOGE(TAG, "Failed to queue heartbeat response.");
         }
         else {
-            ESP_LOGW(TAG, "Received heartbeat from unknown Node ID: %" PRIu8, static_cast<uint8_t>(sender_id));
+            if (tx_manager_task_handle_ != nullptr) {
+                xTaskNotify(tx_manager_task_handle_, NOTIFY_DATA, eSetBits);
+            }
         }
-
-        xSemaphoreGive(peers_mutex_);
+    }
+    else {
+        ESP_LOGW(TAG, "Received heartbeat from unknown Node ID: %" PRIu8, static_cast<uint8_t>(sender_id));
     }
 }
 
@@ -1006,26 +825,13 @@ void EspNow::handle_pair_request(const RxPacket &packet)
         return;
     }
 
-    // Add the peer and update heartbeat interval under a single mutex lock
-    if (xSemaphoreTake(peers_mutex_, portMAX_DELAY) == pdTRUE) {
-        add_peer_internal(request->header.sender_node_id, packet.src_mac, config_.wifi_channel,
-                          request->header.sender_type);
-
-        auto it = std::find_if(peers_.begin(), peers_.end(),
-                               [&](const PeerInfo &p) { return p.node_id == request->header.sender_node_id; });
-
-        if (it != peers_.end()) {
-            it->heartbeat_interval_ms = request->heartbeat_interval_ms;
-            ESP_LOGI(TAG, "Updated heartbeat interval for Node ID %" PRIu8 " to %" PRIu32 " ms.",
-                     static_cast<uint8_t>(it->node_id), it->heartbeat_interval_ms);
-            save_peers(false);
-        }
+    // Add the peer
+    if (peer_manager_->add(request->header.sender_node_id, packet.src_mac, config_.wifi_channel,
+                        request->header.sender_type, request->heartbeat_interval_ms) == ESP_OK) {
 
         // Prepare accepted response
         response.status       = PairStatus::ACCEPTED;
         response.wifi_channel = config_.wifi_channel;
-
-        xSemaphoreGive(peers_mutex_);
     }
 
     TxPacket tx_packet;
@@ -1188,62 +994,27 @@ uint64_t EspNow::get_time_ms() const
     return esp_timer_get_time() / 1000;
 }
 
-EspNowStorage::Peer EspNow::info_to_storage(const PeerInfo &info)
-{
-    EspNowStorage::Peer storage;
-    memcpy(storage.mac, info.mac, 6);
-    storage.type                  = info.type;
-    storage.node_id               = info.node_id;
-    storage.channel               = info.channel;
-    storage.paired                = info.paired;
-    storage.heartbeat_interval_ms = info.heartbeat_interval_ms;
-    return storage;
-}
-
-PeerInfo EspNow::storage_to_info(const EspNowStorage::Peer &storage)
-{
-    PeerInfo info;
-    memcpy(info.mac, storage.mac, 6);
-    info.type                  = storage.type;
-    info.node_id               = storage.node_id;
-    info.channel               = storage.channel;
-    info.last_seen_ms          = 0; // Relative to current boot
-    info.paired                = storage.paired;
-    info.heartbeat_interval_ms = storage.heartbeat_interval_ms;
-    return info;
-}
-
-void EspNow::save_peers(bool force_nvs_commit)
-{
-    std::vector<EspNowStorage::Peer> storage_peers;
-    for (const auto &p : peers_) {
-        storage_peers.push_back(info_to_storage(p));
-    }
-    storage_.save(config_.wifi_channel, storage_peers, force_nvs_commit);
-}
-
 void EspNow::update_wifi_channel(uint8_t channel)
 {
-    if (xSemaphoreTake(peers_mutex_, portMAX_DELAY) == pdTRUE) {
-        if (config_.wifi_channel != channel) {
-            config_.wifi_channel = channel;
-            ESP_LOGI(TAG, "Wi-Fi channel updated to %d", channel);
+    if (config_.wifi_channel != channel) {
+        config_.wifi_channel = channel;
+        ESP_LOGI(TAG, "Wi-Fi channel updated to %d", channel);
 
-            // Update broadcast peer channel
-            esp_now_peer_info_t broadcast_peer = {};
-            const uint8_t broadcast_mac[]      = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-            memcpy(broadcast_peer.peer_addr, broadcast_mac, 6);
-            broadcast_peer.channel = channel;
-            broadcast_peer.ifidx   = WIFI_IF_STA;
-            broadcast_peer.encrypt = false;
+        // Update broadcast peer channel
+        esp_now_peer_info_t broadcast_peer = {};
+        const uint8_t broadcast_mac[]      = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        memcpy(broadcast_peer.peer_addr, broadcast_mac, 6);
+        broadcast_peer.channel = channel;
+        broadcast_peer.ifidx   = WIFI_IF_STA;
+        broadcast_peer.encrypt = false;
 
-            esp_err_t err = esp_now_mod_peer(&broadcast_peer);
-            if (err != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to update broadcast peer channel: %s", esp_err_to_name(err));
-            }
-            save_peers(true);
+        esp_err_t err = esp_now_mod_peer(&broadcast_peer);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to update broadcast peer channel: %s", esp_err_to_name(err));
         }
-        xSemaphoreGive(peers_mutex_);
+
+        // Trigger a save in PeerManager
+        peer_manager_->persist(channel);
     }
 }
 

@@ -3,6 +3,7 @@ idf_component_register(
     SRCS
         "espnow_manager.cpp"
         "espnow_storage.cpp"
+        "peer_manager.cpp"
     
     INCLUDE_DIRS
         "include"

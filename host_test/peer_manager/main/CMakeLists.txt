@@ -1,7 +1,6 @@
 idf_component_register(
     SRCS
-        "test_main.cpp"
-        "test_espnow_facade.cpp"
+        "test_peer_manager.cpp"
     INCLUDE_DIRS
         "."
         "../../mocks"

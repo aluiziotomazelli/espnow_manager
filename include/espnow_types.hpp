@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <vector>
 
+constexpr int MAX_PEERS = 19;
+
 // Generic structure for received packets
 struct RxPacket
 {
@@ -23,6 +25,19 @@ struct PeerInfo
     NodeId node_id;
     uint8_t channel;
     uint64_t last_seen_ms;
+    bool paired;
+    uint32_t heartbeat_interval_ms;
+};
+
+/**
+ * @brief Peer information to be persisted.
+ */
+struct PersistentPeer
+{
+    uint8_t mac[6];
+    NodeType type;
+    NodeId node_id;
+    uint8_t channel;
     bool paired;
     uint32_t heartbeat_interval_ms;
 };

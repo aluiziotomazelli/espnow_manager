@@ -62,8 +62,6 @@ public:
     ~EspNow();
 
     // Public API
-    static constexpr int MAX_PEERS = 19;
-
     esp_err_t init(const EspNowConfig &config);
     esp_err_t deinit();
     esp_err_t send_data(NodeId dest_node_id,
@@ -103,15 +101,12 @@ private:
 
     // --- Private Members ---
     EspNowConfig config_{};
-    EspNowStorage storage_;
 
     std::unique_ptr<IPeerManager> peer_manager_;
     std::unique_ptr<ITxStateMachine> tx_state_machine_;
     std::unique_ptr<IChannelScanner> channel_scanner_;
     std::unique_ptr<IMessageCodec> message_codec_;
 
-    std::vector<PeerInfo> peers_;
-    SemaphoreHandle_t peers_mutex_   = nullptr;
     SemaphoreHandle_t pairing_mutex_ = nullptr;
     SemaphoreHandle_t ack_mutex_     = nullptr;
     bool is_initialized_             = false;
@@ -130,20 +125,11 @@ private:
     TaskHandle_t tx_manager_task_handle_       = nullptr;
 
     // --- Private Methods ---
-    esp_err_t add_peer_internal(NodeId node_id,
-                                const uint8_t *mac,
-                                uint8_t channel,
-                                NodeType type);
-    esp_err_t remove_peer_internal(NodeId node_id);
     void send_pair_request();
     esp_err_t send_packet(const uint8_t *mac_addr, const void *data, size_t len);
-    bool find_peer_mac(NodeId node_id, uint8_t *mac);
     uint64_t get_time_ms() const;
 
     // Persistence helpers
-    EspNowStorage::Peer info_to_storage(const PeerInfo &info);
-    PeerInfo storage_to_info(const EspNowStorage::Peer &storage);
-    void save_peers(bool force_nvs_commit = false);
     void update_wifi_channel(uint8_t channel);
 
     // Protocol Message Processing
