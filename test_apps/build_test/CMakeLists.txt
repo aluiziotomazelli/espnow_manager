@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 set(EXTRA_COMPONENT_DIRS "../..")
 
-set(COMPONENTS main espnow_manager)
+set(COMPONENTS main app)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(build_test)

@@ -26,6 +26,9 @@ public:
     {
         return TxState::IDLE;
     }
+    inline void on_link_alive() override
+    {
+    }
     inline TxState get_state() const override
     {
         return TxState::IDLE;

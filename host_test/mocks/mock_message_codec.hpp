@@ -19,4 +19,8 @@ public:
     {
         return true;
     }
+    inline uint8_t calculate_crc(const uint8_t *data, size_t len) override
+    {
+        return 0;
+    }
 };
