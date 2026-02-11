@@ -1,0 +1,36 @@
+# WiFiManager Component Manifest
+version: "1.1.0"
+description: "ESP-NOW manager star configuration."
+maintainers:
+  - "aluiziotomazelli"
+  
+
+license: "MIT"
+
+tags:
+  - esp-now
+  - manager
+  - wifi
+  - networking
+  - esp32
+  - cpp
+
+targets:
+  - esp32
+  - esp32s3
+  - esp32c3
+  - linux
+
+dependencies:
+  idf: ">=5.0"
+
+files:
+  use_gitignore: true
+  
+examples:
+  - path: "examples/basic_usage"
+
+
+url: "https://github.com/aluiziotomazelli/esp_now_manager"
+repository: "https://github.com/aluiziotomazelli/esp_now_manager"
+

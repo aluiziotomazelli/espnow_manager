@@ -1,2 +1,7 @@
-idf_component_register(SRCS "main.cpp"
-                       REQUIRES espnow)
+idf_component_register(
+    SRCS 
+        "main.cpp"
+    REQUIRES 
+        espnow_manager
+
+)

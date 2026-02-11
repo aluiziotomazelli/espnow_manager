@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS
-        "espnow.cpp"
+        "espnow_manager.cpp"
         "espnow_storage.cpp"
     
     INCLUDE_DIRS

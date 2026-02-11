@@ -3,7 +3,7 @@
 #include "espnow_storage.hpp"
 #include "nvs_flash.h"
 #include "protocol_types.hpp"
-#include "test_memory_helper.hpp"
+#include "test_memory_helper.h"
 #include "unity.h"
 
 // ============================================================================
@@ -16,8 +16,7 @@
  */
 TEST_CASE("storage_basic_load_save", "[espnow][storage][basic][loadsave]")
 {
-    TestMemoryHelper::set_2kb_limits();
-
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
         uint8_t channel = 6;
@@ -64,15 +63,14 @@ TEST_CASE("storage_basic_load_save", "[espnow][storage][basic][loadsave]")
  */
 TEST_CASE("storage_multiple_peers", "[espnow][storage][basic][peers]")
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
         uint8_t channel = 6;
         std::vector<EspNowStorage::Peer> peers;
 
         // Array of valid NodeIds for testing
-        NodeId valid_node_ids[] = {NodeId::HUB, NodeId::WATER_TANK,
-                                   NodeId::SOLAR_SENSOR, NodeId::PUMP_CONTROL,
+        NodeId valid_node_ids[] = {NodeId::HUB, NodeId::WATER_TANK, NodeId::SOLAR_SENSOR, NodeId::PUMP_CONTROL,
                                    NodeId::WEATHER};
 
         // Add multiple peers (using valid NodeIds)
@@ -114,7 +112,7 @@ TEST_CASE("storage_multiple_peers", "[espnow][storage][basic][peers]")
  */
 TEST_CASE("storage_peer_field_persistence", "[espnow][storage][basic][fields]")
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
 
@@ -139,10 +137,8 @@ TEST_CASE("storage_peer_field_persistence", "[espnow][storage][basic][fields]")
 
         TEST_ASSERT_EQUAL(1, loaded_peers.size());
         TEST_ASSERT_EQUAL_HEX8_ARRAY(mac, loaded_peers[0].mac, 6);
-        TEST_ASSERT_EQUAL(static_cast<int>(NodeType::HUB),
-                          static_cast<int>(loaded_peers[0].type));
-        TEST_ASSERT_EQUAL(static_cast<int>(NodeId::WATER_TANK),
-                          static_cast<int>(loaded_peers[0].node_id));
+        TEST_ASSERT_EQUAL(static_cast<int>(NodeType::HUB), static_cast<int>(loaded_peers[0].type));
+        TEST_ASSERT_EQUAL(static_cast<int>(NodeId::WATER_TANK), static_cast<int>(loaded_peers[0].node_id));
         TEST_ASSERT_EQUAL(11, loaded_peers[0].channel);
         TEST_ASSERT_EQUAL(false, loaded_peers[0].paired);
         TEST_ASSERT_EQUAL(12345, loaded_peers[0].heartbeat_interval_ms);
@@ -163,7 +159,7 @@ TEST_CASE("storage_peer_field_persistence", "[espnow][storage][basic][fields]")
  */
 TEST_CASE("storage_crc_validation", "[espnow][storage][validation][crc]")
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
 
@@ -201,8 +197,7 @@ TEST_CASE("storage_crc_validation", "[espnow][storage][validation][crc]")
         nvs_data.crc = 0xDEADBEEF; // Invalid CRC
 
         // Save corrupted data back to NVS
-        TEST_ASSERT_EQUAL(ESP_OK,
-                          nvs_set_blob(handle, "persist_data", &nvs_data, size));
+        TEST_ASSERT_EQUAL(ESP_OK, nvs_set_blob(handle, "persist_data", &nvs_data, size));
         TEST_ASSERT_EQUAL(ESP_OK, nvs_commit(handle));
         nvs_close(handle);
 
@@ -232,10 +227,9 @@ TEST_CASE("storage_crc_validation", "[espnow][storage][validation][crc]")
  * Test 2.2: Version and Magic Validation
  * Save data with incorrect magic or version and ensure load fails.
  */
-TEST_CASE("storage_version_magic_check",
-          "[espnow][storage][validation][magic][version]")
+TEST_CASE("storage_version_magic_check", "[espnow][storage][validation][magic][version]")
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
 
@@ -262,8 +256,7 @@ TEST_CASE("storage_version_magic_check",
         // Calculate correct CRC for THIS structure
         wrong_magic.crc = EspNowStorage::test_calculate_crc(wrong_magic);
 
-        err =
-            nvs_set_blob(handle, "persist_data", &wrong_magic, sizeof(wrong_magic));
+        err = nvs_set_blob(handle, "persist_data", &wrong_magic, sizeof(wrong_magic));
         TEST_ASSERT_EQUAL(ESP_OK, err);
 
         err = nvs_commit(handle);
@@ -290,11 +283,9 @@ TEST_CASE("storage_version_magic_check",
         wrong_version.version      = 999; // Wrong version
         wrong_version.wifi_channel = 6;
         wrong_version.num_peers    = 0;
-        wrong_version.crc = EspNowStorage::test_calculate_crc(wrong_version);
+        wrong_version.crc          = EspNowStorage::test_calculate_crc(wrong_version);
 
-        TEST_ASSERT_EQUAL(ESP_OK,
-                          nvs_set_blob(handle, "persist_data", &wrong_version,
-                                       sizeof(wrong_version)));
+        TEST_ASSERT_EQUAL(ESP_OK, nvs_set_blob(handle, "persist_data", &wrong_version, sizeof(wrong_version)));
         TEST_ASSERT_EQUAL(ESP_OK, nvs_commit(handle));
         nvs_close(handle);
 
@@ -320,7 +311,7 @@ TEST_CASE("storage_version_magic_check",
  */
 TEST_CASE("storage_max_peers_limit", "[espnow][storage][limits][peers]")
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
         uint8_t channel = 6;
@@ -360,8 +351,9 @@ TEST_CASE("storage_max_peers_limit", "[espnow][storage][limits][peers]")
  * allowed number is saved.
  */
 TEST_CASE("storage_edge_cases_num_peers", "[espnow][storage][limits][edgecases]")
+
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
 
@@ -408,7 +400,7 @@ TEST_CASE("storage_edge_cases_num_peers", "[espnow][storage][limits][edgecases]"
  */
 TEST_CASE("storage_nvs_corrupted_empty", "[espnow][storage][recovery][corruption]")
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
 
@@ -448,9 +440,8 @@ TEST_CASE("storage_nvs_corrupted_empty", "[espnow][storage][recovery][corruption
         std::vector<EspNowStorage::Peer> loaded_peers;
         err = storage.load(loaded_channel, loaded_peers);
 
-        TEST_ASSERT_EQUAL_MESSAGE(
-            ESP_ERR_NVS_NOT_FOUND, err,
-            "Should return ESP_ERR_NVS_NOT_FOUND when key doesn't exist");
+        TEST_ASSERT_EQUAL_MESSAGE(ESP_ERR_NVS_NOT_FOUND, err,
+                                  "Should return ESP_ERR_NVS_NOT_FOUND when key doesn't exist");
 
         // 5. Test with wrong size data
         // First ensure empty RTC
@@ -460,7 +451,7 @@ TEST_CASE("storage_nvs_corrupted_empty", "[espnow][storage][recovery][corruption
         TEST_ASSERT_EQUAL(ESP_OK, err);
 
         uint8_t small_data[10] = {0};
-        err = nvs_set_blob(handle, "persist_data", small_data, sizeof(small_data));
+        err                    = nvs_set_blob(handle, "persist_data", small_data, sizeof(small_data));
         TEST_ASSERT_EQUAL(ESP_OK, err);
 
         err = nvs_commit(handle);
@@ -470,8 +461,7 @@ TEST_CASE("storage_nvs_corrupted_empty", "[espnow][storage][recovery][corruption
 
         // 6. Try to load with wrong size data
         err = storage.load(loaded_channel, loaded_peers);
-        TEST_ASSERT_EQUAL_MESSAGE(ESP_ERR_INVALID_SIZE, err,
-                                  "Should fail with wrong blob size");
+        TEST_ASSERT_EQUAL_MESSAGE(ESP_ERR_INVALID_SIZE, err, "Should fail with wrong blob size");
 
         // 7. Complete cleanup
         // First reset RTC
@@ -502,7 +492,7 @@ TEST_CASE("storage_nvs_corrupted_empty", "[espnow][storage][recovery][corruption
  */
 TEST_CASE("storage_nvs_recovery_scenario", "[espnow][storage][recovery][scenario]")
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
 
@@ -529,8 +519,7 @@ TEST_CASE("storage_nvs_recovery_scenario", "[espnow][storage][recovery][scenario
         memset(&garbage, 0xFF, sizeof(garbage)); // Fill with 0xFF
         garbage.crc = 0xFFFFFFFF;                // Invalid CRC
 
-        TEST_ASSERT_EQUAL(
-            ESP_OK, nvs_set_blob(handle, "persist_data", &garbage, sizeof(garbage)));
+        TEST_ASSERT_EQUAL(ESP_OK, nvs_set_blob(handle, "persist_data", &garbage, sizeof(garbage)));
         TEST_ASSERT_EQUAL(ESP_OK, nvs_commit(handle));
         nvs_close(handle);
 
@@ -562,10 +551,9 @@ TEST_CASE("storage_nvs_recovery_scenario", "[espnow][storage][recovery][scenario
  * Test 5.1: Optimized Save Operation
  * Verify if optimized save (force_nvs_commit = false) works correctly.
  */
-TEST_CASE("storage_optimized_save_no_changes",
-          "[espnow][storage][performance][optimization]")
+TEST_CASE("storage_optimized_save_no_changes", "[espnow][storage][performance][optimization]")
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
         uint8_t channel = 6;
@@ -616,7 +604,7 @@ TEST_CASE("storage_optimized_save_no_changes",
 TEST_CASE("storage_memory_leak_check", "[espnow][storage][performance][memory]")
 {
     // Use more restrictive limits to detect leaks
-    TestMemoryHelper::set_1kb_limits();
+    set_memory_leak_threshold(-1000);
 
     {
         EspNowStorage storage;
@@ -658,7 +646,7 @@ TEST_CASE("storage_memory_leak_check", "[espnow][storage][performance][memory]")
  */
 TEST_CASE("storage_priority_rtc_over_nvs", "[espnow][storage][priority][rtc]")
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
 
@@ -731,10 +719,9 @@ TEST_CASE("storage_priority_rtc_over_nvs", "[espnow][storage][priority][rtc]")
  * Simulate multiple threads trying to save and load data simultaneously
  * to ensure EspNowStorage handles race conditions correctly.
  */
-TEST_CASE("storage_multiple_save_load_sequence",
-          "[espnow][storage][concurrency][sequence]")
+TEST_CASE("storage_multiple_save_load_sequence", "[espnow][storage][concurrency][sequence]")
 {
-    TestMemoryHelper::set_2kb_limits();
+    set_memory_leak_threshold(-2000);
     {
         EspNowStorage storage;
 
@@ -747,10 +734,10 @@ TEST_CASE("storage_multiple_save_load_sequence",
             for (int j = 0; j < i; j++) {
                 EspNowStorage::Peer peer;
                 memset(peer.mac, static_cast<uint8_t>(0x10 * i + j), 6);
-                peer.type    = (j == 0) ? NodeType::HUB : NodeType::SENSOR;
-                peer.node_id = NodeId::SOLAR_SENSOR;
-                peer.channel = channel;
-                peer.paired  = (j % 2 == 0);
+                peer.type                  = (j == 0) ? NodeType::HUB : NodeType::SENSOR;
+                peer.node_id               = NodeId::SOLAR_SENSOR;
+                peer.channel               = channel;
+                peer.paired                = (j % 2 == 0);
                 peer.heartbeat_interval_ms = static_cast<uint32_t>(5000 + j * 1000);
                 peers.push_back(peer);
             }
@@ -778,7 +765,7 @@ TEST_CASE("storage_multiple_save_load_sequence",
  */
 TEST_CASE("storage_stress_test", "[espnow][storage][stress][performance]")
 {
-    TestMemoryHelper::set_4kb_limits(); // Larger limits for stress test
+    set_memory_leak_threshold(-4000); // Larger limits for stress test
 
     {
         EspNowStorage storage;
@@ -794,10 +781,10 @@ TEST_CASE("storage_stress_test", "[espnow][storage][stress][performance]")
             for (int j = 0; j < num_peers; j++) {
                 EspNowStorage::Peer peer;
                 memset(peer.mac, static_cast<uint8_t>(i + j), 6);
-                peer.type    = (j % 2 == 0) ? NodeType::HUB : NodeType::SENSOR;
-                peer.node_id = NodeId::SOLAR_SENSOR;
-                peer.channel = static_cast<uint8_t>(j % 14 + 1);
-                peer.paired  = (j % 3 == 0);
+                peer.type                  = (j % 2 == 0) ? NodeType::HUB : NodeType::SENSOR;
+                peer.node_id               = NodeId::SOLAR_SENSOR;
+                peer.channel               = static_cast<uint8_t>(j % 14 + 1);
+                peer.paired                = (j % 3 == 0);
                 peer.heartbeat_interval_ms = static_cast<uint32_t>(1000 + j * 100);
                 peers.push_back(peer);
             }

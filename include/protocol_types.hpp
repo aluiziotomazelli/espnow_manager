@@ -1,7 +1,8 @@
 #pragma once
-#include "esp_now.h"
 #include <cstddef>
 #include <cstdint>
+
+#include "esp_now.h"
 
 // Correct size of the universal message header
 constexpr size_t MESSAGE_HEADER_SIZE = 16;
@@ -21,8 +22,7 @@ constexpr uint8_t MAX_LOGICAL_RETRIES     = 3;
 
 constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 50;
 constexpr uint8_t SCAN_CHANNEL_ATTEMPTS    = 2;
-constexpr uint16_t MAX_SCAN_TIME_MS =
-    SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 20;
+constexpr uint16_t MAX_SCAN_TIME_MS        = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 20;
 
 // Defines the functional category of a node.
 enum class NodeType : uint8_t
