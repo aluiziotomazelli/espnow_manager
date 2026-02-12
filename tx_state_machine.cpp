@@ -24,6 +24,7 @@ void RealTxStateMachine::set_pending_ack(const PendingAck &pending_ack)
 
 TxState RealTxStateMachine::on_tx_success(bool requires_ack)
 {
+    // TODO: Verify if this action dont need to clear failure counters
     if (requires_ack) {
         current_state_ = TxState::WAITING_FOR_ACK;
     }

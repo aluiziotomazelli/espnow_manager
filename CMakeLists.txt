@@ -26,9 +26,8 @@ idf_component_register(
         esp_common
 )
 
-# list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/components")
-
-# Conditional compilation for unit testing
-# if(CONFIG_UNIT_TESTING)
-#     target_compile_definitions(${COMPONENT_LIB} INTERFACE "-DCONFIG_UNIT_TESTING=1")
-# endif()
+idf_build_get_property(target IDF_TARGET)
+if(${target} STREQUAL "linux")
+    target_compile_options(${COMPONENT_LIB} PUBLIC --coverage)
+    target_link_libraries(${COMPONENT_LIB} PUBLIC --coverage)
+endif()   
