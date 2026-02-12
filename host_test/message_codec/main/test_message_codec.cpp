@@ -1,4 +1,5 @@
 #include "message_codec.hpp"
+#include "mock_message_codec.hpp"
 #include "protocol_messages.hpp"
 #include "unity.h"
 #include <cstring>
@@ -102,6 +103,23 @@ TEST_CASE("MessageCodec handles minimum payload (1 byte)", "[codec]")
     TEST_ASSERT_TRUE(codec.validate_crc(encoded.data(), encoded.size()));
 }
 
+TEST_CASE("MessageCodec rejects oversized payload", "[codec]")
+{
+    RealMessageCodec codec;
+    MessageHeader header = {.msg_type = MessageType::DATA};
+
+    // MAX_PAYLOAD_SIZE is ESP_NOW_MAX_DATA_LEN (250) - Header (16) - CRC (1) = 233
+    size_t too_big   = MAX_PAYLOAD_SIZE + 1;
+    uint8_t *payload = new uint8_t[too_big];
+    memset(payload, 0, too_big);
+
+    auto encoded = codec.encode(header, payload, too_big);
+
+    TEST_ASSERT_TRUE(encoded.empty());
+
+    delete[] payload;
+}
+
 TEST_CASE("MessageCodec handles max-sized payload", "[codec]")
 {
     RealMessageCodec codec;
@@ -122,4 +140,36 @@ TEST_CASE("MessageCodec decode_header fails on short data", "[codec]")
 
     auto decoded = codec.decode_header(short_data, sizeof(short_data));
     TEST_ASSERT_FALSE(decoded.has_value());
+}
+
+TEST_CASE("MockMessageCodec spying and stubbing works", "[codec_mock]")
+{
+    MockMessageCodec mock;
+
+    // Test encode stubbing/spying
+    MessageHeader h = {.sequence_number = 42};
+    uint8_t payload[] = {1, 2, 3};
+    mock.encode(h, payload, 3);
+
+    TEST_ASSERT_EQUAL(1, mock.encode_calls);
+    TEST_ASSERT_EQUAL(42, mock.last_encode_header.sequence_number);
+    TEST_ASSERT_EQUAL(3, mock.last_encode_payload.size());
+    TEST_ASSERT_EQUAL(1, mock.last_encode_payload[0]);
+
+    // Test decode stubbing
+    MessageHeader h2 = {.sequence_number = 100};
+    mock.decode_header_ret = h2;
+    uint8_t dummy_data[] = {0, 1, 2};
+    auto decoded = mock.decode_header(dummy_data, 3);
+
+    TEST_ASSERT_EQUAL(1, mock.decode_header_calls);
+    TEST_ASSERT_TRUE(decoded.has_value());
+    TEST_ASSERT_EQUAL(100, decoded->sequence_number);
+    TEST_ASSERT_EQUAL(3, mock.last_decode_data.size());
+
+    // Test reset
+    mock.reset();
+    TEST_ASSERT_EQUAL(0, mock.encode_calls);
+    TEST_ASSERT_FALSE(mock.decode_header_ret.has_value());
+    TEST_ASSERT_EQUAL(0, mock.last_decode_data.size());
 }
