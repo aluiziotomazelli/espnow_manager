@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 #include "esp_now.h"
 
@@ -24,24 +25,39 @@ constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 50;
 constexpr uint8_t SCAN_CHANNEL_ATTEMPTS    = 2;
 constexpr uint16_t MAX_SCAN_TIME_MS        = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 20;
 
-// Defines the functional category of a node.
-enum class NodeType : uint8_t
-{
-    UNKNOWN = 0,
-    HUB,
-    SENSOR,
-    ACTUATOR,
-};
+// Generic types for Node identification and categorization
+using NodeId      = uint8_t;
+using NodeType    = uint8_t;
+using PayloadType = uint8_t;
 
-// Defines the unique, hardcoded identifier for a specific node.
-enum class NodeId : uint8_t
+namespace ReservedIds {
+constexpr NodeId BROADCAST = 0xFF;
+constexpr NodeId HUB       = 0x01;
+} // namespace ReservedIds
+
+namespace ReservedTypes {
+constexpr NodeType UNKNOWN = 0x00;
+constexpr NodeType HUB     = 0x01;
+} // namespace ReservedTypes
+
+// Bridge templates for type-safe enum usage
+template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
+constexpr NodeId to_node_id(T enum_val)
 {
-    HUB          = 1,
-    WATER_TANK   = 5,
-    SOLAR_SENSOR = 7,
-    PUMP_CONTROL = 10,
-    WEATHER      = 12,
-};
+    return static_cast<NodeId>(enum_val);
+}
+
+template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeType)>>
+constexpr NodeType to_node_type(T enum_val)
+{
+    return static_cast<NodeType>(enum_val);
+}
+
+template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(PayloadType)>>
+constexpr PayloadType to_payload_type(T enum_val)
+{
+    return static_cast<PayloadType>(enum_val);
+}
 
 enum class MessageType : uint8_t
 {
@@ -54,15 +70,6 @@ enum class MessageType : uint8_t
     COMMAND               = 0x20,
     CHANNEL_SCAN_PROBE    = 0x30,
     CHANNEL_SCAN_RESPONSE = 0x31,
-};
-
-enum class PayloadType : uint8_t
-{
-    NONE                   = 0x00,
-    WATER_LEVEL_REPORT     = 0x01,
-    SOLAR_SENSOR_REPORT    = 0x02,
-    WEATHER_REPORT         = 0x03,
-    LOAD_CONTROLLER_STATUS = 0x04,
 };
 
 enum class PairStatus : uint8_t
@@ -83,22 +90,4 @@ enum class CommandType : uint8_t
     START_OTA           = 0x01,
     REBOOT              = 0x02,
     SET_REPORT_INTERVAL = 0x03,
-};
-
-enum class UsQuality : uint8_t
-{
-    OK,      /**< Measurement is reliable and within expected parameters. */
-    WEAK,    /**< Measurement is valid but may have reduced accuracy. */
-    INVALID, /**< Measurement is unreliable and should be discarded. */
-};
-
-enum class UsFailure : uint8_t
-{
-    NONE,          /**< No failure occurred. */
-    TIMEOUT,       /**< The echo pulse was not received within the timeout period. */
-    HW_ERROR,      /**< A hardware-level error, such as a stuck ECHO pin. */
-    INVALID_PULSE, /**< The measured pulse corresponds to a distance outside the valid
-                      range. */
-    HIGH_VARIANCE, /**< The variance among valid pings is too high, indicating
-                      instability. */
 };

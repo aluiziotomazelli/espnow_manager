@@ -29,11 +29,11 @@ EspNow &EspNow::instance()
 
     static RealWiFiHAL wifi_hal;
     static RealTxStateMachine tx_fsm;
-    static RealChannelScanner scanner(wifi_hal, *message_codec, NodeId::HUB, NodeType::HUB);
+    static RealChannelScanner scanner(wifi_hal, *message_codec, ReservedIds::HUB, ReservedTypes::HUB);
 
     static auto tx_manager = std::make_unique<RealTxManager>(tx_fsm, scanner, wifi_hal, *message_codec);
 
-    static auto heartbeat_mgr = std::make_unique<RealHeartbeatManager>(*tx_manager, *peer_manager, *message_codec, NodeId::HUB);
+    static auto heartbeat_mgr = std::make_unique<RealHeartbeatManager>(*tx_manager, *peer_manager, *message_codec, ReservedIds::HUB);
     static auto pairing_mgr = std::make_unique<RealPairingManager>(*tx_manager, *peer_manager, *message_codec);
     static auto message_router = std::make_unique<RealMessageRouter>(*peer_manager, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
 

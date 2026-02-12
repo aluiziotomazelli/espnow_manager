@@ -9,4 +9,5 @@ public:
     {
         return {start_channel, false};
     }
+    inline void update_node_info(NodeId id, NodeType type) override {}
 };

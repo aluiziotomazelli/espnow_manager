@@ -10,6 +10,7 @@
 #include "mock_heartbeat_manager.hpp"
 #include "mock_pairing_manager.hpp"
 #include "mock_channel_scanner.hpp"
+#include "mock_message_router.hpp"
 
 TEST_CASE("EspNow can be instantiated with mocks", "[espnow]")
 {
@@ -19,8 +20,9 @@ TEST_CASE("EspNow can be instantiated with mocks", "[espnow]")
     auto mc = std::make_unique<MockMessageCodec>();
     auto hm = std::make_unique<MockHeartbeatManager>();
     auto pam = std::make_unique<MockPairingManager>();
+    auto mr = std::make_unique<MockMessageRouter>();
 
-    EspNow espnow(std::move(pm), std::move(tx), cs.get(), std::move(mc), std::move(hm), std::move(pam));
+    EspNow espnow(std::move(pm), std::move(tx), cs.get(), std::move(mc), std::move(hm), std::move(pam), std::move(mr));
 
     TEST_ASSERT_TRUE(true);
 }

@@ -86,7 +86,7 @@ bool RealMessageRouter::should_dispatch_to_worker(MessageType type)
 
 void RealMessageRouter::handle_scan_probe(const RxPacket &packet)
 {
-    if (my_type_ != NodeType::HUB) return;
+    if (my_type_ != ReservedTypes::HUB) return;
     auto header_opt = message_codec_.decode_header(packet.data, packet.len);
     if (!header_opt) return;
 

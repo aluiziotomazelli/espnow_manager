@@ -60,26 +60,6 @@ struct AckMessage
     uint32_t processing_time_us;
 };
 
-struct WaterLevelReport
-{
-    MessageHeader header;
-    uint16_t level_permille;
-    float distance_cm;
-    uint16_t battery_mv;
-    UsQuality quality;
-    UsFailure failure;
-    bool float_switch_is_full;
-    bool backup_mode_active;
-};
-
-struct SolarSensorReport
-{
-    MessageHeader header;
-    uint16_t voltage_mv;
-    uint16_t current_ma;
-    uint16_t power_mw;
-};
-
 struct OtaCommand
 {
     MessageHeader header;
@@ -102,8 +82,4 @@ static_assert(sizeof(HeartbeatMessage) <= MAX_PAYLOAD_SIZE,
 static_assert(sizeof(HeartbeatResponse) <= MAX_PAYLOAD_SIZE,
               "HeartbeatResponse payload is too large");
 static_assert(sizeof(AckMessage) <= MAX_PAYLOAD_SIZE, "AckMessage payload is too large");
-static_assert(sizeof(WaterLevelReport) <= MAX_PAYLOAD_SIZE,
-              "WaterLevelReport payload is too large");
-static_assert(sizeof(SolarSensorReport) <= MAX_PAYLOAD_SIZE,
-              "SolarSensorReport payload is too large");
 static_assert(sizeof(OtaCommand) <= MAX_PAYLOAD_SIZE, "OtaCommand payload is too large");

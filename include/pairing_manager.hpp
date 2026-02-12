@@ -11,6 +11,8 @@ public:
     RealPairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec);
     ~RealPairingManager();
 
+    using IPairingManager::init;
+
     esp_err_t init(NodeType type, NodeId id) override;
     esp_err_t deinit() override;
     esp_err_t start(uint32_t timeout_ms) override;

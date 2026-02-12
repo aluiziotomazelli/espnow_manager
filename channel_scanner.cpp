@@ -41,7 +41,7 @@ IChannelScanner::ScanResult RealChannelScanner::scan(uint8_t start_channel)
         probe_header.msg_type       = MessageType::CHANNEL_SCAN_PROBE;
         probe_header.sender_node_id = my_node_id_;
         probe_header.sender_type    = my_node_type_;
-        probe_header.dest_node_id   = NodeId::HUB;
+        probe_header.dest_node_id   = ReservedIds::HUB;
         probe_header.sequence_number = 0;
         probe_header.timestamp_ms    = 0; // Not critical for probe
 
