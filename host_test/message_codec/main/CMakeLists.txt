@@ -1,0 +1,13 @@
+idf_component_register(
+    SRCS
+        "test_main.cpp"
+        "test_message_codec.cpp"
+    INCLUDE_DIRS
+        "."
+        "../../../mocks"
+    REQUIRES
+        unity
+        espnow_manager
+        esp_wifi
+        WHOLE_ARCHIVE
+)

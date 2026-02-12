@@ -6,7 +6,7 @@ list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/esp_netif")
 list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/lwip")
 list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/driver")
 
-set(COMPONENTS main apespnow_managerp)
+set(COMPONENTS main espnow_manager)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(tx_state_machine_host_test)
+project(message_codec_host_test)
