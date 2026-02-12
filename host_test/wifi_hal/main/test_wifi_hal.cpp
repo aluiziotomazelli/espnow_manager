@@ -1,5 +1,6 @@
 #include "unity.h"
 #include "wifi_hal.hpp"
+#include "mock_wifi_hal.hpp"
 extern "C" {
 #include "Mockesp_wifi.h"
 #include "Mockesp_now.h"
@@ -52,4 +53,18 @@ TEST_CASE("RealWiFiHAL wait_for_event returns false on timeout", "[wifi_hal]")
     // Using a small timeout to avoid hanging the test
     bool result = hal.wait_for_event(0x01, 10);
     TEST_ASSERT_FALSE(result);
+}
+
+TEST_CASE("MockWiFiHAL event_responses queue works", "[wifi_hal_mock]")
+{
+    MockWiFiHAL mock;
+    mock.event_responses.push(false);
+    mock.event_responses.push(true);
+
+    TEST_ASSERT_FALSE(mock.wait_for_event(0x01, 0));
+    TEST_ASSERT_TRUE(mock.wait_for_event(0x01, 0));
+
+    // Should fallback to wait_for_event_ret when empty
+    mock.wait_for_event_ret = false;
+    TEST_ASSERT_FALSE(mock.wait_for_event(0x01, 0));
 }

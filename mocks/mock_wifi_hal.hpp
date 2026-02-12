@@ -3,6 +3,7 @@
 #include "espnow_interfaces.hpp"
 #include <vector>
 #include <cstring>
+#include <queue>
 
 class MockWiFiHAL : public IWiFiHAL
 {
@@ -25,6 +26,7 @@ public:
     uint32_t last_event_mask = 0;
     uint32_t last_timeout_ms = 0;
     TaskHandle_t last_task_handle = nullptr;
+    std::queue<bool> event_responses;
 
     inline esp_err_t set_channel(uint8_t channel) override {
         set_channel_calls++;
@@ -54,7 +56,10 @@ public:
         wait_for_event_calls++;
         last_event_mask = event_mask;
         last_timeout_ms = timeout_ms;
-        return wait_for_event_ret;
+        if (event_responses.empty()) return wait_for_event_ret;
+        bool res = event_responses.front();
+        event_responses.pop();
+        return res;
     }
 
     inline void set_task_to_notify(TaskHandle_t task_handle) override {
@@ -79,5 +84,6 @@ public:
         last_event_mask = 0;
         last_timeout_ms = 0;
         last_set_channel = 0;
+        while (!event_responses.empty()) event_responses.pop();
     }
 };
