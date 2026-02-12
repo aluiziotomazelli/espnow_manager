@@ -22,6 +22,7 @@ public:
     TxPacket last_queued_packet = {};
     uint32_t last_stack_size = 0;
     UBaseType_t last_priority = 0;
+    TaskHandle_t fake_handle = nullptr;
 
     // --- Interface Implementation ---
 
@@ -51,7 +52,7 @@ public:
     inline void notify_logical_ack() override { notify_logical_ack_calls++; }
     inline void notify_hub_found() override { notify_hub_found_calls++; }
 
-    inline TaskHandle_t get_task_handle() const override { return nullptr; }
+    inline TaskHandle_t get_task_handle() const override { return fake_handle; }
 
     void reset()
     {
@@ -65,6 +66,7 @@ public:
         last_queued_packet = {};
         last_stack_size = 0;
         last_priority = 0;
+        fake_handle = nullptr;
         init_ret = ESP_OK;
         queue_packet_ret = ESP_OK;
     }

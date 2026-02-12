@@ -77,7 +77,7 @@ public:
         validate_crc_ret = true;
         calculate_crc_ret = 0;
 
-        memset(&last_encode_header, 0, sizeof(MessageHeader));
+        last_encode_header = {};
         last_encode_payload.clear();
         last_decode_data.clear();
         last_calculate_crc_data.clear();
