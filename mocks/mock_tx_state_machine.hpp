@@ -23,40 +23,48 @@ public:
     bool last_requires_ack = false;
     std::optional<PendingAck> last_pending_ack;
 
+    bool auto_update_state = true;
+
     inline TxState on_tx_success(bool requires_ack) override
     {
         on_tx_success_calls++;
         last_requires_ack = requires_ack;
+        if (auto_update_state) current_state_ret = on_tx_success_ret;
         return on_tx_success_ret;
     }
 
     inline TxState on_ack_received() override
     {
         on_ack_received_calls++;
+        if (auto_update_state) current_state_ret = on_ack_received_ret;
         return on_ack_received_ret;
     }
 
     inline TxState on_ack_timeout() override
     {
         on_ack_timeout_calls++;
+        if (auto_update_state) current_state_ret = on_ack_timeout_ret;
         return on_ack_timeout_ret;
     }
 
     inline TxState on_physical_fail() override
     {
         on_physical_fail_calls++;
+        if (auto_update_state) current_state_ret = on_physical_fail_ret;
         return on_physical_fail_ret;
     }
 
     inline TxState on_max_retries() override
     {
         on_max_retries_calls++;
+        if (auto_update_state) current_state_ret = on_max_retries_ret;
         return on_max_retries_ret;
     }
 
     inline void on_link_alive() override
     {
         on_link_alive_calls++;
+        if (auto_update_state) current_state_ret = TxState::IDLE;
     }
 
     inline TxState get_state() const override
@@ -67,6 +75,7 @@ public:
     inline void reset() override
     {
         reset_calls++;
+        if (auto_update_state) current_state_ret = TxState::IDLE;
     }
 
     inline void set_pending_ack(const PendingAck &pending_ack) override
@@ -95,6 +104,7 @@ public:
         on_physical_fail_ret = TxState::IDLE;
         on_max_retries_ret   = TxState::IDLE;
         current_state_ret    = TxState::IDLE;
+        auto_update_state    = true;
 
         last_pending_ack.reset();
     }
