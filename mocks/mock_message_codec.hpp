@@ -8,13 +8,13 @@
 class MockMessageCodec : public IMessageCodec
 {
 public:
-    // --- Variáveis para Stubbing (Controlar o comportamento) ---
+    // --- Stubbing variables (Control behavior) ---
     std::vector<uint8_t> encode_ret;
     std::optional<MessageHeader> decode_header_ret;
     bool validate_crc_ret = true;
     uint8_t calculate_crc_ret = 0;
 
-    // --- Variáveis para Spying (Verificar chamadas) ---
+    // --- Spying variables (Verify calls) ---
     int encode_calls = 0;
     int decode_header_calls = 0;
     int validate_crc_calls = 0;
@@ -25,7 +25,7 @@ public:
     std::vector<uint8_t> last_decode_data;
     std::vector<uint8_t> last_calculate_crc_data;
 
-    // --- Implementação da Interface ---
+    // --- Interface Implementation ---
 
     inline std::vector<uint8_t> encode(const MessageHeader &header, const void *payload, size_t len) override
     {
@@ -41,7 +41,7 @@ public:
         if (!encode_ret.empty()) return encode_ret;
 
         // Default behavior: return a buffer of appropriate size if no stub is set
-        return std::vector<uint8_t>(sizeof(MessageHeader) + len + 1);
+        return std::vector<uint8_t>(sizeof(MessageHeader) + len + CRC_SIZE);
     }
 
     inline std::optional<MessageHeader> decode_header(const uint8_t *data, size_t len) override
