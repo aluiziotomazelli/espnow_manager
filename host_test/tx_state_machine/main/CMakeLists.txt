@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS
         "test_main.cpp"
-        "test_peer_manager.cpp"
+        "test_tx_state_machine.cpp"
     INCLUDE_DIRS
         "."
         "../../../mocks"
