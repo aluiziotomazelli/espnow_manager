@@ -20,6 +20,7 @@ constexpr float HEARTBEAT_OFFLINE_MULTIPLIER     = 2.5f;
 // Constants for retry logic
 constexpr uint32_t LOGICAL_ACK_TIMEOUT_MS = 500;
 constexpr uint8_t MAX_LOGICAL_RETRIES     = 3;
+constexpr uint8_t MAX_PHYSICAL_FAILURES   = 3;
 
 constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 50;
 constexpr uint8_t SCAN_CHANNEL_ATTEMPTS    = 2;

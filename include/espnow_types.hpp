@@ -66,4 +66,5 @@ struct PendingAck
     uint64_t timestamp_ms;
     uint8_t retries_left;
     TxPacket packet;
+    NodeId node_id;
 };
