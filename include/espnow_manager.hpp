@@ -1,16 +1,21 @@
 #pragma once
 
-#include "esp_now.h"
-#include "espnow_storage.hpp"
-#include "protocol_messages.hpp"
-#include "protocol_types.hpp"
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
+
+#include "esp_now.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/timers.h"
+
+#include "espnow_interfaces.hpp"
+#include "espnow_storage.hpp"
+#include "espnow_types.hpp"
+#include "protocol_messages.hpp"
+#include "protocol_types.hpp"
 
 // Configuration to initialize the EspNow component
 struct EspNowConfig
@@ -48,35 +53,20 @@ public:
     // Singleton
     static EspNow &instance();
 
+    // Dependency injection constructor for testing
+    EspNow(std::unique_ptr<IPeerManager> peer_manager,
+           std::unique_ptr<ITxManager> tx_manager,
+           IChannelScanner *scanner_ptr,
+           std::unique_ptr<IMessageCodec> message_codec,
+           std::unique_ptr<IHeartbeatManager> heartbeat_manager,
+           std::unique_ptr<IPairingManager> pairing_manager,
+           std::unique_ptr<IMessageRouter> message_router);
+
     EspNow(const EspNow &)            = delete;
     EspNow &operator=(const EspNow &) = delete;
     ~EspNow();
 
-    // Generic structure for received packets used in queues
-    struct RxPacket
-    {
-        uint8_t src_mac[6];
-        uint8_t data[ESP_NOW_MAX_DATA_LEN];
-        size_t len;
-        int8_t rssi;
-        int64_t timestamp_us;
-    };
-
-    // Public information about a peer, safe to be used by the application
-    struct PeerInfo
-    {
-        uint8_t mac[6];
-        NodeType type;
-        NodeId node_id;
-        uint8_t channel;
-        uint64_t last_seen_ms;
-        bool paired;
-        uint32_t heartbeat_interval_ms;
-    };
-
     // Public API
-    static constexpr int MAX_PEERS = 19;
-
     esp_err_t init(const EspNowConfig &config);
     esp_err_t deinit();
     esp_err_t send_data(NodeId dest_node_id,
@@ -92,114 +82,47 @@ public:
     esp_err_t confirm_reception(AckStatus status);
 
     // Peer Management Functions
-    esp_err_t add_peer(NodeId node_id,
-                       const uint8_t *mac,
-                       uint8_t channel,
-                       NodeType type);
+    esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type);
     esp_err_t remove_peer(NodeId node_id);
     std::vector<PeerInfo> get_peers();
     std::vector<NodeId> get_offline_peers() const;
     esp_err_t start_pairing(uint32_t timeout_ms = 30000);
 
 private:
-    EspNow();
     // --- Notification Bits ---
-    static constexpr uint32_t NOTIFY_LOGICAL_ACK     = 0x01;
-    static constexpr uint32_t NOTIFY_PHYSICAL_FAIL   = 0x02;
-    static constexpr uint32_t NOTIFY_HUB_FOUND       = 0x04;
-    static constexpr uint32_t NOTIFY_HEARTBEAT       = 0x08;
-    static constexpr uint32_t NOTIFY_PAIRING         = 0x10;
-    static constexpr uint32_t NOTIFY_DATA            = 0x20;
-    static constexpr uint32_t NOTIFY_ACK_TIMEOUT     = 0x40;
-    static constexpr uint32_t NOTIFY_PAIRING_TIMEOUT = 0x80;
-    static constexpr uint32_t NOTIFY_STOP            = 0x100;
-    static constexpr uint32_t NOTIFY_LINK_ALIVE      = 0x200;
-
-    // --- FSM and TX Task Structures ---
-    struct TxPacket
-    {
-        uint8_t dest_mac[6];
-        uint8_t data[ESP_NOW_MAX_DATA_LEN];
-        size_t len;
-        bool requires_ack;
-    };
-
-    enum class TxState
-    {
-        IDLE,
-        SENDING,
-        WAITING_FOR_ACK,
-        RETRYING,
-        SCANNING
-    };
-
-    struct PendingAck
-    {
-        uint16_t sequence_number;
-        uint64_t timestamp_ms;
-        uint8_t retries_left;
-        TxPacket packet;
-    };
+    static constexpr uint32_t NOTIFY_STOP = 0x100;
 
     // --- Private Members ---
     EspNowConfig config_{};
-    EspNowStorage storage_;
-    std::vector<PeerInfo> peers_;
-    SemaphoreHandle_t peers_mutex_   = nullptr;
-    SemaphoreHandle_t pairing_mutex_ = nullptr;
-    SemaphoreHandle_t ack_mutex_     = nullptr;
-    bool is_initialized_             = false;
+
+    std::unique_ptr<IPeerManager> peer_manager_;
+    std::unique_ptr<ITxManager> tx_manager_;
+    IChannelScanner *scanner_ptr_ = nullptr; // For updating node info in init()
+    std::unique_ptr<IMessageCodec> message_codec_;
+    std::unique_ptr<IHeartbeatManager> heartbeat_manager_;
+    std::unique_ptr<IPairingManager> pairing_manager_;
+    std::unique_ptr<IMessageRouter> message_router_;
+
+    SemaphoreHandle_t ack_mutex_ = nullptr;
+    bool is_initialized_         = false;
     std::optional<MessageHeader> last_header_requiring_ack_{};
-    bool is_pairing_active_                     = false;
-    TimerHandle_t pairing_timer_handle_         = nullptr;
-    TimerHandle_t pairing_timeout_timer_handle_ = nullptr;
-    TimerHandle_t heartbeat_timer_handle_       = nullptr;
-    TimerHandle_t ack_timeout_timer_handle_     = nullptr;
 
     QueueHandle_t rx_dispatch_queue_           = nullptr;
     QueueHandle_t transport_worker_queue_      = nullptr;
-    QueueHandle_t tx_queue_                    = nullptr;
     TaskHandle_t rx_dispatch_task_handle_      = nullptr;
     TaskHandle_t transport_worker_task_handle_ = nullptr;
-    TaskHandle_t tx_manager_task_handle_       = nullptr;
 
     // --- Private Methods ---
-    esp_err_t add_peer_internal(NodeId node_id,
-                                const uint8_t *mac,
-                                uint8_t channel,
-                                NodeType type);
-    esp_err_t remove_peer_internal(NodeId node_id);
-    void send_pair_request();
-    esp_err_t send_packet(const uint8_t *mac_addr, const void *data, size_t len);
-    bool find_peer_mac(NodeId node_id, uint8_t *mac);
     uint64_t get_time_ms() const;
 
     // Persistence helpers
-    EspNowStorage::Peer info_to_storage(const PeerInfo &info);
-    PeerInfo storage_to_info(const EspNowStorage::Peer &storage);
-    void save_peers(bool force_nvs_commit = false);
     void update_wifi_channel(uint8_t channel);
-
-    // Protocol Message Processing
-    void handle_pair_request(const RxPacket &packet);
-    void handle_pair_response(const RxPacket &packet);
-    void handle_heartbeat(const RxPacket &packet);
-    void handle_heartbeat_response(const RxPacket &packet);
-    void handle_scan_probe(const RxPacket &packet);
-    void send_heartbeat();
 
     // Task functions
     static void rx_dispatch_task(void *arg);
     static void transport_worker_task(void *arg);
-    static void tx_manager_task(void *arg);
-    static void pairing_timer_cb(TimerHandle_t xTimer);
-    static void periodic_pairing_cb(TimerHandle_t xTimer);
-    static void periodic_heartbeat_cb(TimerHandle_t xTimer);
 
     // Static ESP-NOW callbacks (ISR context)
-    static void esp_now_recv_cb(const esp_now_recv_info_t *info,
-                                const uint8_t *data,
-                                int len);
-    static void esp_now_send_cb(const esp_now_send_info_t *info,
-                                esp_now_send_status_t status);
+    static void esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len);
+    static void esp_now_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status);
 };

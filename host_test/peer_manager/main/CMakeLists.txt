@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "test_peer_manager.cpp"
+    INCLUDE_DIRS
+        "."
+        "../../mocks"
+    REQUIRES
+        unity
+        espnow_manager
+        esp_wifi
+        WHOLE_ARCHIVE
+)
