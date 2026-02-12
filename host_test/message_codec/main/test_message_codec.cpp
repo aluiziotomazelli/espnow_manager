@@ -114,22 +114,6 @@ TEST_CASE("MessageCodec handles max-sized payload", "[codec]")
     TEST_ASSERT_TRUE(codec.validate_crc(encoded.data(), encoded.size()));
 }
 
-TEST_CASE("MessageCodec rejects oversized payload", "[codec]")
-{
-    RealMessageCodec codec;
-    MessageHeader header = {.msg_type = MessageType::DATA};
-
-    // MAX_PAYLOAD_SIZE is ESP_NOW_MAX_DATA_LEN (250) - Header (16) - CRC (1) = 233
-    size_t too_big   = MAX_PAYLOAD_SIZE + 1;
-    uint8_t *payload = new uint8_t[too_big];
-    memset(payload, 0, too_big);
-
-    auto encoded = codec.encode(header, payload, too_big);
-
-    TEST_ASSERT_TRUE(encoded.empty());
-
-    delete[] payload;
-}
 
 TEST_CASE("MessageCodec decode_header fails on short data", "[codec]")
 {

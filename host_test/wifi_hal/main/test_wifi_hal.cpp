@@ -33,17 +33,47 @@ TEST_CASE("RealWiFiHAL get_channel calls esp_wifi_get_channel", "[wifi_hal]")
     TEST_ASSERT_EQUAL(expected_channel, actual_channel);
 }
 
-TEST_CASE("RealWiFiHAL send_packet calls esp_now_send", "[wifi_hal]")
+TEST_CASE("RealWiFiHAL send_packet edge cases (0, 1, 250, 251 bytes)", "[wifi_hal]")
 {
     RealWiFiHAL hal;
-    uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
-    uint8_t data[] = {0x01, 0x02, 0x03};
-    size_t len = sizeof(data);
+    uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
-    esp_now_send_ExpectAndReturn(mac, data, len, ESP_OK);
+    SECTION("Zero bytes - Some drivers return error, others success")
+    {
+        // Testing with 0 bytes should return ESP_ERR_INVALID_ARG
+        esp_now_send_ExpectAndReturn(mac, nullptr, 0, ESP_ERR_INVALID_ARG);
+        esp_err_t err = hal.send_packet(mac, nullptr, 0);
+        TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, err);
+    }
 
-    esp_err_t err = hal.send_packet(mac, data, len);
-    TEST_ASSERT_EQUAL(ESP_OK, err);
+    // Testing with 1 byte should return ESP_OK
+    SECTION("Minimum payload (1 byte)")
+    {
+        uint8_t data = 0xFF;
+        esp_now_send_ExpectAndReturn(mac, &data, 1, ESP_OK);
+        esp_err_t err = hal.send_packet(mac, &data, 1);
+        TEST_ASSERT_EQUAL(ESP_OK, err);
+    }
+
+    // Testing with 250 bytes sould return ESP_OK
+    SECTION("Maximum ESP-NOW payload (250 bytes)")
+    {
+        uint8_t data[250];
+        memset(data, 0xEE, 250);
+        esp_now_send_ExpectAndReturn(mac, data, 250, ESP_OK);
+        esp_err_t err = hal.send_packet(mac, data, 250);
+        TEST_ASSERT_EQUAL(ESP_OK, err);
+    }
+
+    // Testing with more than 250 bytes should return ESP_ERR_ESPNOW_ARG
+    SECTION("Above limit (251 bytes)")
+    {
+        uint8_t data[251];
+        // IDF should reject and return ESP_ERR_ESPNOW_ARG
+        esp_now_send_ExpectAndReturn(mac, data, 251, ESP_ERR_ESPNOW_ARG);
+        esp_err_t err = hal.send_packet(mac, data, 251);
+        TEST_ASSERT_EQUAL(ESP_ERR_ESPNOW_ARG, err);
+    }
 }
 
 TEST_CASE("RealWiFiHAL wait_for_event returns false on timeout", "[wifi_hal]")
