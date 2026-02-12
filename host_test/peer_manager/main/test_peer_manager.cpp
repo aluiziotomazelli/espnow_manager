@@ -12,7 +12,7 @@ enum class TestNodeId : NodeId
     TEST_HUB      = 1,
     TEST_SENSOR_A = 10,
     TEST_SENSOR_B = 11,
-    NON_EXISTENT  = 99
+    NON_EXISTENT  = 90
 };
 
 enum class TestNodeType : NodeType
@@ -90,6 +90,17 @@ TEST_CASE("PeerManager LRU with duplicate when full", "[peer_manager]")
     TEST_ASSERT_EQUAL((NodeId)1, pm.get_all()[0].node_id); // Must be the first
 }
 
+TEST_CASE("PeerManager rejects null MAC", "[peer_manager]")
+{
+    MockStorage storage;
+    RealPeerManager pm(storage);
+
+    esp_err_t err = pm.add(TestNodeId::TEST_SENSOR_A, nullptr, 1, TestNodeType::SENSOR);
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, err);
+    TEST_ASSERT_EQUAL(0, pm.get_all().size()); // Null MAC should be rejected
+}
+
 TEST_CASE("PeerManager detects offline peers", "[peer_manager]")
 {
     esp_now_add_peer_IgnoreAndReturn(ESP_OK);
@@ -113,6 +124,39 @@ TEST_CASE("PeerManager detects offline peers", "[peer_manager]")
     offline = pm.get_offline(12501);
     TEST_ASSERT_EQUAL(1, offline.size());
     TEST_ASSERT_EQUAL(to_node_id(TestNodeId::TEST_SENSOR_A), offline[0]);
+}
+
+TEST_CASE("PeerManager ignores peers without heartbeat in offline detection", "[peer_manager]")
+{
+    esp_now_add_peer_IgnoreAndReturn(ESP_OK);
+
+    MockStorage storage;
+    RealPeerManager pm(storage);
+
+    uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    pm.add(TestNodeId::TEST_SENSOR_A, mac, 1, TestNodeType::SENSOR, 0); // ← heartbeat = 0
+
+    pm.update_last_seen(TestNodeId::TEST_SENSOR_A, 1000);
+
+    // Even after a long time, it should not appear offline
+    auto offline = pm.get_offline(999999999);
+    TEST_ASSERT_EQUAL(0, offline.size());
+}
+
+TEST_CASE("PeerManager ignores peers never seen in offline detection", "[peer_manager]")
+{
+    esp_now_add_peer_IgnoreAndReturn(ESP_OK);
+
+    MockStorage storage;
+    RealPeerManager pm(storage);
+
+    uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    pm.add(TestNodeId::TEST_SENSOR_A, mac, 1, TestNodeType::SENSOR, 5000);
+
+    // Dont call update_last_seen(), so last_seen_ms == 0
+
+    auto offline = pm.get_offline(999999);
+    TEST_ASSERT_EQUAL(0, offline.size()); // Never seen peers should be ignored
 }
 
 TEST_CASE("PeerManager persists to storage on add", "[peer_manager]")
@@ -331,10 +375,30 @@ TEST_CASE("PeerManager handles storage save failure", "[peer_manager]")
     TEST_ASSERT_EQUAL(0, storage.save_call_count); // Storage NVS has not saved
 }
 
-extern "C" void app_main(void)
+TEST_CASE("PeerManager handles MAC update failure gracefully", "[peer_manager]")
 {
-    UNITY_BEGIN();
-    unity_run_all_tests();
-    UNITY_END();
-    esp_restart();
+    // Fisrt call is OK
+    esp_now_add_peer_ExpectAndReturn(nullptr, ESP_OK);
+    esp_now_add_peer_IgnoreArg_peer();
+
+    // Second call IS FAIL
+    esp_now_add_peer_ExpectAndReturn(nullptr, ESP_FAIL);
+    esp_now_add_peer_IgnoreArg_peer();
+
+    MockStorage storage;
+    RealPeerManager pm(storage);
+
+    uint8_t mac_old[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    pm.add(TestNodeId::TEST_SENSOR_A, mac_old, 1, TestNodeType::SENSOR); // OK
+
+    uint8_t mac_new[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    esp_err_t err      = pm.add(TestNodeId::TEST_SENSOR_A, mac_new, 1, TestNodeType::SENSOR); // FAIL
+
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+    TEST_ASSERT_EQUAL(1, storage.save_call_count); // Must be only one saved peer
+
+    // MAC must be the old one
+    uint8_t found_mac[6];
+    TEST_ASSERT_TRUE(pm.find_mac(TestNodeId::TEST_SENSOR_A, found_mac));
+    TEST_ASSERT_EQUAL_MEMORY(mac_old, found_mac, 6); // Same MAC
 }

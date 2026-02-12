@@ -11,3 +11,10 @@ idf_component_register(
         esp_wifi
         WHOLE_ARCHIVE
 )
+
+# Use linker wrapping to mock esp_now functions
+target_link_libraries(${COMPONENT_LIB} INTERFACE 
+    "-Wl,--wrap=esp_now_add_peer"
+    "-Wl,--wrap=esp_now_del_peer"
+    "-Wl,--wrap=esp_now_mod_peer"
+)
