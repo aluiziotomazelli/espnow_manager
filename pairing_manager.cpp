@@ -44,7 +44,7 @@ esp_err_t RealPairingManager::start(uint32_t timeout_ms)
     ESP_LOGI(TAG, "Pairing started for %u ms.", (unsigned int)timeout_ms);
 
     timeout_timer_ = xTimerCreate("pair_timeout", pdMS_TO_TICKS(timeout_ms), pdFALSE, this, timeout_cb);
-    if (my_type_ != NodeType::HUB)
+    if (my_type_ != ReservedTypes::HUB)
     {
         periodic_timer_ = xTimerCreate("pair_periodic", pdMS_TO_TICKS(5000), pdTRUE, this, periodic_cb);
         xTimerStart(periodic_timer_, 0);
@@ -59,7 +59,7 @@ esp_err_t RealPairingManager::start(uint32_t timeout_ms)
 void RealPairingManager::handle_request(const RxPacket &packet)
 {
     xSemaphoreTake(mutex_, portMAX_DELAY);
-    if (!is_active_ || my_type_ != NodeType::HUB) { xSemaphoreGive(mutex_); return; }
+    if (!is_active_ || my_type_ != ReservedTypes::HUB) { xSemaphoreGive(mutex_); return; }
     xSemaphoreGive(mutex_);
 
     auto header_opt = codec_.decode_header(packet.data, packet.len);
@@ -76,7 +76,7 @@ void RealPairingManager::handle_request(const RxPacket &packet)
     resp.header.dest_node_id = header.sender_node_id;
     resp.header.sequence_number = 0;
 
-    if (header.sender_type == NodeType::HUB)
+    if (header.sender_type == ReservedTypes::HUB)
     {
         resp.status = PairStatus::REJECTED_NOT_ALLOWED;
     }
@@ -102,7 +102,7 @@ void RealPairingManager::handle_request(const RxPacket &packet)
 void RealPairingManager::handle_response(const RxPacket &packet)
 {
     xSemaphoreTake(mutex_, portMAX_DELAY);
-    if (!is_active_ || my_type_ == NodeType::HUB) { xSemaphoreGive(mutex_); return; }
+    if (!is_active_ || my_type_ == ReservedTypes::HUB) { xSemaphoreGive(mutex_); return; }
 
     auto header_opt = codec_.decode_header(packet.data, packet.len);
     if (!header_opt) { xSemaphoreGive(mutex_); return; }
@@ -125,7 +125,7 @@ void RealPairingManager::send_pair_request()
     req.header.msg_type = MessageType::PAIR_REQUEST;
     req.header.sender_node_id = my_id_;
     req.header.sender_type = my_type_;
-    req.header.dest_node_id = NodeId::HUB;
+    req.header.dest_node_id = ReservedIds::HUB;
     req.header.sequence_number = 0;
     req.heartbeat_interval_ms = 60000;
 

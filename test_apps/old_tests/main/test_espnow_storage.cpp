@@ -6,6 +6,21 @@
 #include "test_memory_helper.h"
 #include "unity.h"
 
+enum class TestNodeId : NodeId
+{
+    HUB          = 1,
+    WATER_TANK   = 5,
+    SOLAR_SENSOR = 7,
+    PUMP_CONTROL = 10,
+    WEATHER      = 12,
+};
+
+enum class TestNodeType : NodeType
+{
+    HUB    = 1,
+    SENSOR = 2
+};
+
 // ============================================================================
 // Group 1: Basic Functionality Tests
 // ============================================================================
@@ -20,18 +35,18 @@ TEST_CASE("storage_basic_load_save", "[espnow][storage][basic][loadsave]")
     {
         EspNowStorage storage;
         uint8_t channel = 6;
-        std::vector<EspNowStorage::Peer> peers;
+        std::vector<PersistentPeer> peers;
 
         // Create test peer
-        EspNowStorage::Peer test_peer;
+        PersistentPeer test_peer;
         test_peer.mac[0]                = 0x11;
         test_peer.mac[1]                = 0x22;
         test_peer.mac[2]                = 0x33;
         test_peer.mac[3]                = 0x44;
         test_peer.mac[4]                = 0x55;
         test_peer.mac[5]                = 0x66;
-        test_peer.type                  = NodeType::SENSOR;
-        test_peer.node_id               = NodeId::SOLAR_SENSOR;
+        test_peer.type                  = to_node_type(TestNodeType::SENSOR);
+        test_peer.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
         test_peer.channel               = 6;
         test_peer.paired                = true;
         test_peer.heartbeat_interval_ms = 5000;
@@ -43,7 +58,7 @@ TEST_CASE("storage_basic_load_save", "[espnow][storage][basic][loadsave]")
 
         // Test load
         uint8_t loaded_channel;
-        std::vector<EspNowStorage::Peer> loaded_peers;
+        std::vector<PersistentPeer> loaded_peers;
         TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
 
         // Verify
@@ -52,7 +67,7 @@ TEST_CASE("storage_basic_load_save", "[espnow][storage][basic][loadsave]")
         TEST_ASSERT_EQUAL_HEX8_ARRAY(test_peer.mac, loaded_peers[0].mac, 6);
 
         // Clean up for next test
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -67,22 +82,25 @@ TEST_CASE("storage_multiple_peers", "[espnow][storage][basic][peers]")
     {
         EspNowStorage storage;
         uint8_t channel = 6;
-        std::vector<EspNowStorage::Peer> peers;
+        std::vector<PersistentPeer> peers;
 
         // Array of valid NodeIds for testing
-        NodeId valid_node_ids[] = {NodeId::HUB, NodeId::WATER_TANK, NodeId::SOLAR_SENSOR, NodeId::PUMP_CONTROL,
-                                   NodeId::WEATHER};
+        NodeId valid_node_ids[] = {to_node_id(TestNodeId::HUB),
+                                   to_node_id(TestNodeId::WATER_TANK),
+                                   to_node_id(TestNodeId::SOLAR_SENSOR),
+                                   to_node_id(TestNodeId::PUMP_CONTROL),
+                                   to_node_id(TestNodeId::WEATHER)};
 
         // Add multiple peers (using valid NodeIds)
         for (int i = 0; i < 5; i++) {
-            EspNowStorage::Peer peer;
+            PersistentPeer peer;
             peer.mac[0]                = 0x11;
             peer.mac[1]                = 0x22;
             peer.mac[2]                = 0x33;
             peer.mac[3]                = 0x44;
             peer.mac[4]                = 0x55;
             peer.mac[5]                = static_cast<uint8_t>(0x66 + i);
-            peer.type                  = (i == 0) ? NodeType::HUB : NodeType::SENSOR;
+            peer.type                  = (i == 0) ? to_node_type(TestNodeType::HUB) : to_node_type(TestNodeType::SENSOR);
             peer.node_id               = valid_node_ids[i];
             peer.channel               = static_cast<uint8_t>(6 + i);
             peer.paired                = true;
@@ -94,14 +112,14 @@ TEST_CASE("storage_multiple_peers", "[espnow][storage][basic][peers]")
         TEST_ASSERT_EQUAL(ESP_OK, storage.save(channel, peers, true));
 
         uint8_t loaded_channel;
-        std::vector<EspNowStorage::Peer> loaded_peers;
+        std::vector<PersistentPeer> loaded_peers;
         TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
 
         TEST_ASSERT_EQUAL(channel, loaded_channel);
         TEST_ASSERT_EQUAL(5, loaded_peers.size());
 
         // Clean storage
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -117,34 +135,34 @@ TEST_CASE("storage_peer_field_persistence", "[espnow][storage][basic][fields]")
         EspNowStorage storage;
 
         // Test persistence of all Peer fields
-        EspNowStorage::Peer peer;
+        PersistentPeer peer;
         uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
         memcpy(peer.mac, mac, 6);
-        peer.type                  = NodeType::HUB;
-        peer.node_id               = NodeId::WATER_TANK;
+        peer.type                  = to_node_type(TestNodeType::HUB);
+        peer.node_id               = to_node_id(TestNodeId::WATER_TANK);
         peer.channel               = 11;
         peer.paired                = false;
         peer.heartbeat_interval_ms = 12345;
 
-        std::vector<EspNowStorage::Peer> peers = {peer};
+        std::vector<PersistentPeer> peers = {peer};
         uint8_t channel                        = 8;
 
         TEST_ASSERT_EQUAL(ESP_OK, storage.save(channel, peers, true));
 
         uint8_t loaded_channel;
-        std::vector<EspNowStorage::Peer> loaded_peers;
+        std::vector<PersistentPeer> loaded_peers;
         TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
 
         TEST_ASSERT_EQUAL(1, loaded_peers.size());
         TEST_ASSERT_EQUAL_HEX8_ARRAY(mac, loaded_peers[0].mac, 6);
-        TEST_ASSERT_EQUAL(static_cast<int>(NodeType::HUB), static_cast<int>(loaded_peers[0].type));
-        TEST_ASSERT_EQUAL(static_cast<int>(NodeId::WATER_TANK), static_cast<int>(loaded_peers[0].node_id));
+        TEST_ASSERT_EQUAL(static_cast<int>(TestNodeType::HUB), static_cast<int>(loaded_peers[0].type));
+        TEST_ASSERT_EQUAL(static_cast<int>(TestNodeId::WATER_TANK), static_cast<int>(loaded_peers[0].node_id));
         TEST_ASSERT_EQUAL(11, loaded_peers[0].channel);
         TEST_ASSERT_EQUAL(false, loaded_peers[0].paired);
         TEST_ASSERT_EQUAL(12345, loaded_peers[0].heartbeat_interval_ms);
 
         // Clean up
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -168,12 +186,12 @@ TEST_CASE("storage_crc_validation", "[espnow][storage][validation][crc]")
 
         // 2. Save valid data (will go to NVS and RTC)
         uint8_t channel = 6;
-        std::vector<EspNowStorage::Peer> valid_peers;
+        std::vector<PersistentPeer> valid_peers;
 
-        EspNowStorage::Peer valid_peer;
+        PersistentPeer valid_peer;
         memset(valid_peer.mac, 0xAA, 6);
-        valid_peer.type                  = NodeType::SENSOR;
-        valid_peer.node_id               = NodeId::SOLAR_SENSOR;
+        valid_peer.type                  = to_node_type(TestNodeType::SENSOR);
+        valid_peer.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
         valid_peer.channel               = 6;
         valid_peer.paired                = true;
         valid_peer.heartbeat_interval_ms = 5000;
@@ -207,7 +225,7 @@ TEST_CASE("storage_crc_validation", "[espnow][storage][validation][crc]")
         TEST_ASSERT_EQUAL(EspNowStorage::ESPNOW_STORAGE_MAGIC, rtc_data.magic);
 
         uint8_t loaded_channel;
-        std::vector<EspNowStorage::Peer> loaded_peers;
+        std::vector<PersistentPeer> loaded_peers;
         TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
 
         // 5. NOW reset RTC to force use of corrupted NVS
@@ -218,7 +236,7 @@ TEST_CASE("storage_crc_validation", "[espnow][storage][validation][crc]")
 
         // Clean up
         EspNowStorage::test_reset_rtc();
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -235,7 +253,7 @@ TEST_CASE("storage_version_magic_check", "[espnow][storage][validation][magic][v
 
         // 1. First ensure the namespace exists by saving valid data
         uint8_t channel = 6;
-        std::vector<EspNowStorage::Peer> valid_peers;
+        std::vector<PersistentPeer> valid_peers;
         storage.save(channel, valid_peers, true);
 
         // 2. NOW reset RTC
@@ -266,7 +284,7 @@ TEST_CASE("storage_version_magic_check", "[espnow][storage][validation][magic][v
 
         // 4. Try to load - should fail because magic is wrong
         uint8_t loaded_channel;
-        std::vector<EspNowStorage::Peer> loaded_peers;
+        std::vector<PersistentPeer> loaded_peers;
         err = storage.load(loaded_channel, loaded_peers);
 
         TEST_ASSERT_NOT_EQUAL_MESSAGE(ESP_OK, err, "Should fail with wrong magic");
@@ -295,7 +313,7 @@ TEST_CASE("storage_version_magic_check", "[espnow][storage][validation][magic][v
 
         // 7. Clean up
         EspNowStorage::test_reset_rtc();
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -315,14 +333,14 @@ TEST_CASE("storage_max_peers_limit", "[espnow][storage][limits][peers]")
     {
         EspNowStorage storage;
         uint8_t channel = 6;
-        std::vector<EspNowStorage::Peer> peers;
+        std::vector<PersistentPeer> peers;
 
         // Create more peers than the limit
         for (int i = 0; i < EspNowStorage::MAX_PERSISTENT_PEERS + 5; i++) {
-            EspNowStorage::Peer peer;
+            PersistentPeer peer;
             memset(peer.mac, i, 6);
-            peer.type                  = NodeType::SENSOR;
-            peer.node_id               = NodeId::SOLAR_SENSOR;
+            peer.type                  = to_node_type(TestNodeType::SENSOR);
+            peer.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
             peer.channel               = 6;
             peer.paired                = true;
             peer.heartbeat_interval_ms = 5000;
@@ -333,14 +351,14 @@ TEST_CASE("storage_max_peers_limit", "[espnow][storage][limits][peers]")
         TEST_ASSERT_EQUAL(ESP_OK, storage.save(channel, peers, true));
 
         uint8_t loaded_channel;
-        std::vector<EspNowStorage::Peer> loaded_peers;
+        std::vector<PersistentPeer> loaded_peers;
         TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
 
         // Verify that only MAX_PERSISTENT_PEERS were saved
         TEST_ASSERT_EQUAL(EspNowStorage::MAX_PERSISTENT_PEERS, loaded_peers.size());
 
         // Clean up
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -359,21 +377,21 @@ TEST_CASE("storage_edge_cases_num_peers", "[espnow][storage][limits][edgecases]"
 
         // Test with 0 peers (edge case)
         uint8_t channel = 6;
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         TEST_ASSERT_EQUAL(ESP_OK, storage.save(channel, empty_peers, true));
 
         uint8_t loaded_channel;
-        std::vector<EspNowStorage::Peer> loaded_peers;
+        std::vector<PersistentPeer> loaded_peers;
         TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
         TEST_ASSERT_EQUAL(0, loaded_peers.size());
 
         // Test with exactly MAX_PERSISTENT_PEERS
-        std::vector<EspNowStorage::Peer> max_peers;
+        std::vector<PersistentPeer> max_peers;
         for (int i = 0; i < EspNowStorage::MAX_PERSISTENT_PEERS; i++) {
-            EspNowStorage::Peer peer;
+            PersistentPeer peer;
             memset(peer.mac, i, 6);
-            peer.type                  = NodeType::SENSOR;
-            peer.node_id               = NodeId::SOLAR_SENSOR;
+            peer.type                  = to_node_type(TestNodeType::SENSOR);
+            peer.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
             peer.channel               = 6;
             peer.paired                = true;
             peer.heartbeat_interval_ms = 5000;
@@ -406,12 +424,12 @@ TEST_CASE("storage_nvs_corrupted_empty", "[espnow][storage][recovery][corruption
 
         // 1. FIRST save valid data to ensure the namespace exists
         uint8_t channel = 6;
-        std::vector<EspNowStorage::Peer> valid_peers;
+        std::vector<PersistentPeer> valid_peers;
 
-        EspNowStorage::Peer peer;
+        PersistentPeer peer;
         memset(peer.mac, 0xAA, 6);
-        peer.type                  = NodeType::SENSOR;
-        peer.node_id               = NodeId::SOLAR_SENSOR;
+        peer.type                  = to_node_type(TestNodeType::SENSOR);
+        peer.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
         peer.channel               = 6;
         peer.paired                = true;
         peer.heartbeat_interval_ms = 5000;
@@ -437,7 +455,7 @@ TEST_CASE("storage_nvs_corrupted_empty", "[espnow][storage][recovery][corruption
 
         // 4. Try to load with empty RTC and no key in NVS
         uint8_t loaded_channel;
-        std::vector<EspNowStorage::Peer> loaded_peers;
+        std::vector<PersistentPeer> loaded_peers;
         err = storage.load(loaded_channel, loaded_peers);
 
         TEST_ASSERT_EQUAL_MESSAGE(ESP_ERR_NVS_NOT_FOUND, err,
@@ -480,7 +498,7 @@ TEST_CASE("storage_nvs_corrupted_empty", "[espnow][storage][recovery][corruption
         nvs_close(handle);
 
         // Finally save valid empty data
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -498,12 +516,12 @@ TEST_CASE("storage_nvs_recovery_scenario", "[espnow][storage][recovery][scenario
 
         // 1. Save valid data
         uint8_t channel = 6;
-        std::vector<EspNowStorage::Peer> peers;
+        std::vector<PersistentPeer> peers;
 
-        EspNowStorage::Peer peer;
+        PersistentPeer peer;
         memset(peer.mac, 0xAA, 6);
-        peer.type                  = NodeType::SENSOR;
-        peer.node_id               = NodeId::SOLAR_SENSOR;
+        peer.type                  = to_node_type(TestNodeType::SENSOR);
+        peer.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
         peer.channel               = 6;
         peer.paired                = true;
         peer.heartbeat_interval_ms = 5000;
@@ -528,7 +546,7 @@ TEST_CASE("storage_nvs_recovery_scenario", "[espnow][storage][recovery][scenario
 
         // 4. Load should fail
         uint8_t loaded_channel;
-        std::vector<EspNowStorage::Peer> loaded_peers;
+        std::vector<PersistentPeer> loaded_peers;
         TEST_ASSERT_NOT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
 
         // 5. New save should overwrite corrupted data
@@ -538,7 +556,7 @@ TEST_CASE("storage_nvs_recovery_scenario", "[espnow][storage][recovery][scenario
         TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
 
         // Clean up
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -557,13 +575,13 @@ TEST_CASE("storage_optimized_save_no_changes", "[espnow][storage][performance][o
     {
         EspNowStorage storage;
         uint8_t channel = 6;
-        std::vector<EspNowStorage::Peer> peers;
+        std::vector<PersistentPeer> peers;
 
         // Add a peer
-        EspNowStorage::Peer peer;
+        PersistentPeer peer;
         memset(peer.mac, 0xAA, 6);
-        peer.type                  = NodeType::HUB;
-        peer.node_id               = NodeId::HUB;
+        peer.type                  = to_node_type(TestNodeType::HUB);
+        peer.node_id               = to_node_id(TestNodeId::HUB);
         peer.channel               = 6;
         peer.paired                = true;
         peer.heartbeat_interval_ms = 10000;
@@ -578,11 +596,11 @@ TEST_CASE("storage_optimized_save_no_changes", "[espnow][storage][performance][o
 
         // Change data and save with force_nvs_commit = false
         // Should save because there is a real change
-        std::vector<EspNowStorage::Peer> new_peers;
-        EspNowStorage::Peer new_peer;
+        std::vector<PersistentPeer> new_peers;
+        PersistentPeer new_peer;
         memset(new_peer.mac, 0xBB, 6);
-        new_peer.type                  = NodeType::SENSOR;
-        new_peer.node_id               = NodeId::SOLAR_SENSOR;
+        new_peer.type                  = to_node_type(TestNodeType::SENSOR);
+        new_peer.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
         new_peer.channel               = 11;
         new_peer.paired                = false;
         new_peer.heartbeat_interval_ms = 5000;
@@ -591,7 +609,7 @@ TEST_CASE("storage_optimized_save_no_changes", "[espnow][storage][performance][o
         TEST_ASSERT_EQUAL(ESP_OK, storage.save(11, new_peers, false));
 
         // Clean up
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -612,12 +630,12 @@ TEST_CASE("storage_memory_leak_check", "[espnow][storage][performance][memory]")
         // Execute multiple operations to detect accumulation
         for (int i = 0; i < 10; i++) {
             uint8_t channel = 6;
-            std::vector<EspNowStorage::Peer> peers;
+            std::vector<PersistentPeer> peers;
 
-            EspNowStorage::Peer peer;
+            PersistentPeer peer;
             memset(peer.mac, i, 6);
-            peer.type                  = NodeType::SENSOR;
-            peer.node_id               = NodeId::SOLAR_SENSOR;
+            peer.type                  = to_node_type(TestNodeType::SENSOR);
+            peer.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
             peer.channel               = 6;
             peer.paired                = true;
             peer.heartbeat_interval_ms = 5000;
@@ -626,12 +644,12 @@ TEST_CASE("storage_memory_leak_check", "[espnow][storage][performance][memory]")
             TEST_ASSERT_EQUAL(ESP_OK, storage.save(channel, peers, true));
 
             uint8_t loaded_channel;
-            std::vector<EspNowStorage::Peer> loaded_peers;
+            std::vector<PersistentPeer> loaded_peers;
             TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
         }
 
         // Clean up
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -652,12 +670,12 @@ TEST_CASE("storage_priority_rtc_over_nvs", "[espnow][storage][priority][rtc]")
 
         // 1. Save data "A" in RTC (via normal save)
         uint8_t channel_a = 11;
-        std::vector<EspNowStorage::Peer> peers_a;
+        std::vector<PersistentPeer> peers_a;
 
-        EspNowStorage::Peer peer_a;
+        PersistentPeer peer_a;
         memset(peer_a.mac, 0xAA, 6);
-        peer_a.type                  = NodeType::HUB;
-        peer_a.node_id               = NodeId::HUB;
+        peer_a.type                  = to_node_type(TestNodeType::HUB);
+        peer_a.node_id               = to_node_id(TestNodeId::HUB);
         peer_a.channel               = 11;
         peer_a.paired                = true;
         peer_a.heartbeat_interval_ms = 10000;
@@ -672,12 +690,12 @@ TEST_CASE("storage_priority_rtc_over_nvs", "[espnow][storage][priority][rtc]")
 
         // Create different data "B"
         uint8_t channel_b = 6;
-        std::vector<EspNowStorage::Peer> peers_b;
+        std::vector<PersistentPeer> peers_b;
 
-        EspNowStorage::Peer peer_b;
+        PersistentPeer peer_b;
         memset(peer_b.mac, 0xBB, 6);
-        peer_b.type                  = NodeType::SENSOR;
-        peer_b.node_id               = NodeId::SOLAR_SENSOR;
+        peer_b.type                  = to_node_type(TestNodeType::SENSOR);
+        peer_b.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
         peer_b.channel               = 6;
         peer_b.paired                = true;
         peer_b.heartbeat_interval_ms = 5000;
@@ -696,7 +714,7 @@ TEST_CASE("storage_priority_rtc_over_nvs", "[espnow][storage][priority][rtc]")
 
         // 4. Load should prioritize RTC (data "A")
         uint8_t loaded_channel;
-        std::vector<EspNowStorage::Peer> loaded_peers;
+        std::vector<PersistentPeer> loaded_peers;
         TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
 
         // Should load from RTC (channel 11, mac 0xAA)
@@ -705,7 +723,7 @@ TEST_CASE("storage_priority_rtc_over_nvs", "[espnow][storage][priority][rtc]")
         TEST_ASSERT_EQUAL_HEX8(0xAA, loaded_peers[0].mac[0]);
 
         // Clean up
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -728,14 +746,14 @@ TEST_CASE("storage_multiple_save_load_sequence", "[espnow][storage][concurrency]
         // Sequence of save/load to simulate real usage
         for (int i = 1; i <= 3; i++) {
             uint8_t channel = static_cast<uint8_t>(i + 5);
-            std::vector<EspNowStorage::Peer> peers;
+            std::vector<PersistentPeer> peers;
 
             // Add i peers
             for (int j = 0; j < i; j++) {
-                EspNowStorage::Peer peer;
+                PersistentPeer peer;
                 memset(peer.mac, static_cast<uint8_t>(0x10 * i + j), 6);
-                peer.type                  = (j == 0) ? NodeType::HUB : NodeType::SENSOR;
-                peer.node_id               = NodeId::SOLAR_SENSOR;
+                peer.type                  = (j == 0) ? to_node_type(TestNodeType::HUB) : to_node_type(TestNodeType::SENSOR);
+                peer.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
                 peer.channel               = channel;
                 peer.paired                = (j % 2 == 0);
                 peer.heartbeat_interval_ms = static_cast<uint32_t>(5000 + j * 1000);
@@ -745,7 +763,7 @@ TEST_CASE("storage_multiple_save_load_sequence", "[espnow][storage][concurrency]
             TEST_ASSERT_EQUAL(ESP_OK, storage.save(channel, peers, true));
 
             uint8_t loaded_channel;
-            std::vector<EspNowStorage::Peer> loaded_peers;
+            std::vector<PersistentPeer> loaded_peers;
             TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
 
             TEST_ASSERT_EQUAL(channel, loaded_channel);
@@ -753,7 +771,7 @@ TEST_CASE("storage_multiple_save_load_sequence", "[espnow][storage][concurrency]
         }
 
         // Clean up at the end
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
@@ -774,15 +792,15 @@ TEST_CASE("storage_stress_test", "[espnow][storage][stress][performance]")
         const int iterations = 50;
         for (int i = 0; i < iterations; i++) {
             uint8_t channel = static_cast<uint8_t>(i % 14 + 1); // Channels 1-14
-            std::vector<EspNowStorage::Peer> peers;
+            std::vector<PersistentPeer> peers;
 
             // Variable number of peers
             int num_peers = i % (EspNowStorage::MAX_PERSISTENT_PEERS + 1);
             for (int j = 0; j < num_peers; j++) {
-                EspNowStorage::Peer peer;
+                PersistentPeer peer;
                 memset(peer.mac, static_cast<uint8_t>(i + j), 6);
-                peer.type                  = (j % 2 == 0) ? NodeType::HUB : NodeType::SENSOR;
-                peer.node_id               = NodeId::SOLAR_SENSOR;
+                peer.type                  = (j % 2 == 0) ? to_node_type(TestNodeType::HUB) : to_node_type(TestNodeType::SENSOR);
+                peer.node_id               = to_node_id(TestNodeId::SOLAR_SENSOR);
                 peer.channel               = static_cast<uint8_t>(j % 14 + 1);
                 peer.paired                = (j % 3 == 0);
                 peer.heartbeat_interval_ms = static_cast<uint32_t>(1000 + j * 100);
@@ -792,7 +810,7 @@ TEST_CASE("storage_stress_test", "[espnow][storage][stress][performance]")
             TEST_ASSERT_EQUAL(ESP_OK, storage.save(channel, peers, true));
 
             uint8_t loaded_channel;
-            std::vector<EspNowStorage::Peer> loaded_peers;
+            std::vector<PersistentPeer> loaded_peers;
             TEST_ASSERT_EQUAL(ESP_OK, storage.load(loaded_channel, loaded_peers));
 
             // Basic verification
@@ -801,7 +819,7 @@ TEST_CASE("storage_stress_test", "[espnow][storage][stress][performance]")
         }
 
         // Clean up
-        std::vector<EspNowStorage::Peer> empty_peers;
+        std::vector<PersistentPeer> empty_peers;
         storage.save(1, empty_peers, true);
     }
 }
