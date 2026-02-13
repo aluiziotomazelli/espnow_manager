@@ -241,3 +241,41 @@ TEST_CASE("Router handles CHANNEL_SCAN_Response as Node", "[router]")
     TEST_ASSERT_EQUAL_MEMORY(src_mac, mock_peer.last_add_mac, 6);
     TEST_ASSERT_EQUAL(1, mock_tx.notify_hub_found_calls);
 }
+
+TEST_CASE("Router should_dispatch_to_worker logic", "[router]")
+{
+    TEST_ASSERT_TRUE(router->should_dispatch_to_worker(MessageType::HEARTBEAT));
+    TEST_ASSERT_FALSE(router->should_dispatch_to_worker(MessageType::DATA));
+}
+
+TEST_CASE("Router ignores CHANNEL_SCAN_PROBE as Node", "[router]")
+{
+    router->set_node_info(10, ReservedTypes::UNKNOWN); // Not a HUB
+
+    RxPacket p = create_packet(MessageType::CHANNEL_SCAN_PROBE, sizeof(MessageHeader));
+    MessageHeader h;
+    h.msg_type = MessageType::CHANNEL_SCAN_PROBE;
+    mock_codec.decode_header_ret = h;
+
+    router->handle_packet(p);
+
+    TEST_ASSERT_EQUAL(0, mock_tx.queue_packet_calls);
+}
+
+TEST_CASE("Router handles CHANNEL_SCAN_PROBE with encoding failure", "[router]")
+{
+    router->set_node_info(ReservedIds::HUB, ReservedTypes::HUB);
+
+    RxPacket p = create_packet(MessageType::CHANNEL_SCAN_PROBE, sizeof(MessageHeader));
+    MessageHeader h;
+    h.msg_type = MessageType::CHANNEL_SCAN_PROBE;
+    mock_codec.decode_header_ret = h;
+
+    // Simulate encoding failure
+    mock_codec.encode_ret = {};
+    mock_codec.use_encode_ret = true;
+
+    router->handle_packet(p);
+
+    TEST_ASSERT_EQUAL(0, mock_tx.queue_packet_calls);
+}
