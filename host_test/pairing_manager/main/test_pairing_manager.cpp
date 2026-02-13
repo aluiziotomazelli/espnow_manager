@@ -1,5 +1,6 @@
 #include "unity.h"
 #include "pairing_manager.hpp"
+#include "mock_pairing_manager.hpp"
 #include "mock_tx_manager.hpp"
 #include "mock_peer_manager.hpp"
 #include "mock_message_codec.hpp"
@@ -7,6 +8,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <cstring>
+
+class TestablePairingManager : public RealPairingManager
+{
+public:
+    using RealPairingManager::RealPairingManager;
+    void force_timeout() { on_timeout(); }
+    void force_periodic_send() { send_pair_request(); }
+};
 
 TEST_CASE("RealPairingManager init", "[pairing_manager]")
 {
@@ -36,6 +45,78 @@ TEST_CASE("RealPairingManager starts as Node", "[pairing_manager]")
     TEST_ASSERT_EQUAL(MessageType::PAIR_REQUEST, codec.last_encode_header.msg_type);
 
     pairing.deinit();
+}
+
+TEST_CASE("RealPairingManager Hub rejects pairing from another HUB", "[pairing_manager]")
+{
+    MockTxManager tx_mgr;
+    MockPeerManager peer_mgr;
+    MockMessageCodec codec;
+    RealPairingManager pairing(tx_mgr, peer_mgr, codec);
+
+    pairing.init(ReservedTypes::HUB, ReservedIds::HUB);
+    pairing.start(1000);
+
+    RxPacket packet;
+    PairRequest req;
+    req.header.msg_type = MessageType::PAIR_REQUEST;
+    req.header.sender_node_id = 2;
+    req.header.sender_type = ReservedTypes::HUB; // Another Hub
+
+    memcpy(packet.data, &req, sizeof(PairRequest));
+    packet.len = sizeof(PairRequest);
+    codec.decode_header_ret = req.header;
+
+    pairing.handle_request(packet);
+
+    // Should NOT add peer
+    TEST_ASSERT_EQUAL(0, peer_mgr.add_calls);
+
+    // Should send response with REJECTED_NOT_ALLOWED
+    TEST_ASSERT_EQUAL(1, tx_mgr.queue_packet_calls);
+
+    // Verify encoded status is REJECTED_NOT_ALLOWED
+    // We can check last_encode_payload if we captured it in MockMessageCodec
+    // PairResponse payload starts after MessageHeader
+    // In handle_request: auto encoded = codec_.encode(resp.header, &resp.status, ...)
+    TEST_ASSERT_EQUAL(1, codec.encode_calls);
+    PairStatus* status = (PairStatus*)codec.last_encode_payload.data();
+    TEST_ASSERT_EQUAL(PairStatus::REJECTED_NOT_ALLOWED, *status);
+
+    pairing.deinit();
+}
+
+TEST_CASE("RealPairingManager Node state cleanup after timeout", "[pairing_manager]")
+{
+    MockTxManager tx_mgr;
+    MockPeerManager peer_mgr;
+    MockMessageCodec codec;
+    TestablePairingManager pairing(tx_mgr, peer_mgr, codec);
+
+    pairing.init(2, 10);
+    pairing.start(1000);
+    TEST_ASSERT_TRUE(pairing.is_active());
+
+    pairing.force_timeout();
+
+    TEST_ASSERT_FALSE(pairing.is_active());
+}
+
+TEST_CASE("RealPairingManager Node periodic send", "[pairing_manager]")
+{
+    MockTxManager tx_mgr;
+    MockPeerManager peer_mgr;
+    MockMessageCodec codec;
+    TestablePairingManager pairing(tx_mgr, peer_mgr, codec);
+
+    pairing.init(2, 10);
+    pairing.start(1000); // 1st send
+    int initial_calls = tx_mgr.queue_packet_calls;
+
+    pairing.force_periodic_send(); // 2nd send
+
+    TEST_ASSERT_EQUAL(initial_calls + 1, tx_mgr.queue_packet_calls);
+    TEST_ASSERT_EQUAL(MessageType::PAIR_REQUEST, codec.last_encode_header.msg_type);
 }
 
 TEST_CASE("MockPairingManager spying and stubbing works", "[pairing_mock]")

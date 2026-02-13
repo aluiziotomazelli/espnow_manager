@@ -30,7 +30,7 @@ public:
     }
 
     void reset()
-    { // ← Helper pra limpar entre testes
+    { // ← Helper to clear between tests
         saved_channel = 0;
         saved_peers.clear();
         save_called     = false;
