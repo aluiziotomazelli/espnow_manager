@@ -7,7 +7,7 @@ list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/esp_netif")
 list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/lwip")
 list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/driver")
 
-set(COMPONENTS main espnow_manager)
+set(COMPONENTS main app)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(pairing_manager_host_test)

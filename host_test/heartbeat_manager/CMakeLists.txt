@@ -6,11 +6,12 @@ list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/esp_wifi")
 list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/esp_netif")
 list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/lwip")
 list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/driver")
+list(APPEND EXTRA_COMPONENT_DIRS "$ENV{IDF_PATH}/tools/mocks/esp_timer")
 
 set(COMPONENTS main app)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(tx_manager_host_test)
+project(heartbeat_manager_host_test)
 
 # Using coverage commands from NVS host test example: https://github.com/espressif/esp-idf/tree/v5.2.1/components/nvs_flash/host_test/nvs_page_test
 add_custom_command(

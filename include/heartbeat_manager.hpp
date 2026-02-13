@@ -30,6 +30,9 @@ private:
     uint32_t interval_ms_;
     TimerHandle_t timer_ = nullptr;
 
+protected:
     void send_heartbeat();
+
+private:
     static void timer_cb(TimerHandle_t xTimer);
 };
