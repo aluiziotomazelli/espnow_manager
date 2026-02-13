@@ -1,4 +1,5 @@
 #include "espnow_storage.hpp"
+#include "espnow_storage_backends.hpp"
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_rom_crc.h"
@@ -15,94 +16,91 @@ static const char *NVS_KEY       = "persist_data";
 // --- Real RTC Backend ---
 static RTC_DATA_ATTR PersistentData g_rtc_storage;
 
-class RealRtcBackend : public IPersistenceBackend
+RealRtcBackend::RealRtcBackend(PersistentData *storage_ptr)
+    : storage_(storage_ptr ? storage_ptr : &g_rtc_storage)
 {
-public:
-    esp_err_t load(void *data, size_t size) override
-    {
-        if (size > sizeof(PersistentData))
-            return ESP_ERR_INVALID_SIZE;
-        memcpy(data, &g_rtc_storage, size);
-        return ESP_OK;
-    }
+}
 
-    esp_err_t save(const void *data, size_t size) override
-    {
-        if (size > sizeof(PersistentData))
-            return ESP_ERR_INVALID_SIZE;
-        memcpy(&g_rtc_storage, data, size);
-        return ESP_OK;
-    }
-};
+esp_err_t RealRtcBackend::load(void *data, size_t size)
+{
+    if (size > sizeof(PersistentData))
+        return ESP_ERR_INVALID_SIZE;
+    memcpy(data, storage_, size);
+    return ESP_OK;
+}
+
+esp_err_t RealRtcBackend::save(const void *data, size_t size)
+{
+    if (size > sizeof(PersistentData))
+        return ESP_ERR_INVALID_SIZE;
+    memcpy(storage_, data, size);
+    return ESP_OK;
+}
 
 // --- Real NVS Backend ---
-class RealNvsBackend : public IPersistenceBackend
+
+esp_err_t RealNvsBackend::load(void *data, size_t size)
 {
-public:
-    esp_err_t load(void *data, size_t size) override
-    {
-        esp_err_t err = init_nvs();
-        if (err != ESP_OK)
-            return err;
+    esp_err_t err = init_nvs();
+    if (err != ESP_OK)
+        return err;
 
-        nvs_handle_t handle;
-        err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
-        if (err != ESP_OK)
-            return err;
+    nvs_handle_t handle;
+    err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err != ESP_OK)
+        return err;
 
-        size_t actual_size = size;
-        err                = nvs_get_blob(handle, NVS_KEY, data, &actual_size);
-        nvs_close(handle);
+    size_t actual_size = size;
+    err                = nvs_get_blob(handle, NVS_KEY, data, &actual_size);
+    nvs_close(handle);
 
-        if (err != ESP_OK)
-            return err;
-        if (actual_size != size)
-            return ESP_ERR_INVALID_SIZE;
+    if (err != ESP_OK)
+        return err;
+    if (actual_size != size)
+        return ESP_ERR_INVALID_SIZE;
 
+    return ESP_OK;
+}
+
+esp_err_t RealNvsBackend::save(const void *data, size_t size)
+{
+    esp_err_t err = init_nvs();
+    if (err != ESP_OK)
+        return err;
+
+    nvs_handle_t handle;
+    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK)
+        return err;
+
+    err = nvs_set_blob(handle, NVS_KEY, data, size);
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save data to NVS: 0x%x", err);
+    }
+
+    return err;
+}
+
+esp_err_t RealNvsBackend::init_nvs()
+{
+    static bool nvs_initialized = false;
+    if (nvs_initialized)
         return ESP_OK;
+
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
     }
-
-    esp_err_t save(const void *data, size_t size) override
-    {
-        esp_err_t err = init_nvs();
-        if (err != ESP_OK)
-            return err;
-
-        nvs_handle_t handle;
-        err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
-        if (err != ESP_OK)
-            return err;
-
-        err = nvs_set_blob(handle, NVS_KEY, data, size);
-        if (err == ESP_OK) {
-            err = nvs_commit(handle);
-        }
-        nvs_close(handle);
-
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to save data to NVS: 0x%x", err);
-        }
-
-        return err;
-    }
-
-private:
-    esp_err_t init_nvs()
-    {
-        static bool nvs_initialized = false;
-        if (nvs_initialized)
-            return ESP_OK;
-
-        esp_err_t err = nvs_flash_init();
-        if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-            ESP_ERROR_CHECK(nvs_flash_erase());
-            err = nvs_flash_init();
-        }
-        if (err == ESP_OK)
-            nvs_initialized = true;
-        return err;
-    }
-};
+    if (err == ESP_OK)
+        nvs_initialized = true;
+    return err;
+}
 
 // --- EspNowStorage Implementation ---
 
