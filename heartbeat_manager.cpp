@@ -50,7 +50,17 @@ esp_err_t RealHeartbeatManager::deinit()
 
 void RealHeartbeatManager::handle_response(NodeId hub_id, uint8_t channel)
 {
-    ESP_LOGI(TAG, "Heartbeat response received from Hub. Wifi Channel: %d", channel);
+    ESP_LOGI(TAG, "Heartbeat response received from Hub ID %d. Wifi Channel: %d", (int)hub_id, channel);
+
+    // Notify TxManager that the link is alive
+    tx_mgr_.notify_link_alive();
+
+    // Update the Hub's channel in PeerManager if we have its MAC
+    uint8_t mac[6];
+    if (peer_mgr_.find_mac(hub_id, mac))
+    {
+        peer_mgr_.add(hub_id, mac, channel, ReservedTypes::HUB);
+    }
 }
 
 void RealHeartbeatManager::handle_request(NodeId sender_id, const uint8_t *mac, uint64_t uptime_ms)

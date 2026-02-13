@@ -62,6 +62,7 @@ public:
     {
         find_mac_calls++;
         last_find_mac_id = id;
+        if (find_mac_ret && mac) memcpy(mac, last_add_mac, 6);
         return find_mac_ret;
     }
 

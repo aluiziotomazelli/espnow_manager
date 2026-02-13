@@ -10,6 +10,7 @@ class MockMessageCodec : public IMessageCodec
 public:
     // --- Stubbing variables (Control behavior) ---
     std::vector<uint8_t> encode_ret;
+    bool use_encode_ret = false;
     std::optional<MessageHeader> decode_header_ret;
     bool validate_crc_ret = true;
     uint8_t calculate_crc_ret = 0;
@@ -38,7 +39,7 @@ public:
             last_encode_payload.clear();
         }
 
-        if (!encode_ret.empty()) return encode_ret;
+        if (use_encode_ret) return encode_ret;
 
         // Default behavior: return a buffer of appropriate size if no stub is set
         return std::vector<uint8_t>(sizeof(MessageHeader) + len + CRC_SIZE);
@@ -67,6 +68,7 @@ public:
     }
 
     void reset() {
+        use_encode_ret = false;
         encode_calls = 0;
         decode_header_calls = 0;
         validate_crc_calls = 0;
