@@ -9,10 +9,20 @@
 #include "freertos/task.h"
 #include <cstring>
 
+/**
+ * @file test_pairing_manager.cpp
+ * @brief Unit tests for the RealPairingManager class.
+ *
+ * Pairing is the process where a Node finds a Hub and establishes a shared link.
+ * The manager handles both Hub-side (accept/reject) and Node-side (request/periodic) logic.
+ */
+
+// Inherit to expose protected methods for high-fidelity testing
 class TestablePairingManager : public RealPairingManager
 {
 public:
     using RealPairingManager::RealPairingManager;
+    // Expose internal callbacks for manual triggering in tests
     void force_timeout() { on_timeout(); }
     void force_periodic_send() { send_pair_request(); }
 };
@@ -24,6 +34,7 @@ TEST_CASE("RealPairingManager init", "[pairing_manager]")
     MockMessageCodec codec;
     RealPairingManager pairing(tx_mgr, peer_mgr, codec);
 
+    // Test basic initialization
     TEST_ASSERT_EQUAL(ESP_OK, pairing.init(ReservedTypes::HUB, ReservedIds::HUB));
 }
 
@@ -34,13 +45,13 @@ TEST_CASE("RealPairingManager starts as Node", "[pairing_manager]")
     MockMessageCodec codec;
     RealPairingManager pairing(tx_mgr, peer_mgr, codec);
 
-    pairing.init(2, 10); // Node type 2, ID 10
+    pairing.init(2, 10); // Configure as a regular Node (Type 2, ID 10)
 
-    // Node should send a pair request on start
+    // A regular Node should immediately send a pair request upon starting.
     TEST_ASSERT_EQUAL(ESP_OK, pairing.start(1000));
     TEST_ASSERT_TRUE(pairing.is_active());
 
-    // Check if send_pair_request was called (indirectly via tx_mgr.queue_packet)
+    // Verify that the PAIR_REQUEST was encoded and queued for transmission.
     TEST_ASSERT_EQUAL(1, tx_mgr.queue_packet_calls);
     TEST_ASSERT_EQUAL(MessageType::PAIR_REQUEST, codec.last_encode_header.msg_type);
 
@@ -54,14 +65,16 @@ TEST_CASE("RealPairingManager Hub rejects pairing from another HUB", "[pairing_m
     MockMessageCodec codec;
     RealPairingManager pairing(tx_mgr, peer_mgr, codec);
 
+    // Configure as HUB
     pairing.init(ReservedTypes::HUB, ReservedIds::HUB);
-    pairing.start(1000);
+    pairing.start(1000); // Enable pairing window
 
+    // Simulate a PAIR_REQUEST coming from ANOTHER Hub (invalid scenario)
     RxPacket packet;
     PairRequest req;
     req.header.msg_type = MessageType::PAIR_REQUEST;
     req.header.sender_node_id = 2;
-    req.header.sender_type = ReservedTypes::HUB; // Another Hub
+    req.header.sender_type = ReservedTypes::HUB;
 
     memcpy(packet.data, &req, sizeof(PairRequest));
     packet.len = sizeof(PairRequest);
@@ -69,16 +82,13 @@ TEST_CASE("RealPairingManager Hub rejects pairing from another HUB", "[pairing_m
 
     pairing.handle_request(packet);
 
-    // Should NOT add peer
+    // Verify: The peer should NOT be added.
     TEST_ASSERT_EQUAL(0, peer_mgr.add_calls);
 
-    // Should send response with REJECTED_NOT_ALLOWED
+    // Verify: A response should still be sent.
     TEST_ASSERT_EQUAL(1, tx_mgr.queue_packet_calls);
 
-    // Verify encoded status is REJECTED_NOT_ALLOWED
-    // We can check last_encode_payload if we captured it in MockMessageCodec
-    // PairResponse payload starts after MessageHeader
-    // In handle_request: auto encoded = codec_.encode(resp.header, &resp.status, ...)
+    // Verify: The encoded status should be REJECTED_NOT_ALLOWED.
     TEST_ASSERT_EQUAL(1, codec.encode_calls);
     PairStatus* status = (PairStatus*)codec.last_encode_payload.data();
     TEST_ASSERT_EQUAL(PairStatus::REJECTED_NOT_ALLOWED, *status);
@@ -97,8 +107,10 @@ TEST_CASE("RealPairingManager Node state cleanup after timeout", "[pairing_manag
     pairing.start(1000);
     TEST_ASSERT_TRUE(pairing.is_active());
 
+    // Simulate the expiration of the pairing window timer.
     pairing.force_timeout();
 
+    // Verify that the manager stopped the pairing process.
     TEST_ASSERT_FALSE(pairing.is_active());
 }
 
@@ -110,24 +122,31 @@ TEST_CASE("RealPairingManager Node periodic send", "[pairing_manager]")
     TestablePairingManager pairing(tx_mgr, peer_mgr, codec);
 
     pairing.init(2, 10);
-    pairing.start(1000); // 1st send
+    pairing.start(1000); // Triggers the 1st request
     int initial_calls = tx_mgr.queue_packet_calls;
 
-    pairing.force_periodic_send(); // 2nd send
+    // Simulate the periodic timer firing while still active.
+    pairing.force_periodic_send(); // Triggers the 2nd request
 
+    // Verify that a new packet was sent.
     TEST_ASSERT_EQUAL(initial_calls + 1, tx_mgr.queue_packet_calls);
     TEST_ASSERT_EQUAL(MessageType::PAIR_REQUEST, codec.last_encode_header.msg_type);
 }
 
 TEST_CASE("MockPairingManager spying and stubbing works", "[pairing_mock]")
 {
+    // Verification of the Mock class functionality for other component tests.
     MockPairingManager mock;
 
+    // Stubbing a return value
     mock.start_ret = ESP_FAIL;
     TEST_ASSERT_EQUAL(ESP_FAIL, mock.start(500));
+
+    // Spying on calls and arguments
     TEST_ASSERT_EQUAL(1, mock.start_calls);
     TEST_ASSERT_EQUAL(500, mock.last_timeout_ms);
 
+    // Testing the convenience struct overlay for captured packets
     RxPacket req_packet;
     req_packet.len = sizeof(PairRequest);
     PairRequest* req = (PairRequest*)req_packet.data;
@@ -151,7 +170,7 @@ TEST_CASE("RealPairingManager starts as Hub", "[pairing_manager]")
 
     pairing.init(ReservedTypes::HUB, ReservedIds::HUB);
 
-    // Hub should NOT send pair requests on start
+    // A HUB should NOT send pair requests on start; it should just listen.
     TEST_ASSERT_EQUAL(ESP_OK, pairing.start(1000));
     TEST_ASSERT_TRUE(pairing.is_active());
     TEST_ASSERT_EQUAL(0, tx_mgr.queue_packet_calls);
@@ -173,6 +192,7 @@ TEST_CASE("RealPairingManager Hub handles request", "[pairing_manager]")
     uint8_t sensor_mac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     memcpy(packet.src_mac, sensor_mac, 6);
 
+    // Prepare a valid PAIR_REQUEST from a sensor
     PairRequest req;
     req.header.msg_type = MessageType::PAIR_REQUEST;
     req.header.sender_node_id = 10;
@@ -182,17 +202,17 @@ TEST_CASE("RealPairingManager Hub handles request", "[pairing_manager]")
     memcpy(packet.data, &req, sizeof(PairRequest));
     packet.len = sizeof(PairRequest);
 
-    // Stub codec to decode header
+    // Stub codec to recognize the header
     codec.decode_header_ret = req.header;
 
     pairing.handle_request(packet);
 
-    // Hub should add peer
+    // Verify: The Hub should automatically add the sensor as a peer.
     TEST_ASSERT_EQUAL(1, peer_mgr.add_calls);
     TEST_ASSERT_EQUAL(10, peer_mgr.last_add_id);
     TEST_ASSERT_EQUAL_MEMORY(sensor_mac, peer_mgr.last_add_mac, 6);
 
-    // Hub should send response
+    // Verify: The Hub should send a PAIR_RESPONSE.
     TEST_ASSERT_EQUAL(1, tx_mgr.queue_packet_calls);
     TEST_ASSERT_EQUAL(MessageType::PAIR_RESPONSE, codec.last_encode_header.msg_type);
 
@@ -207,13 +227,14 @@ TEST_CASE("RealPairingManager Node handles response", "[pairing_manager]")
     RealPairingManager pairing(tx_mgr, peer_mgr, codec);
 
     pairing.init(2, 10);
-    pairing.start(1000);
+    pairing.start(1000); // Node is now waiting for a response
     TEST_ASSERT_TRUE(pairing.is_active());
 
     RxPacket packet;
     uint8_t hub_mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     memcpy(packet.src_mac, hub_mac, 6);
 
+    // Prepare a PAIR_RESPONSE from the Hub
     PairResponse resp;
     resp.header.msg_type = MessageType::PAIR_RESPONSE;
     resp.header.sender_node_id = 1;
@@ -228,12 +249,12 @@ TEST_CASE("RealPairingManager Node handles response", "[pairing_manager]")
 
     pairing.handle_response(packet);
 
-    // Node should add Hub peer
+    // Verify: The Node should add the Hub to its peer list using the provided channel.
     TEST_ASSERT_EQUAL(1, peer_mgr.add_calls);
     TEST_ASSERT_EQUAL(1, peer_mgr.last_add_id);
     TEST_ASSERT_EQUAL(6, peer_mgr.last_add_channel);
 
-    // Pairing should become inactive
+    // Verify: Pairing is finished, so the manager should become inactive.
     TEST_ASSERT_FALSE(pairing.is_active());
 
     pairing.deinit();

@@ -14,6 +14,14 @@ extern "C" {
 #include "freertos/queue.h"
 #include <cstring>
 
+/**
+ * @file test_message_router.cpp
+ * @brief Unit tests for the RealMessageRouter class.
+ *
+ * The MessageRouter is the central dispatcher of the system.
+ * It receives packets from the radio and routes them to the appropriate manager.
+ */
+
 static MockPeerManager mock_peer;
 static MockTxManager mock_tx;
 static MockHeartbeatManager mock_heartbeat;
@@ -23,6 +31,7 @@ static RealMessageRouter* router;
 
 void setUp(void)
 {
+    // Reset all mocks before each test to ensure isolation
     mock_peer.reset();
     mock_tx.reset();
     mock_heartbeat.reset();
@@ -36,7 +45,9 @@ void tearDown(void)
     delete router;
 }
 
-// Helper to create a basic RxPacket
+/**
+ * @brief Helper to create a basic RxPacket with a specific message type.
+ */
 static RxPacket create_packet(MessageType type, size_t len)
 {
     RxPacket p;
@@ -51,24 +62,32 @@ static RxPacket create_packet(MessageType type, size_t len)
 
 TEST_CASE("Router dispatches PAIR_REQUEST to PairingManager", "[router]")
 {
+    // Prepare a packet of type PAIR_REQUEST
     RxPacket p = create_packet(MessageType::PAIR_REQUEST, sizeof(PairRequest));
 
+    // We tell the MockCodec what it should return when the Router calls decode_header().
+    // This decouples the Router test from the actual Codec logic.
     MessageHeader h;
     h.msg_type = MessageType::PAIR_REQUEST;
     mock_codec.decode_header_ret = h;
 
     router->handle_packet(p);
 
+    // Verify if the Router correctly identified the type and called the specific manager.
     TEST_ASSERT_EQUAL(1, mock_pairing.handle_request_calls);
+
+    // Every valid packet received should notify the TxManager that the link is still alive.
     TEST_ASSERT_EQUAL(1, mock_tx.notify_link_alive_calls);
 }
 
 TEST_CASE("Router dispatches HEARTBEAT to HeartbeatManager", "[router]")
 {
+    // Setup a packet with a specific uptime value
     RxPacket p = create_packet(MessageType::HEARTBEAT, sizeof(HeartbeatMessage));
     HeartbeatMessage* msg = (HeartbeatMessage*)p.data;
     msg->uptime_ms = 12345;
 
+    // Mock the header decoding
     MessageHeader h;
     h.msg_type = MessageType::HEARTBEAT;
     h.sender_node_id = 10;
@@ -76,6 +95,7 @@ TEST_CASE("Router dispatches HEARTBEAT to HeartbeatManager", "[router]")
 
     router->handle_packet(p);
 
+    // Verify if the extracted uptime from the packet data was passed correctly to the heartbeat manager.
     TEST_ASSERT_EQUAL(1, mock_heartbeat.handle_request_calls);
     TEST_ASSERT_EQUAL(10, mock_heartbeat.last_sender_id);
     TEST_ASSERT_EQUAL(12345, mock_heartbeat.last_uptime_ms);
@@ -83,13 +103,14 @@ TEST_CASE("Router dispatches HEARTBEAT to HeartbeatManager", "[router]")
 
 TEST_CASE("Router handles malformed packets gracefully (Fuzzing)", "[router]")
 {
-    // Case 1: Header too small (codec fails)
+    // Case 1: Header too small (codec fails to decode)
     RxPacket p1 = create_packet(MessageType::HEARTBEAT, 5);
     mock_codec.decode_header_ret = std::nullopt;
     router->handle_packet(p1);
     TEST_ASSERT_EQUAL(0, mock_heartbeat.handle_request_calls);
 
     // Case 2: Header OK but payload too small for HEARTBEAT
+    // The router should validate the total length before casting to HeartbeatMessage.
     RxPacket p2 = create_packet(MessageType::HEARTBEAT, sizeof(MessageHeader) + 1);
     MessageHeader h;
     h.msg_type = MessageType::HEARTBEAT;
@@ -122,9 +143,11 @@ TEST_CASE("Router handles malformed packets gracefully (Fuzzing)", "[router]")
 
 TEST_CASE("Router dispatches DATA to app queue", "[router]")
 {
+    // Simulate a FreeRTOS queue being attached to the router (typically by the application).
     QueueHandle_t q = xQueueCreate(5, sizeof(RxPacket));
     router->set_app_queue(q);
 
+    // Create a DATA packet
     RxPacket p = create_packet(MessageType::DATA, sizeof(MessageHeader) + 10);
     MessageHeader h;
     h.msg_type = MessageType::DATA;
@@ -132,6 +155,7 @@ TEST_CASE("Router dispatches DATA to app queue", "[router]")
 
     router->handle_packet(p);
 
+    // Verify if the packet was successfully pushed into the FreeRTOS queue.
     RxPacket received;
     TEST_ASSERT_EQUAL(pdTRUE, xQueueReceive(q, &received, 0));
     TEST_ASSERT_EQUAL(p.len, received.len);
@@ -141,6 +165,7 @@ TEST_CASE("Router dispatches DATA to app queue", "[router]")
 
 TEST_CASE("Router handles app queue full (Flood simulation)", "[router]")
 {
+    // Create a small queue to easily fill it
     QueueHandle_t q = xQueueCreate(2, sizeof(RxPacket));
     router->set_app_queue(q);
 
@@ -150,10 +175,11 @@ TEST_CASE("Router handles app queue full (Flood simulation)", "[router]")
 
     RxPacket p = create_packet(MessageType::DATA, 20);
 
-    // Send 3 packets to a queue of size 2
+    // Send 3 packets to a queue of size 2.
+    // The 3rd packet should be dropped gracefully (logging a warning instead of crashing).
     router->handle_packet(p);
     router->handle_packet(p);
-    router->handle_packet(p); // This one should be dropped gracefully
+    router->handle_packet(p);
 
     TEST_ASSERT_EQUAL(2, uxQueueMessagesWaiting(q));
 
@@ -162,8 +188,10 @@ TEST_CASE("Router handles app queue full (Flood simulation)", "[router]")
 
 TEST_CASE("Router handles CHANNEL_SCAN_PROBE as Hub", "[router]")
 {
+    // Configure router to act as a HUB
     router->set_node_info(ReservedIds::HUB, ReservedTypes::HUB);
 
+    // Receive a scan probe from a sensor
     RxPacket p = create_packet(MessageType::CHANNEL_SCAN_PROBE, sizeof(MessageHeader));
     const uint8_t src_mac[] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     memcpy(p.src_mac, src_mac, 6);
@@ -173,13 +201,14 @@ TEST_CASE("Router handles CHANNEL_SCAN_PROBE as Hub", "[router]")
     h.sender_node_id = 10;
     mock_codec.decode_header_ret = h;
 
-    // Mock encoding of response
+    // Prepare a dummy encoded response in the mock codec
     std::vector<uint8_t> dummy_encoded(sizeof(MessageHeader));
     mock_codec.encode_ret = dummy_encoded;
     mock_codec.use_encode_ret = true;
 
     router->handle_packet(p);
 
+    // Verify if the HUB correctly queued a CHANNEL_SCAN_RESPONSE in the TxManager
     TEST_ASSERT_EQUAL(1, mock_tx.queue_packet_calls);
     TEST_ASSERT_EQUAL_MEMORY(src_mac, mock_tx.last_queued_packet.dest_mac, 6);
     TEST_ASSERT_EQUAL(MessageType::CHANNEL_SCAN_RESPONSE, mock_codec.last_encode_header.msg_type);
@@ -187,6 +216,9 @@ TEST_CASE("Router handles CHANNEL_SCAN_PROBE as Hub", "[router]")
 
 TEST_CASE("Router handles interleaved messages (Race condition)", "[router]")
 {
+    // In a radio system, responses can arrive in different orders.
+    // Here we simulate a Heartbeat Response followed immediately by a Pair Response.
+
     MessageHeader h_hb;
     h_hb.msg_type = MessageType::HEARTBEAT_RESPONSE;
 
@@ -196,30 +228,36 @@ TEST_CASE("Router handles interleaved messages (Race condition)", "[router]")
     RxPacket p_hb = create_packet(MessageType::HEARTBEAT_RESPONSE, sizeof(HeartbeatResponse));
     RxPacket p_pr = create_packet(MessageType::PAIR_RESPONSE, sizeof(PairResponse));
 
-    // HB Response
+    // Send HB Response
     mock_codec.decode_header_ret = h_hb;
     router->handle_packet(p_hb);
     TEST_ASSERT_EQUAL(1, mock_heartbeat.handle_response_calls);
 
-    // PR Response
+    // Send PR Response
     mock_codec.decode_header_ret = h_pr;
     router->handle_packet(p_pr);
     TEST_ASSERT_EQUAL(1, mock_pairing.handle_response_calls);
+
+    // Both managers should have been called correctly despite the rapid sequence.
 }
 
 TEST_CASE("Router dispatches ACK to TxManager", "[router]")
 {
+    // A logical ACK informs the TxManager that a packet was successfully processed by the recipient.
     RxPacket p = create_packet(MessageType::ACK, sizeof(MessageHeader));
     MessageHeader h;
     h.msg_type = MessageType::ACK;
     mock_codec.decode_header_ret = h;
 
     router->handle_packet(p);
+
+    // Verify notification to TxManager
     TEST_ASSERT_EQUAL(1, mock_tx.notify_logical_ack_calls);
 }
 
 TEST_CASE("Router handles CHANNEL_SCAN_Response as Node", "[router]")
 {
+    // A Node receiving a scan response should add the HUB as a peer.
     RxPacket p = create_packet(MessageType::CHANNEL_SCAN_RESPONSE, sizeof(MessageHeader));
     const uint8_t src_mac[] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     memcpy(p.src_mac, src_mac, 6);
@@ -230,27 +268,34 @@ TEST_CASE("Router handles CHANNEL_SCAN_Response as Node", "[router]")
     h.sender_type = ReservedTypes::HUB;
     mock_codec.decode_header_ret = h;
 
+    // The router will check its own channel during this process.
     uint8_t mock_ch = 6;
     esp_wifi_get_channel_IgnoreAndReturn(ESP_OK);
     esp_wifi_get_channel_ReturnThruPtr_primary(&mock_ch);
 
     router->handle_packet(p);
 
+    // Verify if the Hub was added to the PeerManager
     TEST_ASSERT_EQUAL(1, mock_peer.add_calls);
     TEST_ASSERT_EQUAL(1, mock_peer.last_add_id);
     TEST_ASSERT_EQUAL_MEMORY(src_mac, mock_peer.last_add_mac, 6);
+
+    // Verify notification that Hub was found
     TEST_ASSERT_EQUAL(1, mock_tx.notify_hub_found_calls);
 }
 
 TEST_CASE("Router should_dispatch_to_worker logic", "[router]")
 {
+    // Protocol messages should be handled by the internal task (worker),
+    // while app data (DATA/COMMAND) should be dispatched to the app queue.
     TEST_ASSERT_TRUE(router->should_dispatch_to_worker(MessageType::HEARTBEAT));
     TEST_ASSERT_FALSE(router->should_dispatch_to_worker(MessageType::DATA));
 }
 
 TEST_CASE("Router ignores CHANNEL_SCAN_PROBE as Node", "[router]")
 {
-    router->set_node_info(10, ReservedTypes::UNKNOWN); // Not a HUB
+    // Only a HUB should respond to scan probes. A regular Node should ignore them.
+    router->set_node_info(10, ReservedTypes::UNKNOWN); // Configure as a regular node
 
     RxPacket p = create_packet(MessageType::CHANNEL_SCAN_PROBE, sizeof(MessageHeader));
     MessageHeader h;
@@ -259,11 +304,13 @@ TEST_CASE("Router ignores CHANNEL_SCAN_PROBE as Node", "[router]")
 
     router->handle_packet(p);
 
+    // Verify that NO packet was queued for transmission
     TEST_ASSERT_EQUAL(0, mock_tx.queue_packet_calls);
 }
 
 TEST_CASE("Router handles CHANNEL_SCAN_PROBE with encoding failure", "[router]")
 {
+    // Even if configured as HUB, if encoding the response fails, nothing should be sent.
     router->set_node_info(ReservedIds::HUB, ReservedTypes::HUB);
 
     RxPacket p = create_packet(MessageType::CHANNEL_SCAN_PROBE, sizeof(MessageHeader));
@@ -271,11 +318,12 @@ TEST_CASE("Router handles CHANNEL_SCAN_PROBE with encoding failure", "[router]")
     h.msg_type = MessageType::CHANNEL_SCAN_PROBE;
     mock_codec.decode_header_ret = h;
 
-    // Simulate encoding failure
+    // Simulate encoding failure (empty buffer returned)
     mock_codec.encode_ret = {};
     mock_codec.use_encode_ret = true;
 
     router->handle_packet(p);
 
+    // Verify that NO packet was queued
     TEST_ASSERT_EQUAL(0, mock_tx.queue_packet_calls);
 }
