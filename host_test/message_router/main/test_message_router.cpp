@@ -7,6 +7,9 @@
 #include "mock_message_codec.hpp"
 #include "esp_log.h"
 #include "esp_wifi.h"
+extern "C" {
+#include "Mockesp_wifi.h"
+}
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include <cstring>
@@ -101,6 +104,20 @@ TEST_CASE("Router handles malformed packets gracefully (Fuzzing)", "[router]")
     mock_codec.decode_header_ret = h;
     router->handle_packet(p3);
     TEST_ASSERT_EQUAL(0, mock_pairing.handle_request_calls);
+
+    // Case 4: Payload too small for PAIR_RESPONSE
+    RxPacket p4 = create_packet(MessageType::PAIR_RESPONSE, sizeof(MessageHeader) + 1);
+    h.msg_type = MessageType::PAIR_RESPONSE;
+    mock_codec.decode_header_ret = h;
+    router->handle_packet(p4);
+    TEST_ASSERT_EQUAL(0, mock_pairing.handle_response_calls);
+
+    // Case 5: Payload too small for HEARTBEAT_RESPONSE
+    RxPacket p5 = create_packet(MessageType::HEARTBEAT_RESPONSE, sizeof(MessageHeader) + 1);
+    h.msg_type = MessageType::HEARTBEAT_RESPONSE;
+    mock_codec.decode_header_ret = h;
+    router->handle_packet(p5);
+    TEST_ASSERT_EQUAL(0, mock_heartbeat.handle_response_calls);
 }
 
 TEST_CASE("Router dispatches DATA to app queue", "[router]")
@@ -199,4 +216,28 @@ TEST_CASE("Router dispatches ACK to TxManager", "[router]")
 
     router->handle_packet(p);
     TEST_ASSERT_EQUAL(1, mock_tx.notify_logical_ack_calls);
+}
+
+TEST_CASE("Router handles CHANNEL_SCAN_Response as Node", "[router]")
+{
+    RxPacket p = create_packet(MessageType::CHANNEL_SCAN_RESPONSE, sizeof(MessageHeader));
+    const uint8_t src_mac[] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    memcpy(p.src_mac, src_mac, 6);
+
+    MessageHeader h;
+    h.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
+    h.sender_node_id = 1; // HUB ID
+    h.sender_type = ReservedTypes::HUB;
+    mock_codec.decode_header_ret = h;
+
+    uint8_t mock_ch = 6;
+    esp_wifi_get_channel_IgnoreAndReturn(ESP_OK);
+    esp_wifi_get_channel_ReturnThruPtr_primary(&mock_ch);
+
+    router->handle_packet(p);
+
+    TEST_ASSERT_EQUAL(1, mock_peer.add_calls);
+    TEST_ASSERT_EQUAL(1, mock_peer.last_add_id);
+    TEST_ASSERT_EQUAL_MEMORY(src_mac, mock_peer.last_add_mac, 6);
+    TEST_ASSERT_EQUAL(1, mock_tx.notify_hub_found_calls);
 }
