@@ -7,6 +7,20 @@ extern "C" {
 }
 #include <cstring>
 
+void setUp(void)
+{
+    Mockesp_wifi_Init();
+    Mockesp_now_Init();
+}
+
+void tearDown(void)
+{
+    Mockesp_wifi_Verify();
+    Mockesp_wifi_Destroy();
+    Mockesp_now_Verify();
+    Mockesp_now_Destroy();
+}
+
 /**
  * @file test_wifi_hal.cpp
  * @brief Tests for the RealWiFiHAL class, which wraps ESP-IDF WiFi and ESP-NOW APIs.

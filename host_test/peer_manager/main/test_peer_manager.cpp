@@ -7,6 +7,17 @@ extern "C" {
 }
 #include <cstring>
 
+void setUp(void)
+{
+    Mockesp_now_Init();
+}
+
+void tearDown(void)
+{
+    Mockesp_now_Verify();
+    Mockesp_now_Destroy();
+}
+
 /**
  * @file test_peer_manager.cpp
  * @brief Unit tests for the RealPeerManager class.
