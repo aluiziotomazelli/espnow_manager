@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 include(../common.cmake)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(pairing_manager_host_test)
+project(message_router_host_test)
 
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/build/coverage.info"

@@ -121,7 +121,13 @@ void RealTxManager::run()
 
                 TxState next = fsm_.on_tx_success(packet_to_send.requires_ack && send_result == ESP_OK);
                 if (next == TxState::WAITING_FOR_ACK) {
-                    PendingAck pending = { .sequence_number = header->sequence_number, .timestamp_ms = 0, .retries_left = 3, .packet = packet_to_send };
+                    PendingAck pending = {
+                        .sequence_number = header->sequence_number,
+                        .timestamp_ms = 0,
+                        .retries_left = 3,
+                        .packet = packet_to_send,
+                        .node_id = header->dest_node_id
+                    };
                     fsm_.set_pending_ack(pending);
                     xTimerStart(ack_timeout_timer_, 0);
                 }

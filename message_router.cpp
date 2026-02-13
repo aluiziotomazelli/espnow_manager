@@ -3,7 +3,7 @@
 #include "esp_wifi.h"
 #include <cstring>
 
-// static const char *TAG = "MessageRouter";
+static const char *TAG = "MessageRouter";
 
 RealMessageRouter::RealMessageRouter(IPeerManager &peer_manager,
                                      ITxManager &tx_manager,
@@ -28,17 +28,33 @@ void RealMessageRouter::handle_packet(const RxPacket &packet)
 
     switch (header.msg_type) {
     case MessageType::PAIR_REQUEST:
+        if (packet.len < sizeof(PairRequest)) {
+            ESP_LOGW(TAG, "Malformed PAIR_REQUEST: len %d < %d", (int)packet.len, (int)sizeof(PairRequest));
+            return;
+        }
         pairing_manager_.handle_request(packet);
         break;
     case MessageType::PAIR_RESPONSE:
+        if (packet.len < sizeof(PairResponse)) {
+            ESP_LOGW(TAG, "Malformed PAIR_RESPONSE: len %d < %d", (int)packet.len, (int)sizeof(PairResponse));
+            return;
+        }
         pairing_manager_.handle_response(packet);
         break;
     case MessageType::HEARTBEAT: {
+        if (packet.len < sizeof(HeartbeatMessage)) {
+            ESP_LOGW(TAG, "Malformed HEARTBEAT: len %d < %d", (int)packet.len, (int)sizeof(HeartbeatMessage));
+            return;
+        }
         auto msg = reinterpret_cast<const HeartbeatMessage *>(packet.data);
         heartbeat_manager_.handle_request(header.sender_node_id, packet.src_mac, msg->uptime_ms);
         break;
     }
     case MessageType::HEARTBEAT_RESPONSE: {
+        if (packet.len < sizeof(HeartbeatResponse)) {
+            ESP_LOGW(TAG, "Malformed HEARTBEAT_RESPONSE: len %d < %d", (int)packet.len, (int)sizeof(HeartbeatResponse));
+            return;
+        }
         auto resp = reinterpret_cast<const HeartbeatResponse *>(packet.data);
         heartbeat_manager_.handle_response(header.sender_node_id, resp->wifi_channel);
         // Note: Channel update should be handled by the observer/facade if needed
@@ -60,7 +76,9 @@ void RealMessageRouter::handle_packet(const RxPacket &packet)
     case MessageType::DATA:
     case MessageType::COMMAND:
         if (app_queue_) {
-            xQueueSend(app_queue_, &packet, 0);
+            if (xQueueSend(app_queue_, &packet, 0) != pdTRUE) {
+                ESP_LOGW(TAG, "App queue full, dropping packet type %d", (int)header.msg_type);
+            }
         }
         break;
     default:
