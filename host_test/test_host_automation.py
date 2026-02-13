@@ -34,6 +34,14 @@ def test_host_component(test_dir):
         except (subprocess.CalledProcessError, FileNotFoundError):
              pytest.fail("Failed to set target to linux. Ensure idf.py is in PATH.")
 
+    print(f"Cleaning old coverage data (.gcda) in {work_dir}...")
+    gcda_files = glob.glob(os.path.join(work_dir, "**/*.gcda"), recursive=True)
+    for f in gcda_files:
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+
     # 2. Build
     print(f"Building in {work_dir}...")
     try:
