@@ -87,10 +87,14 @@ esp_err_t EspNow::deinit()
     if (rx_dispatch_queue_ != nullptr) xQueueSend(rx_dispatch_queue_, &stop_packet, 0);
     if (transport_worker_queue_ != nullptr) xQueueSend(transport_worker_queue_, &stop_packet, 0);
 
-    // Wait for tasks to exit.
-    int timeout = 20; // 200ms
+    // Wait for tasks to exit (up to 1s).
+    int timeout = 100;
     while ((rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) && timeout-- > 0) {
         vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    if (timeout <= 0) {
+        ESP_LOGW(TAG, "Tasks did not terminate gracefully within timeout");
     }
 
     // Tasks should have deleted themselves.

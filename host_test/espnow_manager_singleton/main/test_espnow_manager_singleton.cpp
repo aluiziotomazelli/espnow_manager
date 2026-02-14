@@ -20,14 +20,18 @@ extern "C" {
 
 static QueueHandle_t app_queue;
 
+static esp_err_t mocked_get_mode(wifi_mode_t* mode, int calls) {
+    if (mode) *mode = WIFI_MODE_STA;
+    return ESP_OK;
+}
+
 void setUp(void) {
     Mockesp_wifi_Init();
     Mockesp_now_Init();
+    Mockesp_timer_Init();
 
     // Default expectations for init()
-    static wifi_mode_t mocked_mode = WIFI_MODE_STA;
-    esp_wifi_get_mode_IgnoreAndReturn(ESP_OK);
-    esp_wifi_get_mode_ReturnMemThruPtr_mode(&mocked_mode, sizeof(wifi_mode_t));
+    esp_wifi_get_mode_StubWithCallback(mocked_get_mode);
     esp_now_init_IgnoreAndReturn(ESP_OK);
     esp_now_register_recv_cb_IgnoreAndReturn(ESP_OK);
     esp_now_register_send_cb_IgnoreAndReturn(ESP_OK);
@@ -59,6 +63,8 @@ void tearDown(void) {
     Mockesp_wifi_Destroy();
     Mockesp_now_Verify();
     Mockesp_now_Destroy();
+    Mockesp_timer_Verify();
+    Mockesp_timer_Destroy();
 }
 
 TEST_CASE("EspNow singleton initialization and basic usage", "[espnow_manager]")
