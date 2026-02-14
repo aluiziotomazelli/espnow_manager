@@ -65,17 +65,19 @@ EspNow::~EspNow()
 
 esp_err_t EspNow::deinit()
 {
-    if (!is_initialized_) {
+    if (!is_initialized_ && !esp_now_initialized_ && rx_dispatch_queue_ == nullptr &&
+        transport_worker_queue_ == nullptr && ack_mutex_ == nullptr &&
+        rx_dispatch_task_handle_ == nullptr && transport_worker_task_handle_ == nullptr) {
         return ESP_OK;
     }
 
-    is_initialized_ = false;
     ESP_LOGI(TAG, "Deinitializing EspNow component...");
 
     if (tx_manager_) tx_manager_->deinit();
     if (heartbeat_manager_) heartbeat_manager_->deinit();
     if (pairing_manager_) pairing_manager_->deinit();
 
+    // Signal tasks to stop
     if (rx_dispatch_task_handle_ != nullptr) {
         xTaskNotify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
     }
@@ -93,18 +95,29 @@ esp_err_t EspNow::deinit()
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 
-    if (timeout <= 0) {
+    if (timeout <= 0 && (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr)) {
         ESP_LOGW(TAG, "Tasks did not terminate gracefully within timeout");
     }
 
     // Tasks should have deleted themselves.
 
-    std::vector<PeerInfo> peers = peer_manager_->get_all();
-    for (const auto &peer : peers) esp_now_del_peer(peer.mac);
-    esp_now_deinit();
+    if (esp_now_initialized_) {
+        if (peer_manager_) {
+            std::vector<PeerInfo> peers = peer_manager_->get_all();
+            for (const auto &peer : peers) esp_now_del_peer(peer.mac);
+        }
+        esp_now_deinit();
+        esp_now_initialized_ = false;
+    }
 
-    if (rx_dispatch_queue_ != nullptr) vQueueDelete(rx_dispatch_queue_);
-    if (transport_worker_queue_ != nullptr) vQueueDelete(transport_worker_queue_);
+    if (rx_dispatch_queue_ != nullptr) {
+        vQueueDelete(rx_dispatch_queue_);
+        rx_dispatch_queue_ = nullptr;
+    }
+    if (transport_worker_queue_ != nullptr) {
+        vQueueDelete(transport_worker_queue_);
+        transport_worker_queue_ = nullptr;
+    }
 
     if (ack_mutex_ != nullptr) {
         vSemaphoreDelete(ack_mutex_);
@@ -113,6 +126,7 @@ esp_err_t EspNow::deinit()
 
     last_header_requiring_ack_.reset();
     config_ = EspNowConfig();
+    is_initialized_ = false;
 
     ESP_LOGI(TAG, "EspNow component deinitialized.");
     return ESP_OK;
@@ -124,39 +138,90 @@ esp_err_t EspNow::init(const EspNowConfig &config)
     if (config.app_rx_queue == nullptr) return ESP_ERR_INVALID_ARG;
 
     config_ = config;
+    esp_err_t ret = ESP_OK;
 
     wifi_mode_t mode;
-    if (esp_wifi_get_mode(&mode) != ESP_OK || mode == WIFI_MODE_NULL) return ESP_ERR_INVALID_STATE;
+    ret = esp_wifi_get_mode(&mode);
+    if (ret != ESP_OK || mode == WIFI_MODE_NULL) {
+        ESP_LOGE(TAG, "WiFi not initialized. Mode is %d, error: %s", mode, esp_err_to_name(ret));
+        return (ret == ESP_OK) ? ESP_ERR_INVALID_STATE : ret;
+    }
 
     uint8_t stored_channel;
     if (peer_manager_->load_from_storage(stored_channel) == ESP_OK) {
         config_.wifi_channel = stored_channel;
     }
 
-    ESP_ERROR_CHECK(esp_now_init());
-    ESP_ERROR_CHECK(esp_now_register_recv_cb(esp_now_recv_cb));
-    ESP_ERROR_CHECK(esp_now_register_send_cb(esp_now_send_cb));
-    ESP_ERROR_CHECK(esp_wifi_set_channel(config_.wifi_channel, WIFI_SECOND_CHAN_NONE));
+    ret = esp_now_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "esp_now_init failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
+    esp_now_initialized_ = true;
 
-    esp_now_peer_info_t broadcast_peer = {};
-    const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    memcpy(broadcast_peer.peer_addr, broadcast_mac, 6);
-    broadcast_peer.channel = config_.wifi_channel;
-    broadcast_peer.ifidx = WIFI_IF_STA;
-    broadcast_peer.encrypt = false;
-    ESP_ERROR_CHECK(esp_now_add_peer(&broadcast_peer));
+    ret = esp_now_register_recv_cb(esp_now_recv_cb);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "esp_now_register_recv_cb failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
+
+    ret = esp_now_register_send_cb(esp_now_send_cb);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "esp_now_register_send_cb failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
+
+    ret = esp_wifi_set_channel(config_.wifi_channel, WIFI_SECOND_CHAN_NONE);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_set_channel failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
+
+    {
+        esp_now_peer_info_t broadcast_peer = {};
+        const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        memcpy(broadcast_peer.peer_addr, broadcast_mac, 6);
+        broadcast_peer.channel = config_.wifi_channel;
+        broadcast_peer.ifidx = WIFI_IF_STA;
+        broadcast_peer.encrypt = false;
+        ret = esp_now_add_peer(&broadcast_peer);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "esp_now_add_peer (broadcast) failed: %s", esp_err_to_name(ret));
+            goto fail;
+        }
+    }
 
     ack_mutex_ = xSemaphoreCreateMutex();
-    if (ack_mutex_ == nullptr) return ESP_FAIL;
+    if (ack_mutex_ == nullptr) {
+        ESP_LOGE(TAG, "Failed to create ack_mutex");
+        ret = ESP_ERR_NO_MEM;
+        goto fail;
+    }
 
     rx_dispatch_queue_ = xQueueCreate(30, sizeof(RxPacket));
     transport_worker_queue_ = xQueueCreate(20, sizeof(RxPacket));
-    if (rx_dispatch_queue_ == nullptr || transport_worker_queue_ == nullptr) return ESP_FAIL;
+    if (rx_dispatch_queue_ == nullptr || transport_worker_queue_ == nullptr) {
+        ESP_LOGE(TAG, "Failed to create queues");
+        ret = ESP_ERR_NO_MEM;
+        goto fail;
+    }
 
-    if (xTaskCreate(rx_dispatch_task, "espnow_dispatch", config_.stack_size_rx_dispatch, this, 10, &rx_dispatch_task_handle_) != pdPASS) return ESP_FAIL;
-    if (xTaskCreate(transport_worker_task, "espnow_worker", config_.stack_size_transport_worker, this, 5, &transport_worker_task_handle_) != pdPASS) return ESP_FAIL;
+    if (xTaskCreate(rx_dispatch_task, "espnow_dispatch", config_.stack_size_rx_dispatch, this, 10, &rx_dispatch_task_handle_) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create rx_dispatch task");
+        ret = ESP_FAIL;
+        goto fail;
+    }
+    if (xTaskCreate(transport_worker_task, "espnow_worker", config_.stack_size_transport_worker, this, 5, &transport_worker_task_handle_) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create transport_worker task");
+        ret = ESP_FAIL;
+        goto fail;
+    }
 
-    if (tx_manager_->init(config_.stack_size_tx_manager, 9) != ESP_OK) return ESP_FAIL;
+    ret = tx_manager_->init(config_.stack_size_tx_manager, 9);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "tx_manager init failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
 
     is_initialized_ = true;
 
@@ -167,21 +232,35 @@ esp_err_t EspNow::init(const EspNowConfig &config)
         message_router_->set_node_info(config_.node_id, config_.node_type);
     }
 
-    std::vector<PeerInfo> peers = peer_manager_->get_all();
-    for (auto &peer : peers) {
-        esp_now_peer_info_t info = {};
-        memcpy(info.peer_addr, peer.mac, 6);
-        info.channel = peer.channel;
-        info.ifidx = WIFI_IF_STA;
-        info.encrypt = false;
-        esp_now_add_peer(&info);
+    {
+        std::vector<PeerInfo> peers = peer_manager_->get_all();
+        for (auto &peer : peers) {
+            esp_now_peer_info_t info = {};
+            memcpy(info.peer_addr, peer.mac, 6);
+            info.channel = peer.channel;
+            info.ifidx = WIFI_IF_STA;
+            info.encrypt = false;
+            esp_now_add_peer(&info);
+        }
     }
 
-    if (heartbeat_manager_->init(config_.heartbeat_interval_ms, config_.node_type) != ESP_OK) return ESP_FAIL;
-    if (pairing_manager_->init(config_.node_type, config_.node_id) != ESP_OK) return ESP_FAIL;
+    ret = heartbeat_manager_->init(config_.heartbeat_interval_ms, config_.node_type);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "heartbeat_manager init failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
+    ret = pairing_manager_->init(config_.node_type, config_.node_id);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "pairing_manager init failed: %s", esp_err_to_name(ret));
+        goto fail;
+    }
 
     ESP_LOGI(TAG, "EspNow component initialized successfully.");
     return ESP_OK;
+
+fail:
+    deinit();
+    return ret;
 }
 
 esp_err_t EspNow::send_data(NodeId dest_node_id, PayloadType payload_type, const void *payload, size_t len, bool require_ack)

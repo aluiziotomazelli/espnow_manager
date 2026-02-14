@@ -154,6 +154,7 @@ protected:
 
     SemaphoreHandle_t ack_mutex_ = nullptr;
     bool is_initialized_         = false;
+    bool esp_now_initialized_    = false;
     std::optional<MessageHeader> last_header_requiring_ack_{};
 
     QueueHandle_t rx_dispatch_queue_           = nullptr;

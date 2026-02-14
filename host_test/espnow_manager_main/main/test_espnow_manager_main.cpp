@@ -131,11 +131,6 @@ TEST_CASE("EspNow Init/Deinit (Happy Path)", "[espnow_manager]")
     config.node_id = 10;
     config.node_type = 2;
 
-    // We need to satisfy some internal IDF calls in init()
-    // Since we're not including Mockesp_wifi.h directly here to avoid conflict
-    // if it's already included via common, let's just assume they are mocked.
-    // In idf.py build, the whole archive should link the mocks.
-
     TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
     TEST_ASSERT_TRUE(espnow->is_initialized());
 
@@ -147,6 +142,30 @@ TEST_CASE("EspNow Init/Deinit (Happy Path)", "[espnow_manager]")
 
     TEST_ASSERT_EQUAL(ESP_OK, espnow->deinit());
     TEST_ASSERT_FALSE(espnow->is_initialized());
+}
+
+TEST_CASE("EspNow Init cleans up on partial failure", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+
+    // Simulate failure at esp_now_register_recv_cb() which is AFTER esp_now_init()
+    esp_now_init_StopIgnore();
+    esp_now_init_ExpectAndReturn(ESP_OK);
+    esp_now_register_recv_cb_StopIgnore();
+    esp_now_register_recv_cb_ExpectAnyArgsAndReturn(ESP_FAIL);
+
+    // Deinit expectations: since esp_now_init succeeded, esp_now_deinit MUST be called.
+    esp_now_deinit_StopIgnore();
+    esp_now_deinit_ExpectAndReturn(ESP_OK);
+
+    esp_err_t err = espnow->init(config);
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+    TEST_ASSERT_FALSE(espnow->is_initialized());
+
+    // Verify queues and mutex are null (cleaned up by deinit)
+    TEST_ASSERT_NULL(espnow->get_rx_dispatch_queue());
+    TEST_ASSERT_NULL(espnow->get_transport_worker_queue());
 }
 
 TEST_CASE("EspNow Init rejects invalid config", "[espnow_manager]")
