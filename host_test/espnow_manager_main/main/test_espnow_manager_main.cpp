@@ -131,6 +131,18 @@ TEST_CASE("EspNow Init/Deinit (Happy Path)", "[espnow_manager]")
     config.node_id = 10;
     config.node_type = 2;
 
+    // Simulate existing peers in storage
+    PeerInfo existing_peer = {};
+    existing_peer.node_id = 55;
+    memset(existing_peer.mac, 0xAA, 6);
+    existing_peer.channel = 1;
+    mock_peer->get_all_ret.push_back(existing_peer);
+
+    // Expecting esp_now_add_peer for the broadcast AND the existing peer
+    esp_now_add_peer_StopIgnore();
+    esp_now_add_peer_ExpectAnyArgsAndReturn(ESP_OK); // broadcast
+    esp_now_add_peer_ExpectAnyArgsAndReturn(ESP_OK); // existing peer
+
     TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
     TEST_ASSERT_TRUE(espnow->is_initialized());
 
@@ -142,6 +154,72 @@ TEST_CASE("EspNow Init/Deinit (Happy Path)", "[espnow_manager]")
 
     TEST_ASSERT_EQUAL(ESP_OK, espnow->deinit());
     TEST_ASSERT_FALSE(espnow->is_initialized());
+}
+
+TEST_CASE("EspNow: Transport worker updates channel on HeartbeatResponse", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+    config.wifi_channel = 1;
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
+
+    HeartbeatResponse resp = {};
+    resp.header.msg_type = MessageType::HEARTBEAT_RESPONSE;
+    resp.wifi_channel = 6;
+
+    RxPacket packet;
+    packet.len = sizeof(resp);
+    memcpy(packet.data, &resp, sizeof(resp));
+
+    mock_codec->validate_crc_ret = true;
+    mock_codec->decode_header_ret = resp.header;
+    mock_router->should_dispatch_to_worker_ret = true;
+
+    // Expect broadcast peer to be modified
+    // We rely on Ignore from setUp, but we can verify via persist_calls
+
+    // Inject into dispatch queue -> worker queue
+    xQueueSend(espnow->get_rx_dispatch_queue(), &packet, 0);
+
+    // Wait for worker task to process and call persist
+    WAIT_FOR_CONDITION(mock_peer->persist_calls >= 1, 1000);
+
+    TEST_ASSERT_EQUAL(1, mock_peer->persist_calls);
+    TEST_ASSERT_EQUAL(6, mock_peer->last_persist_wifi_channel);
+}
+
+TEST_CASE("EspNow: Transport worker updates channel on ChannelScanResponse", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+    config.wifi_channel = 1;
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
+
+    MessageHeader h = {};
+    h.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
+
+    RxPacket packet;
+    packet.len = sizeof(h);
+    memcpy(packet.data, &h, sizeof(h));
+
+    mock_codec->validate_crc_ret = true;
+    mock_codec->decode_header_ret = h;
+    mock_router->should_dispatch_to_worker_ret = true;
+
+    // Simulate esp_wifi_get_channel returning 11
+    uint8_t mocked_ch = 11;
+    esp_wifi_get_channel_ExpectAnyArgsAndReturn(ESP_OK);
+    esp_wifi_get_channel_ReturnMemThruPtr_primary(&mocked_ch, sizeof(uint8_t));
+
+    // Expect broadcast peer to be modified
+    // We rely on Ignore from setUp
+
+    xQueueSend(espnow->get_rx_dispatch_queue(), &packet, 0);
+
+    WAIT_FOR_CONDITION(mock_peer->persist_calls >= 1, 1000);
+
+    TEST_ASSERT_EQUAL(1, mock_peer->persist_calls);
+    TEST_ASSERT_EQUAL(11, mock_peer->last_persist_wifi_channel);
 }
 
 TEST_CASE("EspNow Init cleans up on partial failure", "[espnow_manager]")
@@ -294,6 +372,56 @@ TEST_CASE("EspNow Public API: send_data calls TxManager", "[espnow_manager]")
     TEST_ASSERT_TRUE(mock_tx->last_queued_packet.requires_ack);
 }
 
+TEST_CASE("EspNow Public API: send_command calls TxManager", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
+
+    uint8_t payload[] = {5};
+    mock_peer->find_mac_ret = true;
+
+    mock_codec->encode_ret = {0xCC, 0xDD};
+    mock_codec->use_encode_ret = true;
+
+    esp_err_t err = espnow->send_command(30, CommandType::REBOOT, payload, 1, false);
+
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(1, mock_tx->queue_packet_calls);
+    TEST_ASSERT_EQUAL(MessageType::COMMAND, mock_codec->last_encode_header.msg_type);
+    TEST_ASSERT_EQUAL(static_cast<PayloadType>(CommandType::REBOOT), mock_codec->last_encode_header.payload_type);
+}
+
+TEST_CASE("EspNow Init: fails if broadcast peer addition fails", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+
+    esp_now_init_StopIgnore();
+    esp_now_init_ExpectAndReturn(ESP_OK);
+    esp_now_register_recv_cb_IgnoreAndReturn(ESP_OK);
+    esp_now_register_send_cb_IgnoreAndReturn(ESP_OK);
+    esp_wifi_set_channel_IgnoreAndReturn(ESP_OK);
+
+    // Fail the broadcast peer addition
+    esp_now_add_peer_StopIgnore();
+    esp_now_add_peer_ExpectAnyArgsAndReturn(ESP_FAIL);
+
+    esp_err_t err = espnow->init(config);
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+}
+
+TEST_CASE("EspNow Init: fails if tx_manager init fails", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+
+    mock_tx->init_ret = ESP_FAIL;
+
+    esp_err_t err = espnow->init(config);
+    TEST_ASSERT_EQUAL(ESP_FAIL, err);
+}
+
 TEST_CASE("EspNow Public API: confirm_reception sends logical ACK", "[espnow_manager]")
 {
     EspNowConfig config;
@@ -302,7 +430,7 @@ TEST_CASE("EspNow Public API: confirm_reception sends logical ACK", "[espnow_man
 
     // 1. Manually set a pending ACK (simulating a received packet with requires_ack=true)
     // We do this by injecting a packet and letting the task process it.
-    MessageHeader h = {.msg_type = MessageType::DATA, .sequence_number = 5, .sender_node_id = 10, .requires_ack = true};
+    MessageHeader h = {.msg_type = MessageType::DATA, .sequence_number = 5, .sender_type = 2, .sender_node_id = 10, .payload_type = 0, .requires_ack = true, .dest_node_id = 1, .timestamp_ms = 0};
     mock_codec->decode_header_ret = h;
     mock_codec->validate_crc_ret = true;
     mock_router->should_dispatch_to_worker_ret = false;
