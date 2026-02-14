@@ -77,20 +77,23 @@ esp_err_t EspNow::deinit()
     if (pairing_manager_) pairing_manager_->deinit();
 
     if (rx_dispatch_task_handle_ != nullptr) {
-        xTaskNotify(rx_dispatch_task_handle_, 0x100, eSetBits); // NOTIFY_STOP
+        xTaskNotify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
     }
     if (transport_worker_task_handle_ != nullptr) {
-        xTaskNotify(transport_worker_task_handle_, 0x100, eSetBits); // NOTIFY_STOP
+        xTaskNotify(transport_worker_task_handle_, NOTIFY_STOP, eSetBits);
     }
 
     RxPacket stop_packet = {};
     if (rx_dispatch_queue_ != nullptr) xQueueSend(rx_dispatch_queue_, &stop_packet, 0);
     if (transport_worker_queue_ != nullptr) xQueueSend(transport_worker_queue_, &stop_packet, 0);
 
-    vTaskDelay(pdMS_TO_TICKS(150));
+    // Wait for tasks to exit.
+    int timeout = 20; // 200ms
+    while ((rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) && timeout-- > 0) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 
-    if (rx_dispatch_task_handle_ != nullptr) vTaskDelete(rx_dispatch_task_handle_);
-    if (transport_worker_task_handle_ != nullptr) vTaskDelete(transport_worker_task_handle_);
+    // Tasks should have deleted themselves.
 
     std::vector<PeerInfo> peers = peer_manager_->get_all();
     for (const auto &peer : peers) esp_now_del_peer(peer.mac);
@@ -298,8 +301,14 @@ void EspNow::rx_dispatch_task(void *arg)
     RxPacket packet;
     while (true) {
         uint32_t notifications = 0;
-        if (xTaskNotifyWait(0, 0x100, &notifications, 0) == pdTRUE && (notifications & 0x100)) break;
+        if (xTaskNotifyWait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE && (notifications & NOTIFY_STOP)) break;
         if (xQueueReceive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
+            // Check for stop packet (empty packet or specific flag)
+            if (packet.len == 0) {
+                 uint32_t notif = 0;
+                 if (xTaskNotifyWait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif & NOTIFY_STOP)) break;
+            }
+
             if (!self->message_codec_->validate_crc(packet.data, packet.len)) continue;
             auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
             if (!header_opt) continue;
@@ -318,6 +327,7 @@ void EspNow::rx_dispatch_task(void *arg)
             }
         }
     }
+    self->rx_dispatch_task_handle_ = nullptr;
     vTaskDelete(NULL);
 }
 
@@ -327,8 +337,13 @@ void EspNow::transport_worker_task(void *arg)
     RxPacket packet;
     while (true) {
         uint32_t notifications = 0;
-        if (xTaskNotifyWait(0, 0x100, &notifications, 0) == pdTRUE && (notifications & 0x100)) break;
+        if (xTaskNotifyWait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE && (notifications & NOTIFY_STOP)) break;
         if (xQueueReceive(self->transport_worker_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
+             if (packet.len == 0) {
+                 uint32_t notif = 0;
+                 if (xTaskNotifyWait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif & NOTIFY_STOP)) break;
+            }
+
             auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
             if (!header_opt) continue;
             const MessageHeader &header = header_opt.value();
@@ -346,6 +361,7 @@ void EspNow::transport_worker_task(void *arg)
             }
         }
     }
+    self->transport_worker_task_handle_ = nullptr;
     vTaskDelete(NULL);
 }
 

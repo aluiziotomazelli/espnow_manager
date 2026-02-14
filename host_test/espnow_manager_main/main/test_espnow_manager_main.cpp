@@ -1,0 +1,297 @@
+#include "unity.h"
+#include "espnow_manager.hpp"
+#include "host_test_common.hpp"
+#include "esp_log.h"
+#include "esp_wifi.h"
+extern "C" {
+#include "Mockesp_wifi.h"
+#include "Mockesp_now.h"
+#include "Mockesp_timer.h"
+}
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include <cstring>
+#include <memory>
+
+/**
+ * @file test_espnow_manager_main.cpp
+ * @brief Integration tests for EspNow manager using Dependency Injection.
+ *
+ * These tests verify the orchestration logic of the EspNow class, ensuring that
+ * internal tasks are correctly created, data flows between the dispatch and worker tasks,
+ * and the public API interacts correctly with the sub-managers.
+ */
+
+// Helper to wait for an asynchronous condition with timeout.
+#define WAIT_FOR_CONDITION(cond, timeout_ms) \
+    { \
+        int count = 0; \
+        while (!(cond) && count < (timeout_ms)) { \
+            vTaskDelay(pdMS_TO_TICKS(10)); \
+            count += 10; \
+        } \
+    }
+
+// Wrapper class to expose internal state for testing.
+class TestableEspNow : public EspNow {
+public:
+    TestableEspNow(std::unique_ptr<IPeerManager> peer_manager,
+                   std::unique_ptr<ITxManager> tx_manager,
+                   IChannelScanner *scanner_ptr,
+                   std::unique_ptr<IMessageCodec> message_codec,
+                   std::unique_ptr<IHeartbeatManager> heartbeat_manager,
+                   std::unique_ptr<IPairingManager> pairing_manager,
+                   std::unique_ptr<IMessageRouter> message_router)
+        : EspNow(std::move(peer_manager), std::move(tx_manager), scanner_ptr,
+                 std::move(message_codec), std::move(heartbeat_manager),
+                 std::move(pairing_manager), std::move(message_router)) {}
+
+    QueueHandle_t get_rx_dispatch_queue() { return rx_dispatch_queue_; }
+    QueueHandle_t get_transport_worker_queue() { return transport_worker_queue_; }
+    bool is_initialized() { return is_initialized_; }
+    std::optional<MessageHeader> get_last_header_requiring_ack() { return last_header_requiring_ack_; }
+};
+
+static MockPeerManager* mock_peer;
+static MockTxManager* mock_tx;
+static MockChannelScanner* mock_scanner;
+static MockMessageCodec* mock_codec;
+static MockHeartbeatManager* mock_heartbeat;
+static MockPairingManager* mock_pairing;
+static MockMessageRouter* mock_router;
+static TestableEspNow* espnow;
+static QueueHandle_t app_queue;
+
+void setUp(void) {
+    Mockesp_wifi_Init();
+    Mockesp_now_Init();
+
+    // Default expectations for init()
+    static wifi_mode_t mocked_mode = WIFI_MODE_STA;
+    esp_wifi_get_mode_IgnoreAndReturn(ESP_OK);
+    esp_wifi_get_mode_ReturnMemThruPtr_mode(&mocked_mode, sizeof(wifi_mode_t));
+    esp_now_init_IgnoreAndReturn(ESP_OK);
+    esp_now_register_recv_cb_IgnoreAndReturn(ESP_OK);
+    esp_now_register_send_cb_IgnoreAndReturn(ESP_OK);
+    esp_wifi_set_channel_IgnoreAndReturn(ESP_OK);
+    esp_now_add_peer_IgnoreAndReturn(ESP_OK);
+    esp_now_mod_peer_IgnoreAndReturn(ESP_OK);
+    esp_now_del_peer_IgnoreAndReturn(ESP_OK);
+    esp_now_deinit_IgnoreAndReturn(ESP_OK);
+    esp_timer_get_time_IgnoreAndReturn(0);
+
+    mock_peer = new MockPeerManager();
+    mock_tx = new MockTxManager();
+    mock_scanner = new MockChannelScanner();
+    mock_codec = new MockMessageCodec();
+    mock_heartbeat = new MockHeartbeatManager();
+    mock_pairing = new MockPairingManager();
+    mock_router = new MockMessageRouter();
+
+    espnow = new TestableEspNow(
+        std::unique_ptr<IPeerManager>(mock_peer),
+        std::unique_ptr<ITxManager>(mock_tx),
+        mock_scanner,
+        std::unique_ptr<IMessageCodec>(mock_codec),
+        std::unique_ptr<IHeartbeatManager>(mock_heartbeat),
+        std::unique_ptr<IPairingManager>(mock_pairing),
+        std::unique_ptr<IMessageRouter>(mock_router)
+    );
+
+    app_queue = xQueueCreate(10, sizeof(RxPacket));
+}
+
+void tearDown(void) {
+    if (espnow->is_initialized()) {
+        espnow->deinit();
+    }
+    delete espnow;
+    if (app_queue) vQueueDelete(app_queue);
+
+    Mockesp_wifi_Verify();
+    Mockesp_wifi_Destroy();
+    Mockesp_now_Verify();
+    Mockesp_now_Destroy();
+}
+
+TEST_CASE("EspNow Init/Deinit (Happy Path)", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+    config.node_id = 10;
+    config.node_type = 2;
+
+    // We need to satisfy some internal IDF calls in init()
+    // Since we're not including Mockesp_wifi.h directly here to avoid conflict
+    // if it's already included via common, let's just assume they are mocked.
+    // In idf.py build, the whole archive should link the mocks.
+
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
+    TEST_ASSERT_TRUE(espnow->is_initialized());
+
+    // Verify sub-managers were initialized
+    TEST_ASSERT_EQUAL(1, mock_tx->init_calls);
+    TEST_ASSERT_EQUAL(1, mock_heartbeat->update_node_id_calls);
+    TEST_ASSERT_EQUAL(1, mock_pairing->init_calls);
+    TEST_ASSERT_EQUAL(1, mock_router->set_app_queue_calls);
+
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->deinit());
+    TEST_ASSERT_FALSE(espnow->is_initialized());
+}
+
+TEST_CASE("EspNow Init rejects invalid config", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = nullptr; // Invalid!
+
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, espnow->init(config));
+}
+
+TEST_CASE("EspNow double initialization rejected", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, espnow->init(config));
+}
+
+TEST_CASE("EspNow Rx Pipeline: Packet dispatching", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
+
+    // Prepare an incoming packet (simulating radio receive)
+    RxPacket packet;
+    memset(&packet, 0, sizeof(packet));
+    packet.len = sizeof(MessageHeader);
+
+    MessageHeader h = {};
+    h.msg_type = MessageType::DATA;
+    h.sender_node_id = 42;
+    memcpy(packet.data, &h, sizeof(h));
+
+    // Mock Codec behavior
+    mock_codec->validate_crc_ret = true;
+    mock_codec->decode_header_ret = h;
+
+    // Mock Router: DATA should NOT go to worker task
+    mock_router->should_dispatch_to_worker_ret = false;
+
+    // Inject directly into the dispatch queue (simulating esp_now_recv_cb)
+    xQueueSend(espnow->get_rx_dispatch_queue(), &packet, 0);
+
+    // Wait for the dispatch task to process the packet and call the router
+    WAIT_FOR_CONDITION(mock_router->handle_packet_calls >= 1, 500);
+
+    TEST_ASSERT_EQUAL(1, mock_router->handle_packet_calls);
+    TEST_ASSERT_EQUAL(MessageType::DATA, mock_router->last_rx_packet.data[0]); // Check msg_type
+}
+
+TEST_CASE("EspNow Rx Pipeline: Protocol message goes to worker", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
+
+    MessageHeader h = {};
+    h.msg_type = MessageType::HEARTBEAT;
+
+    RxPacket packet;
+    packet.len = sizeof(h);
+    memcpy(packet.data, &h, sizeof(h));
+
+    mock_codec->validate_crc_ret = true;
+    mock_codec->decode_header_ret = h;
+
+    // Mock Router: HEARTBEAT SHOULD go to worker task
+    mock_router->should_dispatch_to_worker_ret = true;
+
+    xQueueSend(espnow->get_rx_dispatch_queue(), &packet, 0);
+
+    // The worker task will process it from the worker queue.
+    // Wait for worker task to call handle_packet
+    WAIT_FOR_CONDITION(mock_router->handle_packet_calls >= 1, 1000);
+    TEST_ASSERT_EQUAL(1, mock_router->handle_packet_calls);
+}
+
+TEST_CASE("EspNow ACK Mutex: Stores header if requires_ack", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
+
+    MessageHeader h = {};
+    h.msg_type = MessageType::DATA;
+    h.requires_ack = true;
+    h.sequence_number = 77;
+
+    RxPacket packet;
+    packet.len = sizeof(h);
+    memcpy(packet.data, &h, sizeof(h));
+
+    mock_codec->validate_crc_ret = true;
+    mock_codec->decode_header_ret = h;
+    mock_router->should_dispatch_to_worker_ret = false;
+
+    xQueueSend(espnow->get_rx_dispatch_queue(), &packet, 0);
+
+    // Wait for processing
+    WAIT_FOR_CONDITION(mock_router->handle_packet_calls >= 1, 500);
+
+    // Verify the manager stored the header for logical ACK confirmation
+    auto stored = espnow->get_last_header_requiring_ack();
+    TEST_ASSERT_TRUE(stored.has_value());
+    TEST_ASSERT_EQUAL(77, stored->sequence_number);
+}
+
+TEST_CASE("EspNow Public API: send_data calls TxManager", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
+
+    uint8_t payload[] = {1, 2, 3};
+    mock_peer->find_mac_ret = true; // Peer must exist
+
+    mock_codec->encode_ret = {0xAA, 0xBB}; // Dummy encoded
+    mock_codec->use_encode_ret = true;
+
+    esp_err_t err = espnow->send_data(20, 1, payload, 3, true);
+
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+    TEST_ASSERT_EQUAL(1, mock_tx->queue_packet_calls);
+    TEST_ASSERT_TRUE(mock_tx->last_queued_packet.requires_ack);
+}
+
+TEST_CASE("EspNow Public API: confirm_reception sends logical ACK", "[espnow_manager]")
+{
+    EspNowConfig config;
+    config.app_rx_queue = app_queue;
+    TEST_ASSERT_EQUAL(ESP_OK, espnow->init(config));
+
+    // 1. Manually set a pending ACK (simulating a received packet with requires_ack=true)
+    // We do this by injecting a packet and letting the task process it.
+    MessageHeader h = {.msg_type = MessageType::DATA, .sequence_number = 5, .sender_node_id = 10, .requires_ack = true};
+    mock_codec->decode_header_ret = h;
+    mock_codec->validate_crc_ret = true;
+    mock_router->should_dispatch_to_worker_ret = false;
+
+    RxPacket p;
+    p.len = sizeof(h);
+    memcpy(p.data, &h, sizeof(h));
+    xQueueSend(espnow->get_rx_dispatch_queue(), &p, 0);
+    WAIT_FOR_CONDITION(espnow->get_last_header_requiring_ack().has_value(), 500);
+
+    // 2. Call confirm_reception
+    mock_peer->find_mac_ret = true;
+    esp_err_t err = espnow->confirm_reception(AckStatus::OK);
+
+    TEST_ASSERT_EQUAL(ESP_OK, err);
+
+    // Verify an ACK packet was queued for transmission
+    TEST_ASSERT_EQUAL(1, mock_tx->queue_packet_calls);
+    TEST_ASSERT_EQUAL(MessageType::ACK, mock_codec->last_encode_header.msg_type);
+}

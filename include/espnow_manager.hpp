@@ -135,7 +135,9 @@ public:
     std::vector<NodeId> get_offline_peers() const;
     esp_err_t start_pairing(uint32_t timeout_ms = 30000);
 
-private:
+    bool is_initialized() const { return is_initialized_; }
+
+protected:
     // --- Notification Bits ---
     static constexpr uint32_t NOTIFY_STOP = 0x100;
 
@@ -159,6 +161,7 @@ private:
     TaskHandle_t rx_dispatch_task_handle_      = nullptr;
     TaskHandle_t transport_worker_task_handle_ = nullptr;
 
+protected:
     // --- Private Methods ---
     uint64_t get_time_ms() const;
 
