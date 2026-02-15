@@ -18,37 +18,37 @@
 #include "protocol_types.hpp"
 
 // Main class for ESP-NOW communication.
-class EspNow : public IEspNow
+class EspNowManager : public IEspNowManager
 {
 public:
     // Singleton
-    static EspNow &instance();
+    static EspNowManager &instance();
 
     // Dependency injection constructor for testing
-    EspNow(std::unique_ptr<IPeerManager> peer_manager,
-           std::unique_ptr<ITxManager> tx_manager,
-           IChannelScanner *scanner_ptr,
-           std::unique_ptr<IMessageCodec> message_codec,
-           std::unique_ptr<IHeartbeatManager> heartbeat_manager,
-           std::unique_ptr<IPairingManager> pairing_manager,
-           std::unique_ptr<IMessageRouter> message_router);
+    EspNowManager(std::unique_ptr<IPeerManager> peer_manager,
+                  std::unique_ptr<ITxManager> tx_manager,
+                  IChannelScanner *scanner_ptr,
+                  std::unique_ptr<IMessageCodec> message_codec,
+                  std::unique_ptr<IHeartbeatManager> heartbeat_manager,
+                  std::unique_ptr<IPairingManager> pairing_manager,
+                  std::unique_ptr<IMessageRouter> message_router);
 
-    EspNow(const EspNow &)            = delete;
-    EspNow &operator=(const EspNow &) = delete;
-    virtual ~EspNow();
+    EspNowManager(const EspNowManager &)            = delete;
+    EspNowManager &operator=(const EspNowManager &) = delete;
+    virtual ~EspNowManager();
 
     // Public API
     esp_err_t init(const EspNowConfig &config) override;
     esp_err_t deinit() override;
 
-    using IEspNow::send_data;
+    using IEspNowManager::send_data;
     esp_err_t send_data(NodeId dest_node_id,
                         PayloadType payload_type,
                         const void *payload,
                         size_t len,
                         bool require_ack = false) override;
 
-    using IEspNow::send_command;
+    using IEspNowManager::send_command;
     esp_err_t send_command(NodeId dest_node_id,
                            CommandType command_type,
                            const void *payload,
@@ -58,17 +58,20 @@ public:
     esp_err_t confirm_reception(AckStatus status) override;
 
     // Peer Management Functions
-    using IEspNow::add_peer;
+    using IEspNowManager::add_peer;
     esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type) override;
 
-    using IEspNow::remove_peer;
+    using IEspNowManager::remove_peer;
     esp_err_t remove_peer(NodeId node_id) override;
 
     std::vector<PeerInfo> get_peers() override;
     std::vector<NodeId> get_offline_peers() const override;
     esp_err_t start_pairing(uint32_t timeout_ms = 30000) override;
 
-    bool is_initialized() const override { return is_initialized_; }
+    bool is_initialized() const override
+    {
+        return is_initialized_;
+    }
 
 protected:
     // --- Notification Bits ---

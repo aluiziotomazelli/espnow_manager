@@ -71,7 +71,7 @@ struct PendingAck
     NodeId node_id;
 };
 
-// Configuration to initialize the EspNow component
+// Configuration to initialize the EspNowManager component
 struct EspNowConfig
 {
     NodeId node_id;

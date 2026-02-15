@@ -3,19 +3,91 @@
 #include "esp_err.h"
 #include "espnow_types.hpp"
 #include "protocol_messages.hpp"
+#include <optional>
+#include <vector>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
-#include <optional>
-#include <vector>
+
+class IEspNowManager
+{
+public:
+    virtual ~IEspNowManager() = default;
+
+    virtual esp_err_t init(const EspNowConfig &config) = 0;
+    virtual esp_err_t deinit()                         = 0;
+
+    virtual esp_err_t send_data(NodeId dest_node_id,
+                                PayloadType payload_type,
+                                const void *payload,
+                                size_t len,
+                                bool require_ack = false) = 0;
+
+    template <typename T1,
+              typename T2,
+              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
+              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(PayloadType)>>
+    esp_err_t send_data(T1 dest_node_id, T2 payload_type, const void *payload, size_t len, bool require_ack = false)
+    {
+        return send_data(static_cast<NodeId>(dest_node_id), static_cast<PayloadType>(payload_type), payload, len,
+                         require_ack);
+    }
+
+    virtual esp_err_t send_command(NodeId dest_node_id,
+                                   CommandType command_type,
+                                   const void *payload,
+                                   size_t len,
+                                   bool require_ack = false) = 0;
+
+    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
+    esp_err_t send_command(T dest_node_id,
+                           CommandType command_type,
+                           const void *payload,
+                           size_t len,
+                           bool require_ack = false)
+    {
+        return send_command(static_cast<NodeId>(dest_node_id), command_type, payload, len, require_ack);
+    }
+
+    virtual esp_err_t confirm_reception(AckStatus status) = 0;
+
+    virtual esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type) = 0;
+
+    template <typename T1,
+              typename T2,
+              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
+              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
+    esp_err_t add_peer(T1 node_id, const uint8_t *mac, uint8_t channel, T2 type)
+    {
+        return add_peer(static_cast<NodeId>(node_id), mac, channel, static_cast<NodeType>(type));
+    }
+
+    virtual esp_err_t remove_peer(NodeId node_id) = 0;
+
+    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
+    esp_err_t remove_peer(T node_id)
+    {
+        return remove_peer(static_cast<NodeId>(node_id));
+    }
+
+    virtual std::vector<PeerInfo> get_peers()                    = 0;
+    virtual std::vector<NodeId> get_offline_peers() const        = 0;
+    virtual esp_err_t start_pairing(uint32_t timeout_ms = 30000) = 0;
+    virtual bool is_initialized() const                          = 0;
+};
 
 class IPeerManager
 {
 public:
-    virtual ~IPeerManager() = default;
-    virtual esp_err_t add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, uint32_t heartbeat_interval_ms = 0) = 0;
+    virtual ~IPeerManager()                                   = default;
+    virtual esp_err_t add(NodeId id,
+                          const uint8_t *mac,
+                          uint8_t channel,
+                          NodeType type,
+                          uint32_t heartbeat_interval_ms = 0) = 0;
 
-    template <typename T1, typename T2,
+    template <typename T1,
+              typename T2,
               typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
               typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
     esp_err_t add(T1 id, const uint8_t *mac, uint8_t channel, T2 type, uint32_t heartbeat_interval_ms = 0)
@@ -76,10 +148,11 @@ public:
         uint8_t channel;
         bool hub_found;
     };
-    virtual ScanResult scan(uint8_t start_channel) = 0;
+    virtual ScanResult scan(uint8_t start_channel)          = 0;
     virtual void update_node_info(NodeId id, NodeType type) = 0;
 
-    template <typename T1, typename T2,
+    template <typename T1,
+              typename T2,
               typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
               typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
     void update_node_info(T1 id, T2 type)
@@ -91,63 +164,60 @@ public:
 class IMessageCodec
 {
 public:
-    virtual ~IMessageCodec() = default;
-    virtual std::vector<uint8_t> encode(const MessageHeader &header,
-                                        const void *payload,
-                                        size_t len)                             = 0;
-    virtual std::optional<MessageHeader> decode_header(const uint8_t *data,
-                                                       size_t len)              = 0;
-    virtual bool validate_crc(const uint8_t *data, size_t len)                  = 0;
-    virtual uint8_t calculate_crc(const uint8_t *data, size_t len)              = 0;
+    virtual ~IMessageCodec()                                                                          = default;
+    virtual std::vector<uint8_t> encode(const MessageHeader &header, const void *payload, size_t len) = 0;
+    virtual std::optional<MessageHeader> decode_header(const uint8_t *data, size_t len)               = 0;
+    virtual bool validate_crc(const uint8_t *data, size_t len)                                        = 0;
+    virtual uint8_t calculate_crc(const uint8_t *data, size_t len)                                    = 0;
 };
 
 class IPersistenceBackend
 {
 public:
-    virtual ~IPersistenceBackend() = default;
-    virtual esp_err_t load(void *data, size_t size) = 0;
+    virtual ~IPersistenceBackend()                        = default;
+    virtual esp_err_t load(void *data, size_t size)       = 0;
     virtual esp_err_t save(const void *data, size_t size) = 0;
 };
 
 class IStorage
 {
 public:
-    virtual ~IStorage() = default;
+    virtual ~IStorage()                                                               = default;
     virtual esp_err_t load(uint8_t &wifi_channel, std::vector<PersistentPeer> &peers) = 0;
     virtual esp_err_t save(uint8_t wifi_channel,
                            const std::vector<PersistentPeer> &peers,
-                           bool force_nvs_commit = true) = 0;
+                           bool force_nvs_commit = true)                              = 0;
 };
 
 class IWiFiHAL
 {
 public:
-    virtual ~IWiFiHAL() = default;
-    virtual esp_err_t set_channel(uint8_t channel) = 0;
-    virtual esp_err_t get_channel(uint8_t *channel) = 0;
+    virtual ~IWiFiHAL()                                                                = default;
+    virtual esp_err_t set_channel(uint8_t channel)                                     = 0;
+    virtual esp_err_t get_channel(uint8_t *channel)                                    = 0;
     virtual esp_err_t send_packet(const uint8_t *mac, const uint8_t *data, size_t len) = 0;
-    virtual bool wait_for_event(uint32_t event_mask, uint32_t timeout_ms) = 0;
-    virtual void set_task_to_notify(TaskHandle_t task_handle) = 0;
+    virtual bool wait_for_event(uint32_t event_mask, uint32_t timeout_ms)              = 0;
+    virtual void set_task_to_notify(TaskHandle_t task_handle)                          = 0;
 };
 
 class ITxManager
 {
 public:
-    virtual ~ITxManager() = default;
+    virtual ~ITxManager()                                             = default;
     virtual esp_err_t init(uint32_t stack_size, UBaseType_t priority) = 0;
-    virtual esp_err_t deinit() = 0;
-    virtual esp_err_t queue_packet(const TxPacket &packet) = 0;
-    virtual void notify_physical_fail() = 0;
-    virtual void notify_link_alive() = 0;
-    virtual void notify_logical_ack() = 0;
-    virtual void notify_hub_found() = 0;
-    virtual TaskHandle_t get_task_handle() const = 0;
+    virtual esp_err_t deinit()                                        = 0;
+    virtual esp_err_t queue_packet(const TxPacket &packet)            = 0;
+    virtual void notify_physical_fail()                               = 0;
+    virtual void notify_link_alive()                                  = 0;
+    virtual void notify_logical_ack()                                 = 0;
+    virtual void notify_hub_found()                                   = 0;
+    virtual TaskHandle_t get_task_handle() const                      = 0;
 };
 
 class IHeartbeatManager
 {
 public:
-    virtual ~IHeartbeatManager() = default;
+    virtual ~IHeartbeatManager()                                = default;
     virtual esp_err_t init(uint32_t interval_ms, NodeType type) = 0;
     template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeType)>>
     esp_err_t init(uint32_t interval_ms, T type)
@@ -162,7 +232,7 @@ public:
         update_node_id(static_cast<NodeId>(id));
     }
 
-    virtual esp_err_t deinit() = 0;
+    virtual esp_err_t deinit()                                   = 0;
     virtual void handle_response(NodeId hub_id, uint8_t channel) = 0;
     template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
     void handle_response(T hub_id, uint8_t channel)
@@ -181,9 +251,10 @@ public:
 class IPairingManager
 {
 public:
-    virtual ~IPairingManager() = default;
+    virtual ~IPairingManager()                       = default;
     virtual esp_err_t init(NodeType type, NodeId id) = 0;
-    template <typename T1, typename T2,
+    template <typename T1,
+              typename T2,
               typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeType)>,
               typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeId)>>
     esp_err_t init(T1 type, T2 id)
@@ -191,103 +262,28 @@ public:
         return init(static_cast<NodeType>(type), static_cast<NodeId>(id));
     }
 
-    virtual esp_err_t deinit() = 0;
-    virtual esp_err_t start(uint32_t timeout_ms) = 0;
-    virtual bool is_active() const = 0;
-    virtual void handle_request(const RxPacket &packet) = 0;
+    virtual esp_err_t deinit()                           = 0;
+    virtual esp_err_t start(uint32_t timeout_ms)         = 0;
+    virtual bool is_active() const                       = 0;
+    virtual void handle_request(const RxPacket &packet)  = 0;
     virtual void handle_response(const RxPacket &packet) = 0;
 };
 
 class IMessageRouter
 {
 public:
-    virtual ~IMessageRouter() = default;
+    virtual ~IMessageRouter()                                = default;
     virtual void handle_packet(const RxPacket &packet)       = 0;
     virtual bool should_dispatch_to_worker(MessageType type) = 0;
     virtual void set_app_queue(QueueHandle_t app_queue)      = 0;
     virtual void set_node_info(NodeId id, NodeType type)     = 0;
 
-    template <typename T1, typename T2,
+    template <typename T1,
+              typename T2,
               typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
               typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
     void set_node_info(T1 id, T2 type)
     {
         set_node_info(static_cast<NodeId>(id), static_cast<NodeType>(type));
     }
-};
-
-class IEspNow
-{
-public:
-    virtual ~IEspNow() = default;
-
-    virtual esp_err_t init(const EspNowConfig &config) = 0;
-    virtual esp_err_t deinit()                         = 0;
-
-    virtual esp_err_t send_data(NodeId dest_node_id,
-                                PayloadType payload_type,
-                                const void *payload,
-                                size_t len,
-                                bool require_ack = false) = 0;
-
-    template <typename T1, typename T2,
-              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
-              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(PayloadType)>>
-    esp_err_t send_data(T1 dest_node_id,
-                        T2 payload_type,
-                        const void *payload,
-                        size_t len,
-                        bool require_ack = false)
-    {
-        return send_data(static_cast<NodeId>(dest_node_id),
-                         static_cast<PayloadType>(payload_type),
-                         payload,
-                         len,
-                         require_ack);
-    }
-
-    virtual esp_err_t send_command(NodeId dest_node_id,
-                                   CommandType command_type,
-                                   const void *payload,
-                                   size_t len,
-                                   bool require_ack = false) = 0;
-
-    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
-    esp_err_t send_command(T dest_node_id,
-                           CommandType command_type,
-                           const void *payload,
-                           size_t len,
-                           bool require_ack = false)
-    {
-        return send_command(static_cast<NodeId>(dest_node_id),
-                            command_type,
-                            payload,
-                            len,
-                            require_ack);
-    }
-
-    virtual esp_err_t confirm_reception(AckStatus status) = 0;
-
-    virtual esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type) = 0;
-
-    template <typename T1, typename T2,
-              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
-              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
-    esp_err_t add_peer(T1 node_id, const uint8_t *mac, uint8_t channel, T2 type)
-    {
-        return add_peer(static_cast<NodeId>(node_id), mac, channel, static_cast<NodeType>(type));
-    }
-
-    virtual esp_err_t remove_peer(NodeId node_id) = 0;
-
-    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
-    esp_err_t remove_peer(T node_id)
-    {
-        return remove_peer(static_cast<NodeId>(node_id));
-    }
-
-    virtual std::vector<PeerInfo> get_peers()           = 0;
-    virtual std::vector<NodeId> get_offline_peers() const = 0;
-    virtual esp_err_t start_pairing(uint32_t timeout_ms = 30000) = 0;
-    virtual bool is_initialized() const                 = 0;
 };
