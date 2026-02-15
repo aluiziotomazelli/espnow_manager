@@ -49,7 +49,6 @@ public:
 
     QueueHandle_t get_rx_dispatch_queue() { return rx_dispatch_queue_; }
     QueueHandle_t get_transport_worker_queue() { return transport_worker_queue_; }
-    bool is_initialized() { return is_initialized_; }
     std::optional<MessageHeader> get_last_header_requiring_ack() { return last_header_requiring_ack_; }
 };
 

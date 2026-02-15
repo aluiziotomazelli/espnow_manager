@@ -17,37 +17,8 @@
 #include "protocol_messages.hpp"
 #include "protocol_types.hpp"
 
-// Configuration to initialize the EspNow component
-struct EspNowConfig
-{
-    NodeId node_id;
-    NodeType node_type;
-    QueueHandle_t app_rx_queue;
-    uint8_t wifi_channel;
-    uint32_t ack_timeout_ms;
-    uint32_t heartbeat_interval_ms;
-
-    uint32_t stack_size_rx_dispatch;
-    uint32_t stack_size_transport_worker;
-    uint32_t stack_size_tx_manager;
-
-    // Default constructor
-    EspNowConfig()
-        : node_id(ReservedIds::HUB)
-        , node_type(ReservedTypes::UNKNOWN)
-        , app_rx_queue(nullptr)
-        , wifi_channel(DEFAULT_WIFI_CHANNEL)
-        , ack_timeout_ms(DEFAULT_ACK_TIMEOUT_MS)
-        , heartbeat_interval_ms(DEFAULT_HEARTBEAT_INTERVAL_MS)
-        , stack_size_rx_dispatch(4096)
-        , stack_size_transport_worker(5120)
-        , stack_size_tx_manager(4096)
-    {
-    }
-};
-
 // Main class for ESP-NOW communication.
-class EspNow
+class EspNow : public IEspNow
 {
 public:
     // Singleton
@@ -64,78 +35,40 @@ public:
 
     EspNow(const EspNow &)            = delete;
     EspNow &operator=(const EspNow &) = delete;
-    ~EspNow();
+    virtual ~EspNow();
 
     // Public API
-    esp_err_t init(const EspNowConfig &config);
-    esp_err_t deinit();
+    esp_err_t init(const EspNowConfig &config) override;
+    esp_err_t deinit() override;
+
+    using IEspNow::send_data;
     esp_err_t send_data(NodeId dest_node_id,
                         PayloadType payload_type,
                         const void *payload,
                         size_t len,
-                        bool require_ack = false);
+                        bool require_ack = false) override;
 
-    template <typename T1, typename T2,
-              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
-              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(PayloadType)>>
-    esp_err_t send_data(T1 dest_node_id,
-                        T2 payload_type,
-                        const void *payload,
-                        size_t len,
-                        bool require_ack = false)
-    {
-        return send_data(static_cast<NodeId>(dest_node_id),
-                         static_cast<PayloadType>(payload_type),
-                         payload,
-                         len,
-                         require_ack);
-    }
-
+    using IEspNow::send_command;
     esp_err_t send_command(NodeId dest_node_id,
                            CommandType command_type,
                            const void *payload,
                            size_t len,
-                           bool require_ack = false);
+                           bool require_ack = false) override;
 
-    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
-    esp_err_t send_command(T dest_node_id,
-                           CommandType command_type,
-                           const void *payload,
-                           size_t len,
-                           bool require_ack = false)
-    {
-        return send_command(static_cast<NodeId>(dest_node_id),
-                            command_type,
-                            payload,
-                            len,
-                            require_ack);
-    }
-
-    esp_err_t confirm_reception(AckStatus status);
+    esp_err_t confirm_reception(AckStatus status) override;
 
     // Peer Management Functions
-    esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type);
+    using IEspNow::add_peer;
+    esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type) override;
 
-    template <typename T1, typename T2,
-              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
-              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
-    esp_err_t add_peer(T1 node_id, const uint8_t *mac, uint8_t channel, T2 type)
-    {
-        return add_peer(static_cast<NodeId>(node_id), mac, channel, static_cast<NodeType>(type));
-    }
+    using IEspNow::remove_peer;
+    esp_err_t remove_peer(NodeId node_id) override;
 
-    esp_err_t remove_peer(NodeId node_id);
+    std::vector<PeerInfo> get_peers() override;
+    std::vector<NodeId> get_offline_peers() const override;
+    esp_err_t start_pairing(uint32_t timeout_ms = 30000) override;
 
-    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
-    esp_err_t remove_peer(T node_id)
-    {
-        return remove_peer(static_cast<NodeId>(node_id));
-    }
-    std::vector<PeerInfo> get_peers();
-    std::vector<NodeId> get_offline_peers() const;
-    esp_err_t start_pairing(uint32_t timeout_ms = 30000);
-
-    bool is_initialized() const { return is_initialized_; }
+    bool is_initialized() const override { return is_initialized_; }
 
 protected:
     // --- Notification Bits ---

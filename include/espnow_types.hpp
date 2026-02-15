@@ -2,6 +2,8 @@
 
 #include "esp_now.h"
 #include "protocol_types.hpp"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include <cstdint>
 #include <vector>
 
@@ -67,4 +69,33 @@ struct PendingAck
     uint8_t retries_left;
     TxPacket packet;
     NodeId node_id;
+};
+
+// Configuration to initialize the EspNow component
+struct EspNowConfig
+{
+    NodeId node_id;
+    NodeType node_type;
+    QueueHandle_t app_rx_queue;
+    uint8_t wifi_channel;
+    uint32_t ack_timeout_ms;
+    uint32_t heartbeat_interval_ms;
+
+    uint32_t stack_size_rx_dispatch;
+    uint32_t stack_size_transport_worker;
+    uint32_t stack_size_tx_manager;
+
+    // Default constructor
+    EspNowConfig()
+        : node_id(ReservedIds::HUB)
+        , node_type(ReservedTypes::UNKNOWN)
+        , app_rx_queue(nullptr)
+        , wifi_channel(DEFAULT_WIFI_CHANNEL)
+        , ack_timeout_ms(DEFAULT_ACK_TIMEOUT_MS)
+        , heartbeat_interval_ms(DEFAULT_HEARTBEAT_INTERVAL_MS)
+        , stack_size_rx_dispatch(4096)
+        , stack_size_transport_worker(5120)
+        , stack_size_tx_manager(4096)
+    {
+    }
 };
