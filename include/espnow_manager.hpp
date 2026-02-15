@@ -11,14 +11,26 @@
 #include "espnow_manager_interface.hpp"
 #include "espnow_storage.hpp"
 
-// Main class for ESP-NOW communication.
+// ========================================
+// ESP-NOW Manager Implementation
+// ========================================
+
+/**
+ * @class EspNowManager
+ * @brief Implementation of IEspNowManager for ESP32 using ESP-NOW.
+ *
+ * @see IEspNowManager for full API documentation.
+ */
 class EspNowManager : public IEspNowManager
 {
 public:
-    // Singleton
+    /** @brief Get the singleton instance of EspNowManager */
     static EspNowManager &instance();
 
-    // Dependency injection constructor for testing
+    /**
+     * @brief Dependency injection constructor for testing
+     * @internal
+     */
     EspNowManager(std::unique_ptr<IPeerManager> peer_manager,
                   std::unique_ptr<ITxManager> tx_manager,
                   IChannelScanner *scanner_ptr,
@@ -31,11 +43,22 @@ public:
     EspNowManager &operator=(const EspNowManager &) = delete;
     virtual ~EspNowManager();
 
-    // Public API
+    // ========================================
+    // Lifecycle
+    // ========================================
+
+    /** @copydoc IEspNowManager::init */
     esp_err_t init(const EspNowConfig &config) override;
+
+    /** @copydoc IEspNowManager::deinit */
     esp_err_t deinit() override;
 
+    // ========================================
+    // Data Communication
+    // ========================================
+
     using IEspNowManager::send_data;
+    /** @copydoc IEspNowManager::send_data */
     esp_err_t send_data(NodeId dest_node_id,
                         PayloadType payload_type,
                         const void *payload,
@@ -43,25 +66,46 @@ public:
                         bool require_ack = false) override;
 
     using IEspNowManager::send_command;
+    /** @copydoc IEspNowManager::send_command */
     esp_err_t send_command(NodeId dest_node_id,
                            CommandType command_type,
                            const void *payload,
                            size_t len,
                            bool require_ack = false) override;
 
+    /** @copydoc IEspNowManager::confirm_reception */
     esp_err_t confirm_reception(AckStatus status) override;
 
-    // Peer Management Functions
+    // ========================================
+    // Peer Management
+    // ========================================
+
     using IEspNowManager::add_peer;
+    /** @copydoc IEspNowManager::add_peer */
     esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type) override;
 
     using IEspNowManager::remove_peer;
+    /** @copydoc IEspNowManager::remove_peer */
     esp_err_t remove_peer(NodeId node_id) override;
 
+    /** @copydoc IEspNowManager::get_peers */
     std::vector<PeerInfo> get_peers() override;
+
+    /** @copydoc IEspNowManager::get_offline_peers */
     std::vector<NodeId> get_offline_peers() const override;
+
+    // ========================================
+    // Pairing
+    // ========================================
+
+    /** @copydoc IEspNowManager::start_pairing */
     esp_err_t start_pairing(uint32_t timeout_ms = 30000) override;
 
+    // ========================================
+    // Status
+    // ========================================
+
+    /** @copydoc IEspNowManager::is_initialized */
     bool is_initialized() const override
     {
         return is_initialized_;
