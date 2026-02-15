@@ -18,11 +18,8 @@ public:
     using IPeerManager::remove;
     using IPeerManager::update_last_seen;
 
-    esp_err_t add(NodeId id,
-                  const uint8_t *mac,
-                  uint8_t channel,
-                  NodeType type,
-                  uint32_t heartbeat_interval_ms = 0) override;
+    esp_err_t
+    add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, uint32_t heartbeat_interval_ms = 0) override;
     esp_err_t remove(NodeId id) override;
     bool find_mac(NodeId id, uint8_t *mac) override;
     std::vector<PeerInfo> get_all() override;

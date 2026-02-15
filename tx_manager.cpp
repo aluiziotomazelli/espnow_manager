@@ -79,7 +79,7 @@ esp_err_t RealTxManager::queue_packet(const TxPacket &packet)
     if (!tx_queue_)
         return ESP_ERR_INVALID_STATE;
     if (xQueueSend(tx_queue_, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-        return ESP_ERR_TIMEOUT;
+        return ESP_FAIL;
     }
     if (task_handle_) {
         xTaskNotify(task_handle_, NOTIFY_DATA, eSetBits);

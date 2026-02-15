@@ -33,8 +33,9 @@ struct PersistentData
 class EspNowStorage : public IStorage
 {
 public:
-    EspNowStorage(std::unique_ptr<IPersistenceBackend> rtc_backend = nullptr,
-                  std::unique_ptr<IPersistenceBackend> nvs_backend = nullptr);
+    EspNowStorage(
+        std::unique_ptr<IPersistenceBackend> rtc_backend = nullptr,
+        std::unique_ptr<IPersistenceBackend> nvs_backend = nullptr);
     ~EspNowStorage();
 
     /**
@@ -55,9 +56,8 @@ public:
      * unchanged.
      * @return ESP_OK if saved successfully, error otherwise.
      */
-    esp_err_t save(uint8_t wifi_channel,
-                   const std::vector<PersistentPeer> &peers,
-                   bool force_nvs_commit = true) override;
+    esp_err_t
+    save(uint8_t wifi_channel, const std::vector<PersistentPeer> &peers, bool force_nvs_commit = true) override;
 
 private:
     uint32_t calculate_crc(const PersistentData &data);
