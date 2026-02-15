@@ -70,7 +70,7 @@ public:
     // ========================================
 
     /**
-     * @brief Send data to a destination node 
+     * @brief Send data to a destination node
      *
      * Encapsulates the payload into a standard message format and queues it for transmission.
      * For HUB: Used to send application data to a specific registered node.
@@ -80,15 +80,16 @@ public:
      * @param payload_type Type identifier for the payload (application-defined).
      * @param payload Pointer to the data buffer to be sent.
      * @param len Length of the payload in bytes.
-     * @param require_ack If true, the transmission will wait for a logical acknowledgment.
-     * @return ESP_OK: the packet was successfully queued.
-     * @return ESP_ERR_NOT_FOUND: the peer is not registered.
-     * @return ESP_ERR_INVALID_ARG: the packet is empty.
-     * @return ESP_ERR_TIMEOUT: ACK timeout (when require_ack=true).
-     * @return ESP_FAIL: failed to send message to tx_queue_
+     * @param require_ack If true, the transmission will wait for a logical acknowledgment (handled in background).
      *
-     * @note Non-blocking unless require_ack=true
-     * @note Enter in channel SCANNING mode after MAX_PHYSICAL_FAILURES or MAX_LOGICAL_RETRIES
+     * @return ESP_OK: the packet was successfully queued.
+     * @return ESP_ERR_NOT_FOUND: the destination node ID is not in the peer list.
+     * @return ESP_ERR_INVALID_ARG: the payload is empty or encoding failed.
+     * @return ESP_ERR_INVALID_STATE: the manager is not initialized.
+     * @return ESP_FAIL: the internal transmission queue is full.
+     *
+     * @note This operation is asynchronous and non-blocking. The logical ACK is handled by the TX Manager task.
+     * @note The manager enters channel SCANNING mode after MAX_PHYSICAL_FAILURES or MAX_LOGICAL_RETRIES.
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
      */
@@ -128,15 +129,16 @@ public:
      * @param command_type Type of command to execute.
      * @param payload Optional payload for the command.
      * @param len Length of the payload.
-     * @param require_ack If true, waits for a logical acknowledgment.
-     * @return ESP_OK: on success.
-     * @return ESP_ERR_NOT_FOUND: the peer is not registered.
-     * @return ESP_ERR_INVALID_ARG: the packet is empty.
-     * @return ESP_ERR_TIMEOUT: ACK timeout (when require_ack=true).
-     * @return ESP_FAIL: failed to send message to tx_queue_
+     * @param require_ack If true, waits for a logical acknowledgment (handled in background).
      *
-     * @note Non-blocking unless require_ack=true
-     * @note Enter in channel SCANNING mode after MAX_PHYSICAL_FAILURES or MAX_LOGICAL_RETRIES
+     * @return ESP_OK: the packet was successfully queued.
+     * @return ESP_ERR_NOT_FOUND: the destination node ID is not in the peer list.
+     * @return ESP_ERR_INVALID_ARG: the payload is empty or encoding failed.
+     * @return ESP_ERR_INVALID_STATE: the manager is not initialized.
+     * @return ESP_FAIL: the internal transmission queue is full.
+     *
+     * @note This operation is asynchronous and non-blocking.
+     * @note The manager enters channel SCANNING mode after MAX_PHYSICAL_FAILURES or MAX_LOGICAL_RETRIES.
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
      */
@@ -167,8 +169,13 @@ public:
      * set. This should be called by the application after successfully processing the received data.
      *
      * @param status Status of the processing: OK, ERROR_INVALID_DATA or ERROR_PROCESSING
-     * @return ESP_OK: ACK was sent.
-     * @return ESP_ERR_INVALID_STATE: no message is pending ACK.
+     *
+     * @return ESP_OK: ACK was successfully queued for transmission.
+     * @return ESP_ERR_INVALID_STATE: no message is currently pending an ACK.
+     * @return ESP_ERR_TIMEOUT: failed to acquire the internal mutex within the 100ms timeout.
+     * @return ESP_ERR_NOT_FOUND: the sender of the message being acknowledged is no longer in the peer list. This
+     * error only occurs if the peer is removed between the reception of the packet and this call.
+     * @return ESP_FAIL: internal encoding error or the transmission queue is full.
      */
     virtual esp_err_t confirm_reception(AckStatus status) = 0;
 
@@ -185,11 +192,12 @@ public:
      * @param mac MAC address of the node (6 bytes).
      * @param channel WiFi channel the node is operating on.
      * @param type Role/Type of the node.
-     * @return ESP_OK: on success.
-     * @return ESP_ERR_INVALID_ARG: mac is nullptr
-     * @return ESP_ERR_TIMEOUT: method timed out to get the mutex_
-     * @return Other: error from the ESP-NOW driver
      *
+     * @return ESP_OK: peer added or updated successfully.
+     * @return ESP_ERR_INVALID_ARG: the mac address pointer is null.
+     * @return Other: internal errors from the ESP-NOW driver or storage.
+     *
+     * @note This method blocks indefinitely until the internal peer list mutex is acquired.
      * @note List uses LRU (Least Recently Used) policy with maximum MAX_PEERS = 19 (ESP-NOW limitation)
      * @note When full, oldest peer (least recently used) is removed to make room
      * @note Re-adding existing peer moves it to front (marks as recently used)
@@ -223,9 +231,11 @@ public:
      * Removes the peer from both internal lists and the ESP-NOW driver.
      *
      * @param node_id ID of the node to remove.
-     * @return ESP_OK: on success.
-     * @return ESP_ERR_NOT_FOUND: the peer is not present.
-     * @return ESP_ERR_TIMEOUT: method timed out to get the mutex_
+     *
+     * @return ESP_OK: peer removed successfully.
+     * @return ESP_ERR_NOT_FOUND: the node ID is not present in the peer list.
+     *
+     * @note This method blocks indefinitely until the internal peer list mutex is acquired.
      */
     virtual esp_err_t remove_peer(NodeId node_id) = 0;
 
