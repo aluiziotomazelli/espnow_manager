@@ -1,7 +1,8 @@
 #pragma once
 
-#include "espnow_interfaces.hpp"
 #include <queue>
+
+#include "espnow_interfaces.hpp"
 
 class RealMessageRouter : public IMessageRouter
 {
@@ -12,7 +13,10 @@ public:
                       IPairingManager &pairing_manager,
                       IMessageCodec &message_codec);
 
-    void set_app_queue(QueueHandle_t app_queue) override { app_queue_ = app_queue; }
+    void set_app_queue(QueueHandle_t app_queue) override
+    {
+        app_queue_ = app_queue;
+    }
 
     using IMessageRouter::set_node_info;
     void set_node_info(NodeId id, NodeType type) override
@@ -34,6 +38,6 @@ private:
     IMessageCodec &message_codec_;
 
     QueueHandle_t app_queue_ = nullptr;
-    NodeId my_id_ = ReservedIds::HUB;
-    NodeType my_type_ = ReservedTypes::HUB;
+    NodeId my_id_            = ReservedIds::HUB;
+    NodeType my_type_        = ReservedTypes::HUB;
 };

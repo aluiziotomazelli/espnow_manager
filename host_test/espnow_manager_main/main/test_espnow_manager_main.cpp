@@ -1,18 +1,21 @@
+#include <cstring>
+#include <memory>
+
 #include "esp_log.h"
 #include "esp_wifi.h"
-#include "espnow_manager.hpp"
-#include "host_test_common.hpp"
 #include "unity.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+
 extern "C" {
 #include "Mockesp_now.h"
 #include "Mockesp_timer.h"
 #include "Mockesp_wifi.h"
 }
-#include <cstring>
-#include <memory>
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/task.h"
+
+#include "espnow_manager.hpp"
+#include "host_test_common.hpp"
 
 /**
  * @file test_espnow_manager_main.cpp

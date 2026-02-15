@@ -1,6 +1,10 @@
 #include "wifi_hal.hpp"
-#include "esp_wifi.h"
+#include "esp_log.h"
 #include "esp_now.h"
+#include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
 
 RealWiFiHAL::RealWiFiHAL()
     : task_handle_(nullptr)
@@ -25,8 +29,7 @@ esp_err_t RealWiFiHAL::send_packet(const uint8_t *mac, const uint8_t *data, size
 bool RealWiFiHAL::wait_for_event(uint32_t event_mask, uint32_t timeout_ms)
 {
     uint32_t notifications = 0;
-    if (xTaskNotifyWait(0, event_mask, &notifications, pdMS_TO_TICKS(timeout_ms)) == pdPASS)
-    {
+    if (xTaskNotifyWait(0, event_mask, &notifications, pdMS_TO_TICKS(timeout_ms)) == pdPASS) {
         return (notifications & event_mask) != 0;
     }
     return false;

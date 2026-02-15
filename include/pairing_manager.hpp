@@ -1,9 +1,12 @@
 #pragma once
 
-#include "espnow_interfaces.hpp"
 #include "freertos/FreeRTOS.h"
-#include "freertos/timers.h"
+#include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
+#include "freertos/timers.h"
+
+#include "espnow_interfaces.hpp"
 
 class RealPairingManager : public IPairingManager
 {
@@ -16,7 +19,10 @@ public:
     esp_err_t init(NodeType type, NodeId id) override;
     esp_err_t deinit() override;
     esp_err_t start(uint32_t timeout_ms) override;
-    bool is_active() const override { return is_active_; }
+    bool is_active() const override
+    {
+        return is_active_;
+    }
     void handle_request(const RxPacket &packet) override;
     void handle_response(const RxPacket &packet) override;
 
@@ -30,10 +36,10 @@ private:
     IMessageCodec &codec_;
     NodeType my_type_;
     NodeId my_id_;
-    bool is_active_ = false;
-    TimerHandle_t timeout_timer_ = nullptr;
+    bool is_active_               = false;
+    TimerHandle_t timeout_timer_  = nullptr;
     TimerHandle_t periodic_timer_ = nullptr;
-    SemaphoreHandle_t mutex_ = nullptr;
+    SemaphoreHandle_t mutex_      = nullptr;
 
     static void timeout_cb(TimerHandle_t xTimer);
     static void periodic_cb(TimerHandle_t xTimer);

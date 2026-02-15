@@ -1,13 +1,14 @@
 #pragma once
 
-#include "esp_err.h"
-#include "espnow_interfaces.hpp"
-#include "protocol_types.hpp"
-
 #include <cstdint>
 #include <cstring>
-#include <vector>
 #include <memory>
+#include <vector>
+
+#include "esp_err.h"
+
+#include "espnow_interfaces.hpp"
+#include "protocol_types.hpp"
 
 /**
  * @brief Internal structure for persistent data.
@@ -15,8 +16,8 @@
 struct PersistentData
 {
     static constexpr size_t MAX_PERSISTENT_PEERS = 19;
-    static constexpr uint32_t MAGIC = 0x4553504E;
-    static constexpr uint32_t VERSION = 1;
+    static constexpr uint32_t MAGIC              = 0x4553504E;
+    static constexpr uint32_t VERSION            = 1;
 
     uint32_t magic;
     uint32_t version;

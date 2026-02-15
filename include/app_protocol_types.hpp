@@ -1,6 +1,6 @@
 #pragma once
+
 #include "protocol_messages.hpp"
-#include "protocol_types.hpp"
 
 #pragma pack(push, 1)
 
@@ -77,7 +77,5 @@ struct SolarSensorReport
 #pragma pack(pop)
 
 // Validações de tamanho para garantir que nenhum payload exceda o limite do ESP-NOW
-static_assert(sizeof(WaterLevelReport) <= MAX_PAYLOAD_SIZE,
-              "WaterLevelReport payload is too large");
-static_assert(sizeof(SolarSensorReport) <= MAX_PAYLOAD_SIZE,
-              "SolarSensorReport payload is too large");
+static_assert(sizeof(WaterLevelReport) <= MAX_PAYLOAD_SIZE, "WaterLevelReport payload is too large");
+static_assert(sizeof(SolarSensorReport) <= MAX_PAYLOAD_SIZE, "SolarSensorReport payload is too large");

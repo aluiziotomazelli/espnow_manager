@@ -1,5 +1,6 @@
 #include "esp_log.h"
 #include "espnow_manager.hpp"
+#include "espnow_manager_interface.hpp"
 
 extern "C" void app_main(void)
 {

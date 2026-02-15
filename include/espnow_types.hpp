@@ -1,11 +1,13 @@
 #pragma once
 
-#include "esp_now.h"
-#include "protocol_types.hpp"
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
 #include <cstdint>
 #include <vector>
+
+#include "esp_now.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
+#include "protocol_types.hpp"
 
 constexpr int MAX_PEERS = 19;
 

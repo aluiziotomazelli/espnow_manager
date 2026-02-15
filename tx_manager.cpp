@@ -1,22 +1,23 @@
 #include "tx_manager.hpp"
 #include "esp_log.h"
 #include <cstring>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+#include "freertos/timers.h"
 
 static const char *TAG = "TxManager";
 
 // Notification Bits (aligned with espnow_manager.hpp for now)
-static constexpr uint32_t NOTIFY_LOGICAL_ACK     = 0x01;
-static constexpr uint32_t NOTIFY_PHYSICAL_FAIL   = 0x02;
-static constexpr uint32_t NOTIFY_HUB_FOUND       = 0x04;
-static constexpr uint32_t NOTIFY_DATA            = 0x20;
-static constexpr uint32_t NOTIFY_ACK_TIMEOUT     = 0x40;
-static constexpr uint32_t NOTIFY_STOP            = 0x100;
-static constexpr uint32_t NOTIFY_LINK_ALIVE      = 0x200;
+static constexpr uint32_t NOTIFY_LOGICAL_ACK   = 0x01;
+static constexpr uint32_t NOTIFY_PHYSICAL_FAIL = 0x02;
+static constexpr uint32_t NOTIFY_HUB_FOUND     = 0x04;
+static constexpr uint32_t NOTIFY_DATA          = 0x20;
+static constexpr uint32_t NOTIFY_ACK_TIMEOUT   = 0x40;
+static constexpr uint32_t NOTIFY_STOP          = 0x100;
+static constexpr uint32_t NOTIFY_LINK_ALIVE    = 0x200;
 
-RealTxManager::RealTxManager(ITxStateMachine &fsm,
-                             IChannelScanner &scanner,
-                             IWiFiHAL &hal,
-                             IMessageCodec &codec)
+RealTxManager::RealTxManager(ITxStateMachine &fsm, IChannelScanner &scanner, IWiFiHAL &hal, IMessageCodec &codec)
     : fsm_(fsm)
     , scanner_(scanner)
     , hal_(hal)
@@ -32,7 +33,8 @@ RealTxManager::~RealTxManager()
 esp_err_t RealTxManager::init(uint32_t stack_size, UBaseType_t priority)
 {
     tx_queue_ = xQueueCreate(20, sizeof(TxPacket));
-    if (!tx_queue_) return ESP_ERR_NO_MEM;
+    if (!tx_queue_)
+        return ESP_ERR_NO_MEM;
 
     ack_timeout_timer_ = xTimerCreate("ack_timeout", pdMS_TO_TICKS(500), pdFALSE, this, [](TimerHandle_t xTimer) {
         RealTxManager *self = static_cast<RealTxManager *>(pvTimerGetTimerID(xTimer));
@@ -74,7 +76,8 @@ esp_err_t RealTxManager::deinit()
 
 esp_err_t RealTxManager::queue_packet(const TxPacket &packet)
 {
-    if (!tx_queue_) return ESP_ERR_INVALID_STATE;
+    if (!tx_queue_)
+        return ESP_ERR_INVALID_STATE;
     if (xQueueSend(tx_queue_, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }
@@ -84,10 +87,26 @@ esp_err_t RealTxManager::queue_packet(const TxPacket &packet)
     return ESP_OK;
 }
 
-void RealTxManager::notify_physical_fail() { if (task_handle_) xTaskNotify(task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits); }
-void RealTxManager::notify_link_alive() { if (task_handle_) xTaskNotify(task_handle_, NOTIFY_LINK_ALIVE, eSetBits); }
-void RealTxManager::notify_logical_ack() { if (task_handle_) xTaskNotify(task_handle_, NOTIFY_LOGICAL_ACK, eSetBits); }
-void RealTxManager::notify_hub_found() { if (task_handle_) xTaskNotify(task_handle_, NOTIFY_HUB_FOUND, eSetBits); }
+void RealTxManager::notify_physical_fail()
+{
+    if (task_handle_)
+        xTaskNotify(task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits);
+}
+void RealTxManager::notify_link_alive()
+{
+    if (task_handle_)
+        xTaskNotify(task_handle_, NOTIFY_LINK_ALIVE, eSetBits);
+}
+void RealTxManager::notify_logical_ack()
+{
+    if (task_handle_)
+        xTaskNotify(task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
+}
+void RealTxManager::notify_hub_found()
+{
+    if (task_handle_)
+        xTaskNotify(task_handle_, NOTIFY_HUB_FOUND, eSetBits);
+}
 
 void RealTxManager::tx_task_func(void *arg)
 {
@@ -102,7 +121,7 @@ void RealTxManager::run()
 
     while (true) {
         uint32_t notifications = 0;
-        TxState current_state = fsm_.get_state();
+        TxState current_state  = fsm_.get_state();
 
         switch (current_state) {
         case TxState::IDLE:
@@ -112,22 +131,22 @@ void RealTxManager::run()
                 // We'll handle sending in the next loop iteration or just fall through
                 // For simplicity, let's just use the logic from original task.
 
-                MessageHeader *header = reinterpret_cast<MessageHeader *>(packet_to_send.data);
+                MessageHeader *header   = reinterpret_cast<MessageHeader *>(packet_to_send.data);
                 header->sequence_number = sequence_counter_++;
                 // Update CRC
-                packet_to_send.data[packet_to_send.len - CRC_SIZE] = codec_.calculate_crc(packet_to_send.data, packet_to_send.len - CRC_SIZE);
+                packet_to_send.data[packet_to_send.len - CRC_SIZE] =
+                    codec_.calculate_crc(packet_to_send.data, packet_to_send.len - CRC_SIZE);
 
-                esp_err_t send_result = hal_.send_packet(packet_to_send.dest_mac, packet_to_send.data, packet_to_send.len);
+                esp_err_t send_result =
+                    hal_.send_packet(packet_to_send.dest_mac, packet_to_send.data, packet_to_send.len);
 
                 TxState next = fsm_.on_tx_success(packet_to_send.requires_ack && send_result == ESP_OK);
                 if (next == TxState::WAITING_FOR_ACK) {
-                    PendingAck pending = {
-                        .sequence_number = header->sequence_number,
-                        .timestamp_ms = 0,
-                        .retries_left = 3,
-                        .packet = packet_to_send,
-                        .node_id = header->dest_node_id
-                    };
+                    PendingAck pending = {.sequence_number = header->sequence_number,
+                                          .timestamp_ms    = 0,
+                                          .retries_left    = 3,
+                                          .packet          = packet_to_send,
+                                          .node_id         = header->dest_node_id};
                     fsm_.set_pending_ack(pending);
                     xTimerStart(ack_timeout_timer_, 0);
                 }
@@ -135,8 +154,10 @@ void RealTxManager::run()
             }
 
             if (xTaskNotifyWait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
-                if (notifications & NOTIFY_STOP) goto exit;
-                if (notifications & NOTIFY_LINK_ALIVE) fsm_.on_link_alive();
+                if (notifications & NOTIFY_STOP)
+                    goto exit;
+                if (notifications & NOTIFY_LINK_ALIVE)
+                    fsm_.on_link_alive();
                 if (notifications & NOTIFY_PHYSICAL_FAIL) {
                     if (fsm_.on_physical_fail() == TxState::SCANNING) {
                         // Handle scanning below
@@ -150,14 +171,18 @@ void RealTxManager::run()
         case TxState::WAITING_FOR_ACK:
         {
             if (xTaskNotifyWait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
-                if (notifications & NOTIFY_STOP) goto exit;
-                if (notifications & NOTIFY_LINK_ALIVE) fsm_.on_link_alive();
+                if (notifications & NOTIFY_STOP)
+                    goto exit;
+                if (notifications & NOTIFY_LINK_ALIVE)
+                    fsm_.on_link_alive();
                 if (notifications & NOTIFY_LOGICAL_ACK) {
                     fsm_.on_ack_received();
                     xTimerStop(ack_timeout_timer_, 0);
-                } else if (notifications & NOTIFY_PHYSICAL_FAIL) {
+                }
+                else if (notifications & NOTIFY_PHYSICAL_FAIL) {
                     fsm_.on_physical_fail();
-                } else if (notifications & NOTIFY_ACK_TIMEOUT) {
+                }
+                else if (notifications & NOTIFY_ACK_TIMEOUT) {
                     fsm_.on_ack_timeout();
                 }
             }
@@ -175,7 +200,8 @@ void RealTxManager::run()
                 hal_.send_packet(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
                 xTimerStart(ack_timeout_timer_, 0);
                 fsm_.on_tx_success(true); // Back to WAITING_FOR_ACK
-            } else {
+            }
+            else {
                 fsm_.on_max_retries();
             }
             break;

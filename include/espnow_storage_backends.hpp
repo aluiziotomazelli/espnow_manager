@@ -2,7 +2,6 @@
 
 #include "espnow_interfaces.hpp"
 #include "espnow_storage.hpp"
-#include "esp_attr.h"
 
 /**
  * @brief Default RTC backend that uses a static PersistentData variable.

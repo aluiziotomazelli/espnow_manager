@@ -1,4 +1,5 @@
 #pragma once
+
 #include "protocol_types.hpp"
 
 #pragma pack(push, 1)
@@ -72,14 +73,10 @@ struct OtaCommand
 #pragma pack(pop)
 
 // Validações de tamanho para garantir que nenhum payload exceda o limite do ESP-NOW
-static_assert(sizeof(MessageHeader) == MESSAGE_HEADER_SIZE,
-              "MessageHeader size is incorrect");
+static_assert(sizeof(MessageHeader) == MESSAGE_HEADER_SIZE, "MessageHeader size is incorrect");
 static_assert(sizeof(PairRequest) <= MAX_PAYLOAD_SIZE, "PairRequest payload is too large");
-static_assert(sizeof(PairResponse) <= MAX_PAYLOAD_SIZE,
-              "PairResponse payload is too large");
-static_assert(sizeof(HeartbeatMessage) <= MAX_PAYLOAD_SIZE,
-              "HeartbeatMessage payload is too large");
-static_assert(sizeof(HeartbeatResponse) <= MAX_PAYLOAD_SIZE,
-              "HeartbeatResponse payload is too large");
+static_assert(sizeof(PairResponse) <= MAX_PAYLOAD_SIZE, "PairResponse payload is too large");
+static_assert(sizeof(HeartbeatMessage) <= MAX_PAYLOAD_SIZE, "HeartbeatMessage payload is too large");
+static_assert(sizeof(HeartbeatResponse) <= MAX_PAYLOAD_SIZE, "HeartbeatResponse payload is too large");
 static_assert(sizeof(AckMessage) <= MAX_PAYLOAD_SIZE, "AckMessage payload is too large");
 static_assert(sizeof(OtaCommand) <= MAX_PAYLOAD_SIZE, "OtaCommand payload is too large");

@@ -1,14 +1,17 @@
+#include <cstring>
+
 #include "esp_log.h"
 #include "esp_wifi.h"
-#include "espnow_manager.hpp"
+#include "nvs_flash.h"
 #include "unity.h"
+
 extern "C" {
 #include "Mockesp_now.h"
 #include "Mockesp_timer.h"
 #include "Mockesp_wifi.h"
 }
-#include "nvs_flash.h"
-#include <cstring>
+
+#include "espnow_manager.hpp"
 
 /**
  * @file test_espnow_manager_singleton.cpp

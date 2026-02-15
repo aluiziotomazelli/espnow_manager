@@ -1,21 +1,15 @@
 #pragma once
 
-#include <cstdint>
 #include <memory>
-#include <optional>
-#include <vector>
 
-#include "esp_now.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
-#include "freertos/timers.h"
+#include "freertos/task.h"
 
 #include "espnow_interfaces.hpp"
+#include "espnow_manager_interface.hpp"
 #include "espnow_storage.hpp"
-#include "espnow_types.hpp"
-#include "protocol_messages.hpp"
-#include "protocol_types.hpp"
 
 // Main class for ESP-NOW communication.
 class EspNowManager : public IEspNowManager

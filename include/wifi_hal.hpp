@@ -1,15 +1,20 @@
 #pragma once
 
-#include "espnow_interfaces.hpp"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
+
+#include "espnow_interfaces.hpp"
 
 class RealWiFiHAL : public IWiFiHAL
 {
 public:
     RealWiFiHAL();
 
-    void set_task_to_notify(TaskHandle_t task_handle) override { task_handle_ = task_handle; }
+    void set_task_to_notify(TaskHandle_t task_handle) override
+    {
+        task_handle_ = task_handle;
+    }
 
     esp_err_t set_channel(uint8_t channel) override;
     esp_err_t get_channel(uint8_t *channel) override;
