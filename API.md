@@ -67,7 +67,7 @@ Encapsulates application data into a standard message format and queues it for t
 - `ESP_FAIL`:
   - The internal transmission queue is full.
 
-**Note:** This operation is asynchronous and non-blocking. The logical ACK status (if requested) is handled by the internal TX Manager task.
+**Note:** This operation is asynchronous and non-blocking. The logical ACK status (if requested) is handled by the internal TX Manager task. If `require_ack` is false, the application is not notified of delivery failures.
 
 #### `send_command`
 Sends a control command to a destination node. Similar to `send_data` but specialized for commands.
@@ -78,9 +78,9 @@ Sends a control command to a destination node. Similar to `send_data` but specia
 - `command_type`: `CommandType`
   - Type of command to execute (e.g., REBOOT, START_OTA).
 - `payload`: `const void *`
-  - Optional payload for the command.
+  - Optional payload for the command. Can be `nullptr` if `len` is 0.
 - `len`: `size_t`
-  - Length of the optional payload.
+  - Length of the optional payload. Can be 0 if no additional data is required.
 - `require_ack`: `bool`
   - If true, the system will track logical acknowledgment in the background.
 
@@ -95,6 +95,8 @@ Sends a control command to a destination node. Similar to `send_data` but specia
   - The manager is not initialized.
 - `ESP_FAIL`:
   - The internal transmission queue is full.
+
+**Note:** If `require_ack` is false, the application is not notified of delivery failures.
 
 #### `confirm_reception`
 Sends a logical acknowledgment back to the sender of the last received message that had the `require_ack` flag set.
@@ -215,6 +217,9 @@ Initialization configuration.
 | `stack_size_rx_dispatch` | `uint32_t` | Stack size for the internal packet dispatcher task |
 | `stack_size_transport_worker` | `uint32_t` | Stack size for the worker task |
 | `stack_size_tx_manager` | `uint32_t` | Stack size for the transmission manager task |
+| `priority_rx_dispatch` | `UBaseType_t` | Priority for the internal packet dispatcher task |
+| `priority_transport_worker`| `UBaseType_t` | Priority for the worker task |
+| `priority_tx_manager` | `UBaseType_t` | Priority for the transmission manager task |
 
 ### `PeerInfo`
 Detailed information about a registered peer.

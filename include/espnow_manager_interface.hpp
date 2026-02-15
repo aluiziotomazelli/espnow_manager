@@ -89,6 +89,7 @@ public:
      * @return ESP_FAIL: the internal transmission queue is full.
      *
      * @note This operation is asynchronous and non-blocking. The logical ACK is handled by the TX Manager task.
+     * @note If `require_ack` is false, the application will not be notified of delivery failures.
      * @note The manager enters channel SCANNING mode after MAX_PHYSICAL_FAILURES or MAX_LOGICAL_RETRIES.
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
@@ -127,17 +128,18 @@ public:
      *
      * @param dest_node_id ID of the destination node.
      * @param command_type Type of command to execute.
-     * @param payload Optional payload for the command.
-     * @param len Length of the payload.
+     * @param payload Optional payload for the command. Can be `nullptr` if `len` is 0.
+     * @param len Length of the payload. Can be 0 if no additional data is required.
      * @param require_ack If true, waits for a logical acknowledgment (handled in background).
      *
      * @return ESP_OK: the packet was successfully queued.
      * @return ESP_ERR_NOT_FOUND: the destination node ID is not in the peer list.
-     * @return ESP_ERR_INVALID_ARG: the payload is empty or encoding failed.
+     * @return ESP_ERR_INVALID_ARG: encoding failed.
      * @return ESP_ERR_INVALID_STATE: the manager is not initialized.
      * @return ESP_FAIL: the internal transmission queue is full.
      *
      * @note This operation is asynchronous and non-blocking.
+     * @note If `require_ack` is false, the application will not be notified of delivery failures.
      * @note The manager enters channel SCANNING mode after MAX_PHYSICAL_FAILURES or MAX_LOGICAL_RETRIES.
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)

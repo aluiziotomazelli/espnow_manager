@@ -109,6 +109,10 @@ struct EspNowConfig
     uint32_t stack_size_transport_worker; /**< Stack size for the worker task (Heartbeats, Pairing) */
     uint32_t stack_size_tx_manager;       /**< Stack size for the transmission manager task */
 
+    UBaseType_t priority_rx_dispatch;      /**< Priority for the internal packet dispatcher task */
+    UBaseType_t priority_transport_worker; /**< Priority for the worker task (Heartbeats, Pairing) */
+    UBaseType_t priority_tx_manager;       /**< Priority for the transmission manager task */
+
     /**
      * @brief Default constructor with sensible defaults.
      */
@@ -122,6 +126,9 @@ struct EspNowConfig
         , stack_size_rx_dispatch(4096)
         , stack_size_transport_worker(5120)
         , stack_size_tx_manager(4096)
+        , priority_rx_dispatch(10)
+        , priority_transport_worker(5)
+        , priority_tx_manager(9)
     {
     }
 };

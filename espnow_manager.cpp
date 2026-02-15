@@ -220,20 +220,20 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
         goto fail;
     }
 
-    if (xTaskCreate(rx_dispatch_task, "espnow_dispatch", config_.stack_size_rx_dispatch, this, 10,
-                    &rx_dispatch_task_handle_) != pdPASS) {
+    if (xTaskCreate(rx_dispatch_task, "espnow_dispatch", config_.stack_size_rx_dispatch, this,
+                    config_.priority_rx_dispatch, &rx_dispatch_task_handle_) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create rx_dispatch task");
         ret = ESP_FAIL;
         goto fail;
     }
-    if (xTaskCreate(transport_worker_task, "espnow_worker", config_.stack_size_transport_worker, this, 5,
-                    &transport_worker_task_handle_) != pdPASS) {
+    if (xTaskCreate(transport_worker_task, "espnow_worker", config_.stack_size_transport_worker, this,
+                    config_.priority_transport_worker, &transport_worker_task_handle_) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create transport_worker task");
         ret = ESP_FAIL;
         goto fail;
     }
 
-    ret = tx_manager_->init(config_.stack_size_tx_manager, 9);
+    ret = tx_manager_->init(config_.stack_size_tx_manager, config_.priority_tx_manager);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "tx_manager init failed: %s", esp_err_to_name(ret));
         goto fail;
