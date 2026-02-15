@@ -14,39 +14,39 @@
 /** @brief Correct size of the universal message header */
 constexpr size_t MESSAGE_HEADER_SIZE = 16;
 /** @brief Size of the CRC field in the packet */
-constexpr size_t CRC_SIZE            = 1;
+constexpr size_t CRC_SIZE = 1;
 /** @brief The maximum payload size is the total ESP-NOW size minus the header and CRC */
 constexpr size_t MAX_PAYLOAD_SIZE = ESP_NOW_MAX_DATA_LEN - MESSAGE_HEADER_SIZE - CRC_SIZE;
 
 // Default values (can be overridden in config)
 /** @brief Default acknowledgment timeout in milliseconds */
-constexpr uint32_t DEFAULT_ACK_TIMEOUT_MS        = 500;
+constexpr uint32_t DEFAULT_ACK_TIMEOUT_MS = 500;
 /** @brief Default interval between heartbeat messages in milliseconds */
 constexpr uint32_t DEFAULT_HEARTBEAT_INTERVAL_MS = 60000;
 /** @brief Default WiFi channel to use if none is specified */
-constexpr uint8_t DEFAULT_WIFI_CHANNEL           = 1;
+constexpr uint8_t DEFAULT_WIFI_CHANNEL = 1;
 /** @brief Multiplier applied to heartbeat interval to determine if a node is offline */
-constexpr float HEARTBEAT_OFFLINE_MULTIPLIER     = 2.5f;
+constexpr float HEARTBEAT_OFFLINE_MULTIPLIER = 2.5f;
 
 // Constants for retry logic
 /** @brief Timeout for logical acknowledgments in milliseconds */
 constexpr uint32_t LOGICAL_ACK_TIMEOUT_MS = 500;
 /** @brief Maximum number of logical retries for unacknowledged packets */
-constexpr uint8_t MAX_LOGICAL_RETRIES     = 3;
+constexpr uint8_t MAX_LOGICAL_RETRIES = 3;
 /** @brief Maximum number of physical transmission failures before giving up or scanning */
-constexpr uint8_t MAX_PHYSICAL_FAILURES   = 3;
+constexpr uint8_t MAX_PHYSICAL_FAILURES = 3;
 
 /** @brief Timeout for scanning a single channel during discovery (ms) */
 constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 50;
 /** @brief Number of scan attempts per channel */
-constexpr uint8_t SCAN_CHANNEL_ATTEMPTS    = 2;
+constexpr uint8_t SCAN_CHANNEL_ATTEMPTS = 2;
 /** @brief Total maximum time allowed for a full channel scan */
-constexpr uint16_t MAX_SCAN_TIME_MS        = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 20;
+constexpr uint16_t MAX_SCAN_TIME_MS = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 20;
 
 /** @brief Type alias for Node identification (0-255) */
-using NodeId      = uint8_t;
+using NodeId = uint8_t;
 /** @brief Type alias for Node role/category categorization */
-using NodeType    = uint8_t;
+using NodeType = uint8_t;
 /** @brief Type alias for application-defined payload identifiers */
 using PayloadType = uint8_t;
 
@@ -57,7 +57,7 @@ namespace ReservedIds {
 /** @brief Broadcast ID for sending to all nodes */
 constexpr NodeId BROADCAST = 0xFF;
 /** @brief Central Hub/Controller default ID */
-constexpr NodeId HUB       = 0x01;
+constexpr NodeId HUB = 0x01;
 } // namespace ReservedIds
 
 /**
@@ -67,7 +67,7 @@ namespace ReservedTypes {
 /** @brief Type for nodes that have not yet identified themselves */
 constexpr NodeType UNKNOWN = 0x00;
 /** @brief Type identifier for the Central Hub */
-constexpr NodeType HUB     = 0x01;
+constexpr NodeType HUB = 0x01;
 } // namespace ReservedTypes
 
 /**

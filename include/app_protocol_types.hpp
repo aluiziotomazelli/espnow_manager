@@ -76,6 +76,6 @@ struct SolarSensorReport
 
 #pragma pack(pop)
 
-// Validações de tamanho para garantir que nenhum payload exceda o limite do ESP-NOW
+// Validations to ensure that no payload exceeds the ESP-NOW limit
 static_assert(sizeof(WaterLevelReport) <= MAX_PAYLOAD_SIZE, "WaterLevelReport payload is too large");
 static_assert(sizeof(SolarSensorReport) <= MAX_PAYLOAD_SIZE, "SolarSensorReport payload is too large");

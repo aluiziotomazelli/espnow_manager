@@ -31,13 +31,14 @@ public:
      * @brief Dependency injection constructor for testing
      * @internal
      */
-    EspNowManager(std::unique_ptr<IPeerManager> peer_manager,
-                  std::unique_ptr<ITxManager> tx_manager,
-                  IChannelScanner *scanner_ptr,
-                  std::unique_ptr<IMessageCodec> message_codec,
-                  std::unique_ptr<IHeartbeatManager> heartbeat_manager,
-                  std::unique_ptr<IPairingManager> pairing_manager,
-                  std::unique_ptr<IMessageRouter> message_router);
+    EspNowManager(
+        std::unique_ptr<IPeerManager> peer_manager,
+        std::unique_ptr<ITxManager> tx_manager,
+        IChannelScanner *scanner_ptr,
+        std::unique_ptr<IMessageCodec> message_codec,
+        std::unique_ptr<IHeartbeatManager> heartbeat_manager,
+        std::unique_ptr<IPairingManager> pairing_manager,
+        std::unique_ptr<IMessageRouter> message_router);
 
     EspNowManager(const EspNowManager &)            = delete;
     EspNowManager &operator=(const EspNowManager &) = delete;
@@ -59,19 +60,18 @@ public:
 
     using IEspNowManager::send_data;
     /** @copydoc IEspNowManager::send_data */
-    esp_err_t send_data(NodeId dest_node_id,
-                        PayloadType payload_type,
-                        const void *payload,
-                        size_t len,
-                        bool require_ack = false) override;
+    esp_err_t
+    send_data(NodeId dest_node_id, PayloadType payload_type, const void *payload, size_t len, bool require_ack = false)
+        override;
 
     using IEspNowManager::send_command;
     /** @copydoc IEspNowManager::send_command */
-    esp_err_t send_command(NodeId dest_node_id,
-                           CommandType command_type,
-                           const void *payload,
-                           size_t len,
-                           bool require_ack = false) override;
+    esp_err_t send_command(
+        NodeId dest_node_id,
+        CommandType command_type,
+        const void *payload,
+        size_t len,
+        bool require_ack = false) override;
 
     /** @copydoc IEspNowManager::confirm_reception */
     esp_err_t confirm_reception(AckStatus status) override;

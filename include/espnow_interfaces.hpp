@@ -29,20 +29,18 @@ public:
      * @brief Add peer to list
      * @internal
      */
-    virtual esp_err_t add(NodeId id,
-                          const uint8_t *mac,
-                          uint8_t channel,
-                          NodeType type,
-                          uint32_t heartbeat_interval_ms = 0) = 0;
+    virtual esp_err_t
+    add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, uint32_t heartbeat_interval_ms = 0) = 0;
 
     /**
      * @brief Template for adding peer using enums
      * @internal
      */
-    template <typename T1,
-              typename T2,
-              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
-              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
+    template <
+        typename T1,
+        typename T2,
+        typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
+        typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
     esp_err_t add(T1 id, const uint8_t *mac, uint8_t channel, T2 type, uint32_t heartbeat_interval_ms = 0)
     {
         return add(static_cast<NodeId>(id), mac, channel, static_cast<NodeType>(type), heartbeat_interval_ms);
@@ -123,7 +121,8 @@ public:
 
 /**
  * @interface ITxStateMachine
- * @brief State machine for managing transmission lifecycle and retries (internal)
+ * @brief State machine for managing transmission lifecycle and retries
+ * (internal)
  * @internal
  */
 class ITxStateMachine
@@ -176,10 +175,11 @@ public:
     virtual void update_node_info(NodeId id, NodeType type) = 0;
 
     /** @internal */
-    template <typename T1,
-              typename T2,
-              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
-              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
+    template <
+        typename T1,
+        typename T2,
+        typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
+        typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
     void update_node_info(T1 id, T2 type)
     {
         update_node_info(static_cast<NodeId>(id), static_cast<NodeType>(type));
@@ -235,9 +235,8 @@ public:
     /** @internal */
     virtual esp_err_t load(uint8_t &wifi_channel, std::vector<PersistentPeer> &peers) = 0;
     /** @internal */
-    virtual esp_err_t save(uint8_t wifi_channel,
-                           const std::vector<PersistentPeer> &peers,
-                           bool force_nvs_commit = true) = 0;
+    virtual esp_err_t
+    save(uint8_t wifi_channel, const std::vector<PersistentPeer> &peers, bool force_nvs_commit = true) = 0;
 };
 
 /**
@@ -352,10 +351,11 @@ public:
     /** @internal */
     virtual esp_err_t init(NodeType type, NodeId id) = 0;
     /** @internal */
-    template <typename T1,
-              typename T2,
-              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeType)>,
-              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeId)>>
+    template <
+        typename T1,
+        typename T2,
+        typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeType)>,
+        typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeId)>>
     esp_err_t init(T1 type, T2 id)
     {
         return init(static_cast<NodeType>(type), static_cast<NodeId>(id));
@@ -375,7 +375,8 @@ public:
 
 /**
  * @interface IMessageRouter
- * @brief Routing of received packets to appropriate managers or app queue (internal)
+ * @brief Routing of received packets to appropriate managers or app queue
+ * (internal)
  * @internal
  */
 class IMessageRouter
@@ -393,10 +394,11 @@ public:
     virtual void set_node_info(NodeId id, NodeType type) = 0;
 
     /** @internal */
-    template <typename T1,
-              typename T2,
-              typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
-              typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
+    template <
+        typename T1,
+        typename T2,
+        typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
+        typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
     void set_node_info(T1 id, T2 type)
     {
         set_node_info(static_cast<NodeId>(id), static_cast<NodeType>(type));

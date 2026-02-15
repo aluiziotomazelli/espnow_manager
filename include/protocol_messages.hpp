@@ -34,10 +34,10 @@ struct MessageHeader
  */
 struct PairRequest
 {
-    MessageHeader header;            /**< Universal message header */
-    uint8_t firmware_version[3];     /**< Current firmware version of the node (major, minor, patch) */
-    uint64_t uptime_ms;              /**< Current uptime of the node in milliseconds */
-    char device_name[16];            /**< Human-readable name of the device */
+    MessageHeader header;           /**< Universal message header */
+    uint8_t firmware_version[3];    /**< Current firmware version of the node (major, minor, patch) */
+    uint64_t uptime_ms;             /**< Current uptime of the node in milliseconds */
+    char device_name[16];           /**< Human-readable name of the device */
     uint32_t heartbeat_interval_ms; /**< Requested interval between heartbeats */
 };
 
@@ -46,12 +46,12 @@ struct PairRequest
  */
 struct PairResponse
 {
-    MessageHeader header;            /**< Universal message header */
-    PairStatus status;               /**< Acceptance or rejection status */
-    NodeId assigned_id;              /**< Node ID assigned by the Hub (if accepted) */
+    MessageHeader header;           /**< Universal message header */
+    PairStatus status;              /**< Acceptance or rejection status */
+    NodeId assigned_id;             /**< Node ID assigned by the Hub (if accepted) */
     uint32_t heartbeat_interval_ms; /**< Heartbeat interval authorized by the Hub */
     uint32_t report_interval_ms;    /**< Suggested reporting interval for application data */
-    uint8_t wifi_channel;            /**< WiFi channel the Hub is operating on */
+    uint8_t wifi_channel;           /**< WiFi channel the Hub is operating on */
 };
 
 /**
@@ -70,9 +70,9 @@ struct HeartbeatMessage
  */
 struct HeartbeatResponse
 {
-    MessageHeader header;     /**< Universal message header */
-    uint64_t server_time_ms;  /**< Current Unix epoch or relative server time in milliseconds */
-    uint8_t wifi_channel;     /**< Current WiFi channel of the Hub (for channel synchronization) */
+    MessageHeader header;    /**< Universal message header */
+    uint64_t server_time_ms; /**< Current Unix epoch or relative server time in milliseconds */
+    uint8_t wifi_channel;    /**< Current WiFi channel of the Hub (for channel synchronization) */
 };
 
 // ========== APPLICATION LAYER ==========
@@ -82,9 +82,9 @@ struct HeartbeatResponse
  */
 struct AckMessage
 {
-    MessageHeader header;       /**< Universal message header */
-    uint16_t ack_sequence;      /**< Sequence number of the message being acknowledged */
-    AckStatus status;           /**< Processing status of the acknowledged message */
+    MessageHeader header;        /**< Universal message header */
+    uint16_t ack_sequence;       /**< Sequence number of the message being acknowledged */
+    AckStatus status;            /**< Processing status of the acknowledged message */
     uint32_t processing_time_us; /**< Time taken to process the message in microseconds */
 };
 

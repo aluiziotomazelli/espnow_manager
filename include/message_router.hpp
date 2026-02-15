@@ -7,11 +7,12 @@
 class RealMessageRouter : public IMessageRouter
 {
 public:
-    RealMessageRouter(IPeerManager &peer_manager,
-                      ITxManager &tx_manager,
-                      IHeartbeatManager &heartbeat_manager,
-                      IPairingManager &pairing_manager,
-                      IMessageCodec &message_codec);
+    RealMessageRouter(
+        IPeerManager &peer_manager,
+        ITxManager &tx_manager,
+        IHeartbeatManager &heartbeat_manager,
+        IPairingManager &pairing_manager,
+        IMessageCodec &message_codec);
 
     void set_app_queue(QueueHandle_t app_queue) override
     {
