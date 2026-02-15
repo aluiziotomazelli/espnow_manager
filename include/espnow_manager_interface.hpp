@@ -70,7 +70,7 @@ public:
     // ========================================
 
     /**
-     * @brief Send data to a destination node
+     * @brief Send data to a destination node 
      *
      * Encapsulates the payload into a standard message format and queues it for transmission.
      * For HUB: Used to send application data to a specific registered node.
@@ -85,6 +85,7 @@ public:
      * @return ESP_ERR_NOT_FOUND: the peer is not registered.
      * @return ESP_ERR_INVALID_ARG: the packet is empty.
      * @return ESP_ERR_TIMEOUT: ACK timeout (when require_ack=true).
+     * @return ESP_FAIL: failed to send message to tx_queue_
      *
      * @note Non-blocking unless require_ack=true
      * @note Enter in channel SCANNING mode after MAX_PHYSICAL_FAILURES or MAX_LOGICAL_RETRIES
@@ -132,6 +133,7 @@ public:
      * @return ESP_ERR_NOT_FOUND: the peer is not registered.
      * @return ESP_ERR_INVALID_ARG: the packet is empty.
      * @return ESP_ERR_TIMEOUT: ACK timeout (when require_ack=true).
+     * @return ESP_FAIL: failed to send message to tx_queue_
      *
      * @note Non-blocking unless require_ack=true
      * @note Enter in channel SCANNING mode after MAX_PHYSICAL_FAILURES or MAX_LOGICAL_RETRIES
@@ -189,7 +191,7 @@ public:
      * @return Other: error from the ESP-NOW driver
      *
      * @note List uses LRU (Least Recently Used) policy with maximum MAX_PEERS = 19 (ESP-NOW limitation)
-     * @note When full, oldest peer (least recently used) is evicted automatically
+     * @note When full, oldest peer (least recently used) is removed to make room
      * @note Re-adding existing peer moves it to front (marks as recently used)
      * @note Automatically persisted to RTC and NVS storage if is a new peer or readding one with different mac or wifi
      * channel
