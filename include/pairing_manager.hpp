@@ -20,6 +20,10 @@ public:
     void handle_request(const RxPacket &packet) override;
     void handle_response(const RxPacket &packet) override;
 
+protected:
+    void send_pair_request();
+    void on_timeout();
+
 private:
     ITxManager &tx_mgr_;
     IPeerManager &peer_mgr_;
@@ -31,8 +35,6 @@ private:
     TimerHandle_t periodic_timer_ = nullptr;
     SemaphoreHandle_t mutex_ = nullptr;
 
-    void send_pair_request();
     static void timeout_cb(TimerHandle_t xTimer);
     static void periodic_cb(TimerHandle_t xTimer);
-    void on_timeout();
 };

@@ -27,7 +27,7 @@ struct PersistentData
 };
 
 /**
- * @brief Class to handle persistence of EspNow component data in RTC memory and NVS.
+ * @brief Class to handle persistence of EspNowManager component data in RTC memory and NVS.
  */
 class EspNowStorage : public IStorage
 {

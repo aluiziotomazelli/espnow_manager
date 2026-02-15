@@ -10,7 +10,7 @@ idf_component_register(
         espnow_manager
         esp_wifi
         WHOLE_ARCHIVE
-)
+ esp_timer)
 
 # Using coverage commands from NVS host test example: https://github.com/espressif/esp-idf/tree/v5.2.1/components/nvs_flash/host_test/nvs_page_test
 target_compile_options(${COMPONENT_LIB} PUBLIC --coverage)

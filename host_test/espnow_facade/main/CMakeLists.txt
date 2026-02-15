@@ -4,10 +4,10 @@ idf_component_register(
         "test_espnow_facade.cpp"
     INCLUDE_DIRS
         "."
-        "../../mocks"
+        "../../../mocks"
     REQUIRES
         unity
         espnow_manager
         esp_wifi
         WHOLE_ARCHIVE
-)
+ esp_timer)
