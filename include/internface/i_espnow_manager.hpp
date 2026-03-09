@@ -70,7 +70,7 @@ public:
     // ========================================
 
     /**
-     * @brief Send data to a destination node 
+     * @brief Send data to a destination node
      *
      * Encapsulates the payload into a standard message format and queues it for transmission.
      * For HUB: Used to send application data to a specific registered node.
