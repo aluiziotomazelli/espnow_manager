@@ -9,10 +9,10 @@
 #include "i_peer_manager.hpp"
 #include "i_tx_manager.hpp"
 
-class RealMessageRouter : public IMessageRouter
+class MessageRouter : public IMessageRouter
 {
 public:
-    RealMessageRouter(
+    MessageRouter(
         IPeerManager &peer_manager,
         ITxManager &tx_manager,
         IHeartbeatManager &heartbeat_manager,

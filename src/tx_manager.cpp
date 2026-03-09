@@ -19,7 +19,7 @@ static constexpr uint32_t NOTIFY_ACK_TIMEOUT   = 0x40;
 static constexpr uint32_t NOTIFY_STOP          = 0x100;
 static constexpr uint32_t NOTIFY_LINK_ALIVE    = 0x200;
 
-RealTxManager::RealTxManager(ITxStateMachine &fsm, IChannelScanner &scanner, IWiFiHAL &hal, IMessageCodec &codec)
+TxManager::TxManager(ITxStateMachine &fsm, IChannelScanner &scanner, IWiFiHAL &hal, IMessageCodec &codec)
     : fsm_(fsm)
     , scanner_(scanner)
     , hal_(hal)
@@ -27,19 +27,19 @@ RealTxManager::RealTxManager(ITxStateMachine &fsm, IChannelScanner &scanner, IWi
 {
 }
 
-RealTxManager::~RealTxManager()
+TxManager::~TxManager()
 {
     deinit();
 }
 
-esp_err_t RealTxManager::init(uint32_t stack_size, UBaseType_t priority)
+esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
 {
     tx_queue_ = xQueueCreate(20, sizeof(TxPacket));
     if (!tx_queue_)
         return ESP_ERR_NO_MEM;
 
     ack_timeout_timer_ = xTimerCreate("ack_timeout", pdMS_TO_TICKS(500), pdFALSE, this, [](TimerHandle_t xTimer) {
-        RealTxManager *self = static_cast<RealTxManager *>(pvTimerGetTimerID(xTimer));
+        TxManager *self = static_cast<TxManager *>(pvTimerGetTimerID(xTimer));
         if (self->task_handle_) {
             xTaskNotify(self->task_handle_, NOTIFY_ACK_TIMEOUT, eSetBits);
         }
@@ -54,7 +54,7 @@ esp_err_t RealTxManager::init(uint32_t stack_size, UBaseType_t priority)
     return ESP_OK;
 }
 
-esp_err_t RealTxManager::deinit()
+esp_err_t TxManager::deinit()
 {
     if (task_handle_) {
         xTaskNotify(task_handle_, NOTIFY_STOP, eSetBits);
@@ -76,7 +76,7 @@ esp_err_t RealTxManager::deinit()
     return ESP_OK;
 }
 
-esp_err_t RealTxManager::queue_packet(const TxPacket &packet)
+esp_err_t TxManager::queue_packet(const TxPacket &packet)
 {
     if (!tx_queue_)
         return ESP_ERR_INVALID_STATE;
@@ -89,34 +89,34 @@ esp_err_t RealTxManager::queue_packet(const TxPacket &packet)
     return ESP_OK;
 }
 
-void RealTxManager::notify_physical_fail()
+void TxManager::notify_physical_fail()
 {
     if (task_handle_)
         xTaskNotify(task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits);
 }
-void RealTxManager::notify_link_alive()
+void TxManager::notify_link_alive()
 {
     if (task_handle_)
         xTaskNotify(task_handle_, NOTIFY_LINK_ALIVE, eSetBits);
 }
-void RealTxManager::notify_logical_ack()
+void TxManager::notify_logical_ack()
 {
     if (task_handle_)
         xTaskNotify(task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
 }
-void RealTxManager::notify_hub_found()
+void TxManager::notify_hub_found()
 {
     if (task_handle_)
         xTaskNotify(task_handle_, NOTIFY_HUB_FOUND, eSetBits);
 }
 
-void RealTxManager::tx_task_func(void *arg)
+void TxManager::tx_task_func(void *arg)
 {
-    static_cast<RealTxManager *>(arg)->run();
+    static_cast<TxManager *>(arg)->run();
     vTaskDelete(NULL);
 }
 
-void RealTxManager::run()
+void TxManager::run()
 {
     TxPacket packet_to_send;
     ESP_LOGI(TAG, "TX Manager task started.");

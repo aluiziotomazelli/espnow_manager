@@ -7,7 +7,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#include "espnow_storage.hpp"
+#include "storage_manager.hpp"
 #include "i_channel_scanner.hpp"
 #include "i_espnow_manager.hpp"
 #include "i_heartbeat_manager.hpp"

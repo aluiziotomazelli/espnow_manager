@@ -7,7 +7,7 @@
 
 static const char *TAG = "MessageRouter";
 
-RealMessageRouter::RealMessageRouter(
+MessageRouter::MessageRouter(
     IPeerManager &peer_manager,
     ITxManager &tx_manager,
     IHeartbeatManager &heartbeat_manager,
@@ -21,7 +21,7 @@ RealMessageRouter::RealMessageRouter(
 {
 }
 
-void RealMessageRouter::handle_packet(const RxPacket &packet)
+void MessageRouter::handle_packet(const RxPacket &packet)
 {
     auto header_opt = message_codec_.decode_header(packet.data, packet.len);
     if (!header_opt)
@@ -93,7 +93,7 @@ void RealMessageRouter::handle_packet(const RxPacket &packet)
     }
 }
 
-bool RealMessageRouter::should_dispatch_to_worker(MessageType type)
+bool MessageRouter::should_dispatch_to_worker(MessageType type)
 {
     switch (type) {
     case MessageType::PAIR_REQUEST:
@@ -109,7 +109,7 @@ bool RealMessageRouter::should_dispatch_to_worker(MessageType type)
     }
 }
 
-void RealMessageRouter::handle_scan_probe(const RxPacket &packet)
+void MessageRouter::handle_scan_probe(const RxPacket &packet)
 {
     if (my_type_ != ReservedTypes::HUB)
         return;

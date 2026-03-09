@@ -11,7 +11,7 @@
 
 static const char *TAG = "HeartbeatMgr";
 
-RealHeartbeatManager::RealHeartbeatManager(
+HeartbeatManager::HeartbeatManager(
     ITxManager &tx_mgr,
     IPeerManager &peer_mgr,
     IMessageCodec &codec,
@@ -23,17 +23,17 @@ RealHeartbeatManager::RealHeartbeatManager(
 {
 }
 
-RealHeartbeatManager::~RealHeartbeatManager()
+HeartbeatManager::~HeartbeatManager()
 {
     deinit();
 }
 
-void RealHeartbeatManager::update_node_id(NodeId id)
+void HeartbeatManager::update_node_id(NodeId id)
 {
     my_id_ = id;
 }
 
-esp_err_t RealHeartbeatManager::init(uint32_t interval_ms, NodeType type)
+esp_err_t HeartbeatManager::init(uint32_t interval_ms, NodeType type)
 {
     interval_ms_ = interval_ms;
     my_type_     = type;
@@ -47,7 +47,7 @@ esp_err_t RealHeartbeatManager::init(uint32_t interval_ms, NodeType type)
     return ESP_OK;
 }
 
-esp_err_t RealHeartbeatManager::deinit()
+esp_err_t HeartbeatManager::deinit()
 {
     if (timer_) {
         xTimerStop(timer_, portMAX_DELAY);
@@ -57,7 +57,7 @@ esp_err_t RealHeartbeatManager::deinit()
     return ESP_OK;
 }
 
-void RealHeartbeatManager::handle_response(NodeId hub_id, uint8_t channel)
+void HeartbeatManager::handle_response(NodeId hub_id, uint8_t channel)
 {
     ESP_LOGI(TAG, "Heartbeat response received from Hub ID %d. Wifi Channel: %d", (int)hub_id, channel);
 
@@ -71,7 +71,7 @@ void RealHeartbeatManager::handle_response(NodeId hub_id, uint8_t channel)
     }
 }
 
-void RealHeartbeatManager::handle_request(NodeId sender_id, const uint8_t *mac, uint64_t uptime_ms)
+void HeartbeatManager::handle_request(NodeId sender_id, const uint8_t *mac, uint64_t uptime_ms)
 {
     uint64_t now_ms = esp_timer_get_time() / 1000;
     peer_mgr_.update_last_seen(sender_id, now_ms);
@@ -98,7 +98,7 @@ void RealHeartbeatManager::handle_request(NodeId sender_id, const uint8_t *mac, 
     }
 }
 
-void RealHeartbeatManager::send_heartbeat()
+void HeartbeatManager::send_heartbeat()
 {
     TxPacket tx_packet;
     if (!peer_mgr_.find_mac(ReservedIds::HUB, tx_packet.dest_mac)) {
@@ -124,7 +124,7 @@ void RealHeartbeatManager::send_heartbeat()
     }
 }
 
-void RealHeartbeatManager::timer_cb(TimerHandle_t xTimer)
+void HeartbeatManager::timer_cb(TimerHandle_t xTimer)
 {
-    static_cast<RealHeartbeatManager *>(pvTimerGetTimerID(xTimer))->send_heartbeat();
+    static_cast<HeartbeatManager *>(pvTimerGetTimerID(xTimer))->send_heartbeat();
 }

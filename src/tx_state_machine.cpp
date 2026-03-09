@@ -1,7 +1,7 @@
 #include "tx_state_machine.hpp"
 #include "protocol_types.hpp"
 
-RealTxStateMachine::RealTxStateMachine()
+TxStateMachine::TxStateMachine()
     : current_state_(TxState::IDLE)
     , pending_ack_(std::nullopt)
     , phy_send_fail_count_(0)
@@ -9,7 +9,7 @@ RealTxStateMachine::RealTxStateMachine()
 {
 }
 
-void RealTxStateMachine::reset()
+void TxStateMachine::reset()
 {
     current_state_ = TxState::IDLE;
     pending_ack_.reset();
@@ -17,12 +17,12 @@ void RealTxStateMachine::reset()
     phy_consecutive_fail_count_ = 0;
 }
 
-void RealTxStateMachine::set_pending_ack(const PendingAck &pending_ack)
+void TxStateMachine::set_pending_ack(const PendingAck &pending_ack)
 {
     pending_ack_ = pending_ack;
 }
 
-TxState RealTxStateMachine::on_tx_success(bool requires_ack)
+TxState TxStateMachine::on_tx_success(bool requires_ack)
 {
     // TODO: Verify if this action dont need to clear failure counters
     if (requires_ack) {
@@ -34,7 +34,7 @@ TxState RealTxStateMachine::on_tx_success(bool requires_ack)
     return current_state_;
 }
 
-TxState RealTxStateMachine::on_ack_received()
+TxState TxStateMachine::on_ack_received()
 {
     phy_send_fail_count_        = 0;
     phy_consecutive_fail_count_ = 0;
@@ -43,19 +43,19 @@ TxState RealTxStateMachine::on_ack_received()
     return current_state_;
 }
 
-void RealTxStateMachine::on_link_alive()
+void TxStateMachine::on_link_alive()
 {
     phy_consecutive_fail_count_ = 0;
     phy_send_fail_count_        = 0;
 }
 
-TxState RealTxStateMachine::on_ack_timeout()
+TxState TxStateMachine::on_ack_timeout()
 {
     current_state_ = TxState::RETRYING;
     return current_state_;
 }
 
-TxState RealTxStateMachine::on_physical_fail()
+TxState TxStateMachine::on_physical_fail()
 {
     phy_consecutive_fail_count_++;
 
@@ -85,7 +85,7 @@ TxState RealTxStateMachine::on_physical_fail()
     return current_state_;
 }
 
-TxState RealTxStateMachine::on_max_retries()
+TxState TxStateMachine::on_max_retries()
 {
     pending_ack_.reset();
     current_state_ = TxState::IDLE;

@@ -2,7 +2,7 @@
 
 #include "i_message_codec.hpp"
 
-class RealMessageCodec : public IMessageCodec
+class MessageCodec : public IMessageCodec
 {
 public:
     std::vector<uint8_t> encode(const MessageHeader &header, const void *payload, size_t len) override;

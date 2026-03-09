@@ -5,7 +5,7 @@
 #include <cstring>
 #include <queue>
 
-class MockWiFiHAL : public IWiFiHAL
+class MockWiFiHAL : public IEspNowHAL
 {
 public:
     uint8_t current_channel = 1;

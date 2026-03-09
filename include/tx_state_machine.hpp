@@ -2,10 +2,10 @@
 
 #include "i_tx_state_machine.hpp"
 
-class RealTxStateMachine : public ITxStateMachine
+class TxStateMachine : public ITxStateMachine
 {
 public:
-    RealTxStateMachine();
+    TxStateMachine();
 
     TxState on_tx_success(bool requires_ack) override;
     TxState on_ack_received() override;

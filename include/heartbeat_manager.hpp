@@ -10,11 +10,11 @@
 #include "i_peer_manager.hpp"
 #include "i_tx_manager.hpp"
 
-class RealHeartbeatManager : public IHeartbeatManager
+class HeartbeatManager : public IHeartbeatManager
 {
 public:
-    RealHeartbeatManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec, NodeId my_id);
-    ~RealHeartbeatManager();
+    HeartbeatManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec, NodeId my_id);
+    ~HeartbeatManager();
 
     using IHeartbeatManager::handle_request;
     using IHeartbeatManager::handle_response;

@@ -29,21 +29,21 @@ static const char *TAG = "EspNow";
 // --- Singleton ---
 EspNowManager &EspNowManager::instance()
 {
-    static EspNowStorage storage;
-    static auto peer_manager  = std::make_unique<RealPeerManager>(storage);
-    static auto message_codec = std::make_unique<RealMessageCodec>();
+    static StorageManager storage;
+    static auto peer_manager = std::make_unique<PeerManager>(storage);
+    static auto message_codec = std::make_unique<MessageCodec>();
 
-    static RealWiFiHAL wifi_hal;
-    static RealTxStateMachine tx_fsm;
-    static RealChannelScanner scanner(wifi_hal, *message_codec, ReservedIds::HUB, ReservedTypes::HUB);
+    static WiFiHAL wifi_hal;
+    static TxStateMachine tx_fsm;
+    static ChannelScanner scanner(wifi_hal, *message_codec, ReservedIds::HUB, ReservedTypes::HUB);
 
-    static auto tx_manager = std::make_unique<RealTxManager>(tx_fsm, scanner, wifi_hal, *message_codec);
+    static auto tx_manager = std::make_unique<TxManager>(tx_fsm, scanner, wifi_hal, *message_codec);
 
     static auto heartbeat_mgr =
-        std::make_unique<RealHeartbeatManager>(*tx_manager, *peer_manager, *message_codec, ReservedIds::HUB);
-    static auto pairing_mgr = std::make_unique<RealPairingManager>(*tx_manager, *peer_manager, *message_codec);
+        std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *message_codec, ReservedIds::HUB);
+    static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec);
     static auto message_router =
-        std::make_unique<RealMessageRouter>(*peer_manager, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
+        std::make_unique<MessageRouter>(*peer_manager, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
 
     static EspNowManager instance(
         std::move(peer_manager),
@@ -146,7 +146,7 @@ esp_err_t EspNowManager::deinit()
     }
 
     last_header_requiring_ack_.reset();
-    config_         = EspNowConfig();
+    config_ = EspNowConfig();
     is_initialized_ = false;
 
     ESP_LOGI(TAG, "EspNow component deinitialized.");
@@ -160,7 +160,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     if (config.app_rx_queue == nullptr)
         return ESP_ERR_INVALID_ARG;
 
-    config_       = config;
+    config_ = config;
     esp_err_t ret = ESP_OK;
 
     wifi_mode_t mode;
@@ -202,12 +202,12 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
 
     {
         esp_now_peer_info_t broadcast_peer = {};
-        const uint8_t broadcast_mac[]      = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
         memcpy(broadcast_peer.peer_addr, broadcast_mac, 6);
         broadcast_peer.channel = config_.wifi_channel;
-        broadcast_peer.ifidx   = WIFI_IF_STA;
+        broadcast_peer.ifidx = WIFI_IF_STA;
         broadcast_peer.encrypt = false;
-        ret                    = esp_now_add_peer(&broadcast_peer);
+        ret = esp_now_add_peer(&broadcast_peer);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "esp_now_add_peer (broadcast) failed: %s", esp_err_to_name(ret));
             goto fail;
@@ -221,7 +221,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
         goto fail;
     }
 
-    rx_dispatch_queue_      = xQueueCreate(30, sizeof(RxPacket));
+    rx_dispatch_queue_ = xQueueCreate(30, sizeof(RxPacket));
     transport_worker_queue_ = xQueueCreate(20, sizeof(RxPacket));
     if (rx_dispatch_queue_ == nullptr || transport_worker_queue_ == nullptr) {
         ESP_LOGE(TAG, "Failed to create queues");
@@ -270,7 +270,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
             esp_now_peer_info_t info = {};
             memcpy(info.peer_addr, peer.mac, 6);
             info.channel = peer.channel;
-            info.ifidx   = WIFI_IF_STA;
+            info.ifidx = WIFI_IF_STA;
             info.encrypt = false;
             esp_now_add_peer(&info);
         }
@@ -307,14 +307,14 @@ esp_err_t EspNowManager::send_data(
         return ESP_ERR_NOT_FOUND;
 
     MessageHeader header;
-    header.msg_type        = MessageType::DATA;
+    header.msg_type = MessageType::DATA;
     header.sequence_number = 0;
-    header.sender_type     = config_.node_type;
-    header.sender_node_id  = config_.node_id;
-    header.payload_type    = payload_type;
-    header.requires_ack    = require_ack;
-    header.dest_node_id    = dest_node_id;
-    header.timestamp_ms    = get_time_ms();
+    header.sender_type = config_.node_type;
+    header.sender_node_id = config_.node_id;
+    header.payload_type = payload_type;
+    header.requires_ack = require_ack;
+    header.dest_node_id = dest_node_id;
+    header.timestamp_ms = get_time_ms();
 
     auto encoded = message_codec_->encode(header, payload, len);
     if (encoded.empty())
@@ -339,14 +339,14 @@ esp_err_t EspNowManager::send_command(
         return ESP_ERR_NOT_FOUND;
 
     MessageHeader header;
-    header.msg_type        = MessageType::COMMAND;
+    header.msg_type = MessageType::COMMAND;
     header.sequence_number = 0;
-    header.sender_type     = config_.node_type;
-    header.sender_node_id  = config_.node_id;
-    header.payload_type    = static_cast<PayloadType>(command_type);
-    header.requires_ack    = require_ack;
-    header.dest_node_id    = dest_node_id;
-    header.timestamp_ms    = get_time_ms();
+    header.sender_type = config_.node_type;
+    header.sender_node_id = config_.node_id;
+    header.payload_type = static_cast<PayloadType>(command_type);
+    header.requires_ack = require_ack;
+    header.dest_node_id = dest_node_id;
+    header.timestamp_ms = get_time_ms();
 
     auto encoded = message_codec_->encode(header, payload, len);
     if (encoded.empty())
@@ -370,13 +370,13 @@ esp_err_t EspNowManager::confirm_reception(AckStatus status)
 
     const auto &header_to_ack = last_header_requiring_ack_.value();
     AckMessage ack;
-    ack.header.msg_type        = MessageType::ACK;
-    ack.header.sender_node_id  = config_.node_id;
-    ack.header.sender_type     = config_.node_type;
-    ack.header.dest_node_id    = header_to_ack.sender_node_id;
+    ack.header.msg_type = MessageType::ACK;
+    ack.header.sender_node_id = config_.node_id;
+    ack.header.sender_type = config_.node_type;
+    ack.header.dest_node_id = header_to_ack.sender_node_id;
     ack.header.sequence_number = 0;
-    ack.ack_sequence           = header_to_ack.sequence_number;
-    ack.status                 = status;
+    ack.ack_sequence = header_to_ack.sequence_number;
+    ack.status = status;
 
     TxPacket tx_packet;
     if (!peer_manager_->find_mac(header_to_ack.sender_node_id, tx_packet.dest_mac)) {
@@ -430,8 +430,8 @@ void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8
     RxPacket packet;
     memcpy(packet.src_mac, info->src_addr, 6);
     memcpy(packet.data, data, len);
-    packet.len          = len;
-    packet.rssi         = info->rx_ctrl->rssi;
+    packet.len = len;
+    packet.rssi = info->rx_ctrl->rssi;
     packet.timestamp_us = esp_timer_get_time();
     xQueueSendFromISR(instance().rx_dispatch_queue_, &packet, 0);
 }
@@ -529,12 +529,12 @@ uint64_t EspNowManager::get_time_ms() const
 void EspNowManager::update_wifi_channel(uint8_t channel)
 {
     if (config_.wifi_channel != channel) {
-        config_.wifi_channel          = channel;
+        config_.wifi_channel = channel;
         esp_now_peer_info_t broadcast = {};
-        const uint8_t b_mac[]         = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        const uint8_t b_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
         memcpy(broadcast.peer_addr, b_mac, 6);
         broadcast.channel = channel;
-        broadcast.ifidx   = WIFI_IF_STA;
+        broadcast.ifidx = WIFI_IF_STA;
         broadcast.encrypt = false;
         esp_now_mod_peer(&broadcast);
         peer_manager_->persist(channel);

@@ -2,7 +2,7 @@ idf_component_register(
     NAME espnow_manager
     SRCS
         "src/espnow_manager.cpp"
-        "src/espnow_storage.cpp"
+        "src/storage_manager.cpp"
         "src/peer_manager.cpp"
         "src/message_codec.cpp"
         "src/tx_state_machine.cpp"

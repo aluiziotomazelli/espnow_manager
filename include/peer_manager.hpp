@@ -7,11 +7,11 @@
 
 #include "i_peer_manager.hpp"
 
-class RealPeerManager : public IPeerManager
+class PeerManager : public IPeerManager
 {
 public:
-    RealPeerManager(IStorage &storage);
-    ~RealPeerManager();
+    PeerManager(IStorageManager &storage);
+    ~PeerManager();
 
     using IPeerManager::add;
     using IPeerManager::find_mac;
@@ -31,7 +31,7 @@ public:
     void persist(uint8_t wifi_channel) override;
 
 private:
-    IStorage &storage_;
+    IStorageManager &storage_;
     std::vector<PeerInfo> peers_;
     SemaphoreHandle_t mutex_;
 

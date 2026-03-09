@@ -1,10 +1,10 @@
-# EspNowStorage Class
+# StorageManager Class
 
 A persistent storage solution for ESP-NOW peer information and configuration on ESP32 devices.
 
 ## Overview
 
-`EspNowStorage` provides reliable storage for ESP-NOW peer configurations using both NVS (Non-Volatile Storage) and RTC (Real-Time Clock) memory. It ensures data integrity through CRC validation and offers efficient data management.
+`StorageManager` provides reliable storage for ESP-NOW peer configurations using both NVS (Non-Volatile Storage) and RTC (Real-Time Clock) memory. It ensures data integrity through CRC validation and offers efficient data management.
 
 ## Key Features
 
@@ -87,20 +87,20 @@ Loads ESP-NOW configuration from storage.
 
 ### Basic Usage
 ```cpp
-#include "espnow_storage.hpp"
+#include "storage_manager.hpp"
 
 // Initialize storage
-EspNowStorage storage;
+StorageManager storage;
 
 // Save configuration
 uint8_t channel = 6;
-std::vector<EspNowStorage::Peer> peers;
+std::vector<PersistentPeer> peers;
 // ... populate peers
 esp_err_t err = storage.save(channel, peers);
 
 // Load configuration
 uint8_t loaded_channel;
-std::vector<EspNowStorage::Peer> loaded_peers;
+std::vector<PersistentPeer> loaded_peers;
 err = storage.load(loaded_channel, loaded_peers);
 ```
 ### Optimized Save
@@ -111,9 +111,9 @@ storage.save(channel, peers, false);
 
 ### Configuration Constants
 ```cpp
-static constexpr uint32_t ESPNOW_STORAGE_MAGIC = 0x4E565330;  // "NVS0"
-static constexpr uint8_t ESPNOW_STORAGE_VERSION = 1;
-static constexpr uint8_t MAX_PERSISTENT_PEERS = 16;
+static constexpr uint32_t MAGIC   = 0x4553504E;
+static constexpr uint32_t VERSION = 1;
+static constexpr size_t MAX_PERSISTENT_PEERS = 19;
 ```
 ### Error Handling
 | Error Code              | Description                                  |
@@ -142,7 +142,7 @@ static constexpr uint8_t MAX_PERSISTENT_PEERS = 16;
 - RAM: Variable based on peer count
 
 ### Limitations
-- Maximum of 16 persistent peers
+- Maximum of 19 persistent peers
 - Data lost from RTC on deep sleep
 - Requires NVS partition in partition table
 - C++17 compatible compiler required
@@ -151,34 +151,3 @@ static constexpr uint8_t MAX_PERSISTENT_PEERS = 16;
 [ESP-NOW Protocol Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_now.html)
 
 [ESP-IDF NVS Documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/nvs_flash.html)
-
-## Testing
-The class includes extensive unit tests covering:
-
-- Basic Operations: Load/save functionality
-- Data Validation: CRC, magic, and version checks
-- Edge Cases: Empty data, maximum limits
-- Recovery Scenarios: Corrupted data handling
-- Performance: Memory usage and optimization
-- Priority: RTC vs NVS behavior
-
-### How to Run the Tests
-To execute the tests on your ESP32 device:
-```bash
-# Navigate to the unit-test-app directory
-cd unit-test-app
-
-# Build the espnow test component
-idf.py -T espnow build
-
-# Flash the firmware to your ESP32 and start monitoring
-idf.py -T espnow flash monitor
-```
-Once the device boots, the tests will automatically be displayed in the serial monitor. More information aboute unit tests:
-- [ESP-IDF Unit Testing Guide](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/unit-tests.html)
-
-### Test Environment
-Tests run with controlled memory limits using TestMemoryHelper:
-* `set_1kb_limits()`: For memory leak detection
-* `set_2kb_limits()`: Standard test environment
-* `set_4kb_limits()`: For stress testing

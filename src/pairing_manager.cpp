@@ -15,7 +15,7 @@
 
 static const char *TAG = "PairingMgr";
 
-RealPairingManager::RealPairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec)
+PairingManager::PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec)
     : tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
     , codec_(codec)
@@ -23,21 +23,21 @@ RealPairingManager::RealPairingManager(ITxManager &tx_mgr, IPeerManager &peer_mg
     mutex_ = xSemaphoreCreateMutex();
 }
 
-RealPairingManager::~RealPairingManager()
+PairingManager::~PairingManager()
 {
     deinit();
     if (mutex_)
         vSemaphoreDelete(mutex_);
 }
 
-esp_err_t RealPairingManager::init(NodeType type, NodeId id)
+esp_err_t PairingManager::init(NodeType type, NodeId id)
 {
     my_type_ = type;
     my_id_   = id;
     return ESP_OK;
 }
 
-esp_err_t RealPairingManager::deinit()
+esp_err_t PairingManager::deinit()
 {
     xSemaphoreTake(mutex_, portMAX_DELAY);
     if (timeout_timer_) {
@@ -53,7 +53,7 @@ esp_err_t RealPairingManager::deinit()
     return ESP_OK;
 }
 
-esp_err_t RealPairingManager::start(uint32_t timeout_ms)
+esp_err_t PairingManager::start(uint32_t timeout_ms)
 {
     xSemaphoreTake(mutex_, portMAX_DELAY);
     if (is_active_) {
@@ -75,7 +75,7 @@ esp_err_t RealPairingManager::start(uint32_t timeout_ms)
     return ESP_OK;
 }
 
-void RealPairingManager::handle_request(const RxPacket &packet)
+void PairingManager::handle_request(const RxPacket &packet)
 {
     xSemaphoreTake(mutex_, portMAX_DELAY);
     if (!is_active_ || my_type_ != ReservedTypes::HUB) {
@@ -119,7 +119,7 @@ void RealPairingManager::handle_request(const RxPacket &packet)
     }
 }
 
-void RealPairingManager::handle_response(const RxPacket &packet)
+void PairingManager::handle_response(const RxPacket &packet)
 {
     xSemaphoreTake(mutex_, portMAX_DELAY);
     if (!is_active_ || my_type_ == ReservedTypes::HUB) {
@@ -148,7 +148,7 @@ void RealPairingManager::handle_response(const RxPacket &packet)
     xSemaphoreGive(mutex_);
 }
 
-void RealPairingManager::send_pair_request()
+void PairingManager::send_pair_request()
 {
     PairRequest req;
     req.header.msg_type        = MessageType::PAIR_REQUEST;
@@ -171,17 +171,17 @@ void RealPairingManager::send_pair_request()
     }
 }
 
-void RealPairingManager::timeout_cb(TimerHandle_t xTimer)
+void PairingManager::timeout_cb(TimerHandle_t xTimer)
 {
-    static_cast<RealPairingManager *>(pvTimerGetTimerID(xTimer))->on_timeout();
+    static_cast<PairingManager *>(pvTimerGetTimerID(xTimer))->on_timeout();
 }
 
-void RealPairingManager::periodic_cb(TimerHandle_t xTimer)
+void PairingManager::periodic_cb(TimerHandle_t xTimer)
 {
-    static_cast<RealPairingManager *>(pvTimerGetTimerID(xTimer))->send_pair_request();
+    static_cast<PairingManager *>(pvTimerGetTimerID(xTimer))->send_pair_request();
 }
 
-void RealPairingManager::on_timeout()
+void PairingManager::on_timeout()
 {
     xSemaphoreTake(mutex_, portMAX_DELAY);
     is_active_ = false;

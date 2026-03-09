@@ -1,13 +1,13 @@
 #pragma once
 
 #include "i_channel_scanner.hpp"
-#include "i_message_codec.hpp"
 #include "i_wifi_hal.hpp"
+#include "i_message_codec.hpp"
 
-class RealChannelScanner : public IChannelScanner
+class ChannelScanner : public IChannelScanner
 {
 public:
-    RealChannelScanner(IWiFiHAL &wifi_hal, IMessageCodec &message_codec, NodeId my_node_id, NodeType my_node_type);
+    ChannelScanner(IWiFiHAL &wifi_hal, IMessageCodec &message_codec, NodeId my_node_id, NodeType my_node_type);
 
     using IChannelScanner::update_node_info;
 

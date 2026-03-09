@@ -17,8 +17,8 @@
 struct PersistentData
 {
     static constexpr size_t MAX_PERSISTENT_PEERS = 19;
-    static constexpr uint32_t MAGIC              = 0x4553504E;
-    static constexpr uint32_t VERSION            = 1;
+    static constexpr uint32_t MAGIC = 0x4553504E;
+    static constexpr uint32_t VERSION = 1;
 
     uint32_t magic;
     uint32_t version;
@@ -31,13 +31,13 @@ struct PersistentData
 /**
  * @brief Class to handle persistence of EspNowManager component data in RTC memory and NVS.
  */
-class EspNowStorage : public IStorage
+class StorageManager : public IStorageManager
 {
 public:
-    EspNowStorage(
+    StorageManager(
         std::unique_ptr<IPersistenceBackend> rtc_backend = nullptr,
         std::unique_ptr<IPersistenceBackend> nvs_backend = nullptr);
-    ~EspNowStorage();
+    ~StorageManager();
 
     /**
      * @brief Loads data from RTC or NVS.

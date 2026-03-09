@@ -8,11 +8,11 @@
 
 #include "i_pairing_manager.hpp"
 
-class RealPairingManager : public IPairingManager
+class PairingManager : public IPairingManager
 {
 public:
-    RealPairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec);
-    ~RealPairingManager();
+    PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec);
+    ~PairingManager();
 
     using IPairingManager::init;
 

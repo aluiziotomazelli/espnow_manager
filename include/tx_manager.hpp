@@ -8,16 +8,16 @@
 #include "freertos/timers.h"
 
 #include "i_channel_scanner.hpp"
+#include "i_wifi_hal.hpp"
 #include "i_message_codec.hpp"
 #include "i_tx_manager.hpp"
 #include "i_tx_state_machine.hpp"
-#include "i_wifi_hal.hpp"
 
-class RealTxManager : public ITxManager
+class TxManager : public ITxManager
 {
 public:
-    RealTxManager(ITxStateMachine &fsm, IChannelScanner &scanner, IWiFiHAL &hal, IMessageCodec &codec);
-    ~RealTxManager();
+    TxManager(ITxStateMachine &fsm, IChannelScanner &scanner, IWiFiHAL &hal, IMessageCodec &codec);
+    ~TxManager();
 
     esp_err_t init(uint32_t stack_size, UBaseType_t priority) override;
     esp_err_t deinit() override;

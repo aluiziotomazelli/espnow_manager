@@ -8,22 +8,23 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 
-#include "espnow_storage.hpp"
-#include "espnow_storage_backends.hpp"
+#include "i_nvs_hal.hpp"
+#include "persistence_backends.hpp"
+#include "storage_manager.hpp"
 
-static const char *TAG           = "EspNowStorage";
+static const char *TAG = "StorageManager";
 static const char *NVS_NAMESPACE = "espnow_store";
-static const char *NVS_KEY       = "persist_data";
+static const char *NVS_KEY = "persist_data";
 
-// --- Real RTC Backend ---
+// --- RTC Backend ---
 static RTC_DATA_ATTR PersistentData g_rtc_storage;
 
-RealRtcBackend::RealRtcBackend(PersistentData *storage_ptr)
+RtcBackend::RtcBackend(PersistentData *storage_ptr)
     : storage_(storage_ptr ? storage_ptr : &g_rtc_storage)
 {
 }
 
-esp_err_t RealRtcBackend::load(void *data, size_t size)
+esp_err_t RtcBackend::load(void *data, size_t size)
 {
     if (size > sizeof(PersistentData))
         return ESP_ERR_INVALID_SIZE;
@@ -31,7 +32,7 @@ esp_err_t RealRtcBackend::load(void *data, size_t size)
     return ESP_OK;
 }
 
-esp_err_t RealRtcBackend::save(const void *data, size_t size)
+esp_err_t RtcBackend::save(const void *data, size_t size)
 {
     if (size > sizeof(PersistentData))
         return ESP_ERR_INVALID_SIZE;
@@ -39,9 +40,9 @@ esp_err_t RealRtcBackend::save(const void *data, size_t size)
     return ESP_OK;
 }
 
-// --- Real NVS Backend ---
+// --- NVS Backend ---
 
-esp_err_t RealNvsBackend::load(void *data, size_t size)
+esp_err_t NvsBackend::load(void *data, size_t size)
 {
     esp_err_t err = init_nvs();
     if (err != ESP_OK)
@@ -53,7 +54,7 @@ esp_err_t RealNvsBackend::load(void *data, size_t size)
         return err;
 
     size_t actual_size = size;
-    err                = nvs_get_blob(handle, NVS_KEY, data, &actual_size);
+    err = nvs_get_blob(handle, NVS_KEY, data, &actual_size);
     nvs_close(handle);
 
     if (err != ESP_OK)
@@ -64,7 +65,7 @@ esp_err_t RealNvsBackend::load(void *data, size_t size)
     return ESP_OK;
 }
 
-esp_err_t RealNvsBackend::save(const void *data, size_t size)
+esp_err_t NvsBackend::save(const void *data, size_t size)
 {
     esp_err_t err = init_nvs();
     if (err != ESP_OK)
@@ -88,7 +89,7 @@ esp_err_t RealNvsBackend::save(const void *data, size_t size)
     return err;
 }
 
-esp_err_t RealNvsBackend::init_nvs()
+esp_err_t NvsBackend::init_nvs()
 {
     static bool nvs_initialized = false;
     if (nvs_initialized)
@@ -104,32 +105,32 @@ esp_err_t RealNvsBackend::init_nvs()
     return err;
 }
 
-// --- EspNowStorage Implementation ---
+// --- StorageManager Implementation ---
 
-EspNowStorage::EspNowStorage(
+StorageManager::StorageManager(
     std::unique_ptr<IPersistenceBackend> rtc_backend,
     std::unique_ptr<IPersistenceBackend> nvs_backend)
 {
     if (rtc_backend)
         rtc_backend_ = std::move(rtc_backend);
     else
-        rtc_backend_ = std::make_unique<RealRtcBackend>();
+        rtc_backend_ = std::make_unique<RtcBackend>();
 
     if (nvs_backend)
         nvs_backend_ = std::move(nvs_backend);
     else
-        nvs_backend_ = std::make_unique<RealNvsBackend>();
+        nvs_backend_ = std::make_unique<NvsBackend>();
 }
 
-EspNowStorage::~EspNowStorage() {}
+StorageManager::~StorageManager() {}
 
-uint32_t EspNowStorage::calculate_crc(const PersistentData &data)
+uint32_t StorageManager::calculate_crc(const PersistentData &data)
 {
     size_t length = offsetof(PersistentData, crc);
     return esp_rom_crc32_le(0, reinterpret_cast<const uint8_t *>(&data), length);
 }
 
-esp_err_t EspNowStorage::load(uint8_t &wifi_channel, std::vector<PersistentPeer> &peers)
+esp_err_t StorageManager::load(uint8_t &wifi_channel, std::vector<PersistentPeer> &peers)
 {
     PersistentData data;
 
@@ -168,14 +169,14 @@ esp_err_t EspNowStorage::load(uint8_t &wifi_channel, std::vector<PersistentPeer>
     return ESP_ERR_NOT_FOUND;
 }
 
-esp_err_t EspNowStorage::save(uint8_t wifi_channel, const std::vector<PersistentPeer> &peers, bool force_nvs_commit)
+esp_err_t StorageManager::save(uint8_t wifi_channel, const std::vector<PersistentPeer> &peers, bool force_nvs_commit)
 {
     PersistentData data;
     memset(&data, 0, sizeof(PersistentData));
-    data.magic        = PersistentData::MAGIC;
-    data.version      = PersistentData::VERSION;
+    data.magic = PersistentData::MAGIC;
+    data.version = PersistentData::VERSION;
     data.wifi_channel = wifi_channel;
-    data.num_peers    = std::min(peers.size(), PersistentData::MAX_PERSISTENT_PEERS);
+    data.num_peers = std::min(peers.size(), PersistentData::MAX_PERSISTENT_PEERS);
 
     for (size_t i = 0; i < data.num_peers; ++i) {
         data.peers[i] = peers[i];

@@ -7,7 +7,7 @@
 
 static const char *TAG = "ChannelScanner";
 
-RealChannelScanner::RealChannelScanner(
+ChannelScanner::ChannelScanner(
     IWiFiHAL &wifi_hal,
     IMessageCodec &message_codec,
     NodeId my_node_id,
@@ -19,13 +19,13 @@ RealChannelScanner::RealChannelScanner(
 {
 }
 
-void RealChannelScanner::update_node_info(NodeId id, NodeType type)
+void ChannelScanner::update_node_info(NodeId id, NodeType type)
 {
     my_node_id_   = id;
     my_node_type_ = type;
 }
 
-IChannelScanner::ScanResult RealChannelScanner::scan(uint8_t start_channel)
+IChannelScanner::ScanResult ChannelScanner::scan(uint8_t start_channel)
 {
     ESP_LOGI(TAG, "Starting channel scan to find Hub.");
     bool hub_found          = false;
