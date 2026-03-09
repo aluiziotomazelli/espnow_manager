@@ -4,7 +4,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
-#include "espnow_interfaces.hpp"
+#include "i_wifi_hal.hpp"
 
 class RealWiFiHAL : public IWiFiHAL
 {

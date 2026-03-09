@@ -1,6 +1,8 @@
 #pragma once
 
-#include "espnow_interfaces.hpp"
+#include "i_channel_scanner.hpp"
+#include "i_message_codec.hpp"
+#include "i_wifi_hal.hpp"
 
 class RealChannelScanner : public IChannelScanner
 {

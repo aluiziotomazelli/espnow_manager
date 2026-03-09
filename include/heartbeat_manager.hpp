@@ -5,7 +5,10 @@
 #include "freertos/task.h"
 #include "freertos/timers.h"
 
-#include "espnow_interfaces.hpp"
+#include "i_heartbeat_manager.hpp"
+#include "i_message_codec.hpp"
+#include "i_peer_manager.hpp"
+#include "i_tx_manager.hpp"
 
 class RealHeartbeatManager : public IHeartbeatManager
 {

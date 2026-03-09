@@ -1,6 +1,6 @@
 #pragma once
 
-#include "espnow_interfaces.hpp"
+#include "i_tx_state_machine.hpp"
 
 class RealTxStateMachine : public ITxStateMachine
 {

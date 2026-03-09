@@ -7,7 +7,8 @@
 
 #include "esp_err.h"
 
-#include "espnow_interfaces.hpp"
+#include "i_persistence_backend.hpp"
+#include "i_storage_manager.hpp"
 #include "protocol_types.hpp"
 
 /**

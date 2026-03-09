@@ -5,7 +5,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#include "espnow_interfaces.hpp"
+#include "i_peer_manager.hpp"
 
 class RealPeerManager : public IPeerManager
 {

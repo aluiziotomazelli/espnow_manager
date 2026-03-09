@@ -1,7 +1,7 @@
 #pragma once
 
-#include "espnow_interfaces.hpp"
 #include "espnow_storage.hpp"
+#include "i_persistence_backend.hpp"
 
 /**
  * @brief Default RTC backend that uses a static PersistentData variable.

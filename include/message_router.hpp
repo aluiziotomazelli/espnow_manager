@@ -2,7 +2,12 @@
 
 #include <queue>
 
-#include "espnow_interfaces.hpp"
+#include "i_heartbeat_manager.hpp"
+#include "i_message_codec.hpp"
+#include "i_message_router.hpp"
+#include "i_pairing_manager.hpp"
+#include "i_peer_manager.hpp"
+#include "i_tx_manager.hpp"
 
 class RealMessageRouter : public IMessageRouter
 {

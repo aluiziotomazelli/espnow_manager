@@ -6,7 +6,7 @@
 #include "freertos/task.h"
 #include "freertos/timers.h"
 
-#include "espnow_interfaces.hpp"
+#include "i_pairing_manager.hpp"
 
 class RealPairingManager : public IPairingManager
 {

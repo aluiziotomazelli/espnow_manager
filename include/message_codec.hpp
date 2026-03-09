@@ -1,6 +1,6 @@
 #pragma once
 
-#include "espnow_interfaces.hpp"
+#include "i_message_codec.hpp"
 
 class RealMessageCodec : public IMessageCodec
 {

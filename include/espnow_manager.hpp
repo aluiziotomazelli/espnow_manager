@@ -7,9 +7,15 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#include "espnow_interfaces.hpp"
-#include "espnow_manager_interface.hpp"
 #include "espnow_storage.hpp"
+#include "i_channel_scanner.hpp"
+#include "i_espnow_manager.hpp"
+#include "i_heartbeat_manager.hpp"
+#include "i_message_codec.hpp"
+#include "i_message_router.hpp"
+#include "i_pairing_manager.hpp"
+#include "i_peer_manager.hpp"
+#include "i_tx_manager.hpp"
 
 // ========================================
 // ESP-NOW Manager Implementation

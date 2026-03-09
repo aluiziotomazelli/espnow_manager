@@ -7,7 +7,11 @@
 #include "freertos/task.h"
 #include "freertos/timers.h"
 
-#include "espnow_interfaces.hpp"
+#include "i_channel_scanner.hpp"
+#include "i_message_codec.hpp"
+#include "i_tx_manager.hpp"
+#include "i_tx_state_machine.hpp"
+#include "i_wifi_hal.hpp"
 
 class RealTxManager : public ITxManager
 {
