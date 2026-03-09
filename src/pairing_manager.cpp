@@ -1,12 +1,17 @@
-#include "pairing_manager.hpp"
+#include <cstring>
+
 #include "esp_log.h"
 #include "esp_timer.h"
-#include <cstring>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
+
+#include "i_message_codec.hpp"
+#include "i_peer_manager.hpp"
+#include "i_tx_manager.hpp"
+#include "pairing_manager.hpp"
 
 static const char *TAG = "PairingMgr";
 

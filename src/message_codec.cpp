@@ -1,6 +1,8 @@
-#include "message_codec.hpp"
-#include "esp_rom_crc.h"
 #include <cstring>
+
+#include "message_codec.hpp"
+
+#include "esp_rom_crc.h"
 
 std::vector<uint8_t> RealMessageCodec::encode(const MessageHeader &header, const void *payload, size_t len)
 {

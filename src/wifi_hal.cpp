@@ -1,10 +1,11 @@
-#include "wifi_hal.hpp"
 #include "esp_log.h"
 #include "esp_now.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+
+#include "wifi_hal.hpp"
 
 RealWiFiHAL::RealWiFiHAL()
     : task_handle_(nullptr)

@@ -1,13 +1,15 @@
-#include "espnow_storage.hpp"
-#include "espnow_storage_backends.hpp"
+#include <algorithm>
+#include <cinttypes>
+#include <cstring>
+
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_rom_crc.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include <algorithm>
-#include <cinttypes>
-#include <cstring>
+
+#include "espnow_storage.hpp"
+#include "espnow_storage_backends.hpp"
 
 static const char *TAG           = "EspNowStorage";
 static const char *NVS_NAMESPACE = "espnow_store";
@@ -104,8 +106,9 @@ esp_err_t RealNvsBackend::init_nvs()
 
 // --- EspNowStorage Implementation ---
 
-EspNowStorage::EspNowStorage(std::unique_ptr<IPersistenceBackend> rtc_backend,
-                             std::unique_ptr<IPersistenceBackend> nvs_backend)
+EspNowStorage::EspNowStorage(
+    std::unique_ptr<IPersistenceBackend> rtc_backend,
+    std::unique_ptr<IPersistenceBackend> nvs_backend)
 {
     if (rtc_backend)
         rtc_backend_ = std::move(rtc_backend);
@@ -118,9 +121,7 @@ EspNowStorage::EspNowStorage(std::unique_ptr<IPersistenceBackend> rtc_backend,
         nvs_backend_ = std::make_unique<RealNvsBackend>();
 }
 
-EspNowStorage::~EspNowStorage()
-{
-}
+EspNowStorage::~EspNowStorage() {}
 
 uint32_t EspNowStorage::calculate_crc(const PersistentData &data)
 {

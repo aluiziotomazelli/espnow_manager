@@ -1,10 +1,19 @@
-#include "espnow_manager.hpp"
-#include "channel_scanner.hpp"
+#include <algorithm>
+#include <cstring>
+#include <inttypes.h>
+
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_rom_crc.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
+
+#include "channel_scanner.hpp"
+#include "espnow_manager.hpp"
 #include "heartbeat_manager.hpp"
 #include "message_codec.hpp"
 #include "message_router.hpp"
@@ -14,13 +23,6 @@
 #include "tx_manager.hpp"
 #include "tx_state_machine.hpp"
 #include "wifi_hal.hpp"
-#include <algorithm>
-#include <cstring>
-#include <inttypes.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
-#include "freertos/task.h"
 
 static const char *TAG = "EspNow";
 
@@ -43,18 +45,25 @@ EspNowManager &EspNowManager::instance()
     static auto message_router =
         std::make_unique<RealMessageRouter>(*peer_manager, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
 
-    static EspNowManager instance(std::move(peer_manager), std::move(tx_manager), &scanner, std::move(message_codec),
-                                  std::move(heartbeat_mgr), std::move(pairing_mgr), std::move(message_router));
+    static EspNowManager instance(
+        std::move(peer_manager),
+        std::move(tx_manager),
+        &scanner,
+        std::move(message_codec),
+        std::move(heartbeat_mgr),
+        std::move(pairing_mgr),
+        std::move(message_router));
     return instance;
 }
 
-EspNowManager::EspNowManager(std::unique_ptr<IPeerManager> peer_manager,
-                             std::unique_ptr<ITxManager> tx_manager,
-                             IChannelScanner *scanner_ptr,
-                             std::unique_ptr<IMessageCodec> message_codec,
-                             std::unique_ptr<IHeartbeatManager> heartbeat_manager,
-                             std::unique_ptr<IPairingManager> pairing_manager,
-                             std::unique_ptr<IMessageRouter> message_router)
+EspNowManager::EspNowManager(
+    std::unique_ptr<IPeerManager> peer_manager,
+    std::unique_ptr<ITxManager> tx_manager,
+    IChannelScanner *scanner_ptr,
+    std::unique_ptr<IMessageCodec> message_codec,
+    std::unique_ptr<IHeartbeatManager> heartbeat_manager,
+    std::unique_ptr<IPairingManager> pairing_manager,
+    std::unique_ptr<IMessageRouter> message_router)
     : peer_manager_(std::move(peer_manager))
     , tx_manager_(std::move(tx_manager))
     , scanner_ptr_(scanner_ptr)
@@ -220,14 +229,20 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
         goto fail;
     }
 
-    if (xTaskCreate(rx_dispatch_task, "espnow_dispatch", config_.stack_size_rx_dispatch, this, 10,
-                    &rx_dispatch_task_handle_) != pdPASS) {
+    if (xTaskCreate(
+            rx_dispatch_task, "espnow_dispatch", config_.stack_size_rx_dispatch, this, 10, &rx_dispatch_task_handle_) !=
+        pdPASS) {
         ESP_LOGE(TAG, "Failed to create rx_dispatch task");
         ret = ESP_FAIL;
         goto fail;
     }
-    if (xTaskCreate(transport_worker_task, "espnow_worker", config_.stack_size_transport_worker, this, 5,
-                    &transport_worker_task_handle_) != pdPASS) {
+    if (xTaskCreate(
+            transport_worker_task,
+            "espnow_worker",
+            config_.stack_size_transport_worker,
+            this,
+            5,
+            &transport_worker_task_handle_) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create transport_worker task");
         ret = ESP_FAIL;
         goto fail;
@@ -280,11 +295,12 @@ fail:
     return ret;
 }
 
-esp_err_t EspNowManager::send_data(NodeId dest_node_id,
-                                   PayloadType payload_type,
-                                   const void *payload,
-                                   size_t len,
-                                   bool require_ack)
+esp_err_t EspNowManager::send_data(
+    NodeId dest_node_id,
+    PayloadType payload_type,
+    const void *payload,
+    size_t len,
+    bool require_ack)
 {
     TxPacket tx_packet;
     if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac))
@@ -311,11 +327,12 @@ esp_err_t EspNowManager::send_data(NodeId dest_node_id,
     return tx_manager_->queue_packet(tx_packet);
 }
 
-esp_err_t EspNowManager::send_command(NodeId dest_node_id,
-                                      CommandType command_type,
-                                      const void *payload,
-                                      size_t len,
-                                      bool require_ack)
+esp_err_t EspNowManager::send_command(
+    NodeId dest_node_id,
+    CommandType command_type,
+    const void *payload,
+    size_t len,
+    bool require_ack)
 {
     TxPacket tx_packet;
     if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac))

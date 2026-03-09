@@ -1,18 +1,21 @@
-#include "heartbeat_manager.hpp"
+#include <cstring>
+
 #include "esp_log.h"
 #include "esp_timer.h"
-#include <cstring>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
 
+#include "heartbeat_manager.hpp"
+
 static const char *TAG = "HeartbeatMgr";
 
-RealHeartbeatManager::RealHeartbeatManager(ITxManager &tx_mgr,
-                                           IPeerManager &peer_mgr,
-                                           IMessageCodec &codec,
-                                           NodeId my_id)
+RealHeartbeatManager::RealHeartbeatManager(
+    ITxManager &tx_mgr,
+    IPeerManager &peer_mgr,
+    IMessageCodec &codec,
+    NodeId my_id)
     : tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
     , codec_(codec)

@@ -1,13 +1,16 @@
-#include "peer_manager.hpp"
+#include <algorithm>
+#include <cstring>
+
 #include "esp_log.h"
 #include "esp_now.h"
 #include "esp_wifi.h"
-#include <algorithm>
-#include <cstring>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+
+#include "i_storage_manager.hpp"
+#include "peer_manager.hpp"
 
 static const char *TAG = "PeerManager";
 
@@ -24,11 +27,8 @@ RealPeerManager::~RealPeerManager()
     }
 }
 
-esp_err_t RealPeerManager::add(NodeId id,
-                               const uint8_t *mac,
-                               uint8_t channel,
-                               NodeType type,
-                               uint32_t heartbeat_interval_ms)
+esp_err_t
+RealPeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, uint32_t heartbeat_interval_ms)
 {
     if (mac == nullptr) {
         return ESP_ERR_INVALID_ARG;

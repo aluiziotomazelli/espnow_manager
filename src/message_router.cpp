@@ -1,15 +1,18 @@
-#include "message_router.hpp"
+#include <cstring>
+
 #include "esp_log.h"
 #include "esp_wifi.h"
-#include <cstring>
+
+#include "message_router.hpp"
 
 static const char *TAG = "MessageRouter";
 
-RealMessageRouter::RealMessageRouter(IPeerManager &peer_manager,
-                                     ITxManager &tx_manager,
-                                     IHeartbeatManager &heartbeat_manager,
-                                     IPairingManager &pairing_manager,
-                                     IMessageCodec &message_codec)
+RealMessageRouter::RealMessageRouter(
+    IPeerManager &peer_manager,
+    ITxManager &tx_manager,
+    IHeartbeatManager &heartbeat_manager,
+    IPairingManager &pairing_manager,
+    IMessageCodec &message_codec)
     : peer_manager_(peer_manager)
     , tx_manager_(tx_manager)
     , heartbeat_manager_(heartbeat_manager)
@@ -21,7 +24,8 @@ RealMessageRouter::RealMessageRouter(IPeerManager &peer_manager,
 void RealMessageRouter::handle_packet(const RxPacket &packet)
 {
     auto header_opt = message_codec_.decode_header(packet.data, packet.len);
-    if (!header_opt) return;
+    if (!header_opt)
+        return;
     const MessageHeader &header = header_opt.value();
 
     tx_manager_.notify_link_alive();
@@ -41,7 +45,8 @@ void RealMessageRouter::handle_packet(const RxPacket &packet)
         }
         pairing_manager_.handle_response(packet);
         break;
-    case MessageType::HEARTBEAT: {
+    case MessageType::HEARTBEAT:
+    {
         if (packet.len < sizeof(HeartbeatMessage)) {
             ESP_LOGW(TAG, "Malformed HEARTBEAT: len %d < %d", (int)packet.len, (int)sizeof(HeartbeatMessage));
             return;
@@ -50,7 +55,8 @@ void RealMessageRouter::handle_packet(const RxPacket &packet)
         heartbeat_manager_.handle_request(header.sender_node_id, packet.src_mac, msg->uptime_ms);
         break;
     }
-    case MessageType::HEARTBEAT_RESPONSE: {
+    case MessageType::HEARTBEAT_RESPONSE:
+    {
         if (packet.len < sizeof(HeartbeatResponse)) {
             ESP_LOGW(TAG, "Malformed HEARTBEAT_RESPONSE: len %d < %d", (int)packet.len, (int)sizeof(HeartbeatResponse));
             return;
@@ -66,7 +72,8 @@ void RealMessageRouter::handle_packet(const RxPacket &packet)
     case MessageType::CHANNEL_SCAN_PROBE:
         handle_scan_probe(packet);
         break;
-    case MessageType::CHANNEL_SCAN_RESPONSE: {
+    case MessageType::CHANNEL_SCAN_RESPONSE:
+    {
         uint8_t ch;
         esp_wifi_get_channel(&ch, nullptr);
         peer_manager_.add(header.sender_node_id, packet.src_mac, ch, header.sender_type);
@@ -104,21 +111,24 @@ bool RealMessageRouter::should_dispatch_to_worker(MessageType type)
 
 void RealMessageRouter::handle_scan_probe(const RxPacket &packet)
 {
-    if (my_type_ != ReservedTypes::HUB) return;
+    if (my_type_ != ReservedTypes::HUB)
+        return;
     auto header_opt = message_codec_.decode_header(packet.data, packet.len);
-    if (!header_opt) return;
+    if (!header_opt)
+        return;
 
     TxPacket tx_packet;
     memcpy(tx_packet.dest_mac, packet.src_mac, 6);
     MessageHeader resp;
-    resp.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
-    resp.sender_node_id = my_id_;
-    resp.sender_type = my_type_;
-    resp.dest_node_id = header_opt->sender_node_id;
+    resp.msg_type        = MessageType::CHANNEL_SCAN_RESPONSE;
+    resp.sender_node_id  = my_id_;
+    resp.sender_type     = my_type_;
+    resp.dest_node_id    = header_opt->sender_node_id;
     resp.sequence_number = 0;
 
     auto encoded = message_codec_.encode(resp, nullptr, 0);
-    if (encoded.empty()) return;
+    if (encoded.empty())
+        return;
 
     tx_packet.len = encoded.size();
     memcpy(tx_packet.data, encoded.data(), tx_packet.len);
