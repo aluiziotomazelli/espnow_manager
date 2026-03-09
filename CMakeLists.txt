@@ -1,21 +1,21 @@
 idf_component_register(
     NAME espnow_manager
     SRCS
-        "espnow_manager.cpp"
-        "espnow_storage.cpp"
-        "peer_manager.cpp"
-        "message_codec.cpp"
-        "tx_state_machine.cpp"
-        "channel_scanner.cpp"
-        "wifi_hal.cpp"
-        "tx_manager.cpp"
-        "heartbeat_manager.cpp"
-        "pairing_manager.cpp"
-        "message_router.cpp"
+        "src/espnow_manager.cpp"
+        "src/espnow_storage.cpp"
+        "src/peer_manager.cpp"
+        "src/message_codec.cpp"
+        "src/tx_state_machine.cpp"
+        "src/channel_scanner.cpp"
+        "src/wifi_hal.cpp"
+        "src/tx_manager.cpp"
+        "src/heartbeat_manager.cpp"
+        "src/pairing_manager.cpp"
+        "src/message_router.cpp"
     
     INCLUDE_DIRS
         "include"
-        "include/internface"
+        "include/interfaces"
     
     REQUIRES
         esp_wifi
