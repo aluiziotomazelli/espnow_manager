@@ -15,6 +15,7 @@ idf_component_register(
     
     INCLUDE_DIRS
         "include"
+        "include/internface"
     
     REQUIRES
         esp_wifi

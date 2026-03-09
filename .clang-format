@@ -94,4 +94,10 @@ IncludeCategories:
 # MISCELLANEOUS
 # ============================================================================
 Standard: Cpp11
-ReflowComments:
+ReflowComments: true
+
+# ============================================================================
+# EMPTY LINES
+# ============================================================================
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
