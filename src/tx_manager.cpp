@@ -217,10 +217,10 @@ void TxManager::run()
         case TxState::SCANNING:
         {
             uint8_t current_channel = 1;
-            hal_.get_channel(&current_channel);
+            hal_.wifi_get_channel(&current_channel);
             auto result = scanner_.scan(current_channel);
             if (result.hub_found) {
-                hal_.set_channel(result.channel);
+                hal_.wifi_set_channel(result.channel);
                 fsm_.on_link_alive();
             }
             fsm_.reset(); // Back to IDLE

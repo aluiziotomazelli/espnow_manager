@@ -41,7 +41,7 @@ IChannelScanner::ScanResult ChannelScanner::scan(uint8_t start_channel)
     // For simplicity, let's keep the loop.
     for (uint8_t offset = 0; offset < 13 && !hub_found; ++offset) {
         uint8_t channel = ((current_channel - 1 + offset) % 13) + 1;
-        wifi_hal_.set_channel(channel);
+        wifi_hal_.wifi_set_channel(channel);
 
         MessageHeader probe_header;
         probe_header.msg_type = MessageType::CHANNEL_SCAN_PROBE;

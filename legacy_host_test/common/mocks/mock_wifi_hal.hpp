@@ -28,14 +28,14 @@ public:
     TaskHandle_t last_task_handle = nullptr;
     std::queue<bool> event_responses;
 
-    inline esp_err_t set_channel(uint8_t channel) override {
+    inline esp_err_t wifi_set_channel(uint8_t channel) override {
         set_channel_calls++;
         last_set_channel = channel;
         current_channel = channel;
         return set_channel_ret;
     }
 
-    inline esp_err_t get_channel(uint8_t *channel) override {
+    inline esp_err_t wifi_get_channel(uint8_t *channel) override {
         get_channel_calls++;
         if (channel) *channel = current_channel;
         return get_channel_ret;

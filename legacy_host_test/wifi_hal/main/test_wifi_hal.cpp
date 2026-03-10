@@ -26,7 +26,7 @@ void tearDown(void)
  * @brief Tests for the RealWiFiHAL class, which wraps ESP-IDF WiFi and ESP-NOW APIs.
  */
 
-TEST_CASE("RealWiFiHAL set_channel calls esp_wifi_set_channel", "[wifi_hal]")
+TEST_CASE("RealWiFiHAL wifi_set_channel calls esp_wifi_set_channel", "[wifi_hal]")
 {
     RealWiFiHAL hal;
     uint8_t channel = 5;
@@ -34,13 +34,13 @@ TEST_CASE("RealWiFiHAL set_channel calls esp_wifi_set_channel", "[wifi_hal]")
     // We expect the HAL to call the IDF function esp_wifi_set_channel with specific arguments.
     esp_wifi_set_channel_ExpectAndReturn(channel, WIFI_SECOND_CHAN_NONE, ESP_OK);
 
-    esp_err_t err = hal.set_channel(channel);
+    esp_err_t err = hal.wifi_set_channel(channel);
 
     // Verify that the error code returned by the HAL is what we stubbed in the mock.
     TEST_ASSERT_EQUAL(ESP_OK, err);
 }
 
-TEST_CASE("RealWiFiHAL get_channel calls esp_wifi_get_channel", "[wifi_hal]")
+TEST_CASE("RealWiFiHAL wifi_get_channel calls esp_wifi_get_channel", "[wifi_hal]")
 {
     RealWiFiHAL hal;
     uint8_t expected_channel = 7;
@@ -50,7 +50,7 @@ TEST_CASE("RealWiFiHAL get_channel calls esp_wifi_get_channel", "[wifi_hal]")
     esp_wifi_get_channel_ReturnThruPtr_primary(&expected_channel);
 
     uint8_t actual_channel = 0;
-    esp_err_t err = hal.get_channel(&actual_channel);
+    esp_err_t err = hal.wifi_get_channel(&actual_channel);
 
     // Verify the HAL correctly passed back the channel retrieved from the IDF.
     TEST_ASSERT_EQUAL(ESP_OK, err);
