@@ -14,7 +14,7 @@
 class NvsHAL : public INvsHAL
 {
 public:
-    NvsHAL() {};
+    NvsHAL() = default;
 
     esp_err_t hal_nvs_flash_init() override { return nvs_flash_init(); };
     esp_err_t hal_nvs_flash_erase() override { return nvs_flash_erase(); };
