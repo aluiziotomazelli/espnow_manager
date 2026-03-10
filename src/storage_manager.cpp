@@ -9,23 +9,16 @@
 // #include "nvs_flash.h"
 
 #include "storage_manager.hpp"
-#include "persistence_backends.hpp"
+#include "persistence_backend.hpp"
 
 static const char *TAG = "StorageManager";
 
 StorageManager::StorageManager(
     std::unique_ptr<IPersistenceBackend> rtc_backend,
     std::unique_ptr<IPersistenceBackend> nvs_backend)
+    : rtc_backend_(std::move(rtc_backend))
+    , nvs_backend_(std::move(nvs_backend))
 {
-    if (rtc_backend)
-        rtc_backend_ = std::move(rtc_backend);
-    else
-        rtc_backend_ = std::make_unique<RtcBackend>();
-
-    if (nvs_backend)
-        nvs_backend_ = std::move(nvs_backend);
-    else
-        nvs_backend_ = std::make_unique<NvsBackend>();
 }
 
 StorageManager::~StorageManager() {}
