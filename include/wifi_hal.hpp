@@ -11,8 +11,11 @@ class WiFiHAL : public IWiFiHAL
 public:
     WiFiHAL() = default;
 
-    esp_err_t set_channel(uint8_t channel) override { return esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE); };
-    esp_err_t get_channel(uint8_t *channel) override { return esp_wifi_get_channel(channel, nullptr); };
+    esp_err_t wifi_set_channel(uint8_t channel) override
+    {
+        return esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+    };
+    esp_err_t wifi_get_channel(uint8_t *channel) override { return esp_wifi_get_channel(channel, nullptr); };
     esp_err_t wifi_get_mode(wifi_mode_t *mode) override { return esp_wifi_get_mode(mode); };
     esp_err_t wifi_set_channel(uint8_t primary, wifi_second_chan_t second) override
     {
@@ -39,6 +42,23 @@ public:
     {
         return xTaskNotifyWait(0, bits_to_clear, notification_value, pdMS_TO_TICKS(timeout_ms));
     }
+
+    /**
+     * @copydoc IWiFiHAL::task_create()
+     */
+    BaseType_t task_create(
+        TaskFunction_t pvTaskCode,
+        const char *const pcName,
+        const uint32_t usStackDepth,
+        void *const pvParameters,
+        UBaseType_t uxPriority,
+        TaskHandle_t *const pxCreatedTask) override
+    {
+        return xTaskCreate(pvTaskCode, pcName, usStackDepth, pvParameters, uxPriority, pxCreatedTask);
+    }
+
+    void task_delete(TaskHandle_t task_handle) override { vTaskDelete(task_handle); }
+
     void set_task_to_notify(TaskHandle_t task_handle) override { task_handle_ = task_handle; };
 
 private:

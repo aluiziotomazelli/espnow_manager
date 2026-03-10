@@ -15,8 +15,8 @@ class IWiFiHAL
 public:
     virtual ~IWiFiHAL() = default;
 
-    virtual esp_err_t set_channel(uint8_t channel) = 0;
-    virtual esp_err_t get_channel(uint8_t *channel) = 0;
+    virtual esp_err_t wifi_set_channel(uint8_t channel) = 0;
+    virtual esp_err_t wifi_get_channel(uint8_t *channel) = 0;
     virtual esp_err_t wifi_get_mode(wifi_mode_t *mode) = 0;
     virtual esp_err_t wifi_set_channel(uint8_t primary, wifi_second_chan_t second) = 0;
     virtual esp_err_t wifi_get_channel(uint8_t *primary, wifi_second_chan_t *second) = 0;
@@ -33,6 +33,27 @@ public:
 
     virtual BaseType_t
     hal_task_notify_wait(uint32_t bits_to_clear, uint32_t *notification_value, uint32_t timeout_ms) = 0;
+
+    /**
+     * @brief Create a FreeRTOS task.
+     * @internal
+     * @param pvTaskCode Task entry function.
+     * @param pcName Task name.
+     * @param usStackDepth Stack depth.
+     * @param pvParameters Task parameters.
+     * @param uxPriority Task priority.
+     * @param pxCreatedTask[out] Output task handle.
+     * @return pdPASS on success.
+     */
+    virtual BaseType_t task_create(
+        TaskFunction_t pvTaskCode,
+        const char *const pcName,
+        const uint32_t usStackDepth,
+        void *const pvParameters,
+        UBaseType_t uxPriority,
+        TaskHandle_t *const pxCreatedTask) = 0;
+
+    virtual void task_delete(TaskHandle_t task_handle) = 0;
 
     virtual void set_task_to_notify(TaskHandle_t task_handle) = 0; // TODO: verify if will be necessary on new tests
 };
