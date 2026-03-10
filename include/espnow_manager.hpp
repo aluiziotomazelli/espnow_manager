@@ -18,6 +18,7 @@
 #include "i_tx_manager.hpp"
 #include "i_tx_state_machine.hpp"
 #include "i_wifi_hal.hpp"
+#include "i_bootstrapper.hpp"
 #include "storage_manager.hpp"
 
 // ========================================
@@ -43,6 +44,7 @@ public:
     EspNowManager(
         std::unique_ptr<IWiFiHAL> driver_hal,
         std::unique_ptr<ITimerHAL> timer_hal,
+        std::unique_ptr<IBootstrapper> bootstrapper,
         std::unique_ptr<IPeerManager> peer_manager,
         std::unique_ptr<IMessageCodec> message_codec,
         std::unique_ptr<IChannelScanner> scanner,
@@ -122,7 +124,7 @@ public:
 
 protected:
     // --- Notification Bits ---
-    static constexpr uint32_t NOTIFY_STOP = 0x100;
+    // static constexpr uint32_t NOTIFY_STOP = 0x100;
 
     // --- Private Members ---
     EspNowConfig config_{};
@@ -130,6 +132,7 @@ protected:
     // --- Sub-components (Interfaces) ---
     std::unique_ptr<IWiFiHAL> driver_hal_;                 ///< Pointer to WiFi HAL
     std::unique_ptr<ITimerHAL> timer_hal_;                 ///< Pointer to timer HAL
+    std::unique_ptr<IBootstrapper> bootstrapper_;          ///< Pointer to bootstrapper
     std::unique_ptr<IPeerManager> peer_manager_;           ///< Pointer to peer manager
     std::unique_ptr<IMessageCodec> message_codec_;         ///< Pointer to message codec
     std::unique_ptr<IChannelScanner> scanner_;             ///< Pointer to channel scanner
