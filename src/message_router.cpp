@@ -29,6 +29,8 @@ void MessageRouter::handle_packet(const RxPacket &packet)
     const MessageHeader &header = header_opt.value();
 
     tx_manager_.notify_link_alive();
+    // TODO: update last seen here or on manager rx_dispatch_task
+    // peer_manager_.update_last_seen(header.sender_node_id, esp_timer_get_time());
 
     switch (header.msg_type) {
     case MessageType::PAIR_REQUEST:
@@ -120,10 +122,10 @@ void MessageRouter::handle_scan_probe(const RxPacket &packet)
     TxPacket tx_packet;
     memcpy(tx_packet.dest_mac, packet.src_mac, 6);
     MessageHeader resp;
-    resp.msg_type        = MessageType::CHANNEL_SCAN_RESPONSE;
-    resp.sender_node_id  = my_id_;
-    resp.sender_type     = my_type_;
-    resp.dest_node_id    = header_opt->sender_node_id;
+    resp.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
+    resp.sender_node_id = my_id_;
+    resp.sender_type = my_type_;
+    resp.dest_node_id = header_opt->sender_node_id;
     resp.sequence_number = 0;
 
     auto encoded = message_codec_.encode(resp, nullptr, 0);
