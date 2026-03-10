@@ -60,9 +60,9 @@ public:
     esp_err_t
     save(uint8_t wifi_channel, const std::vector<PersistentPeer> &peers, bool force_nvs_commit = true) override;
 
-private:
-    uint32_t calculate_crc(const PersistentData &data);
+    static uint32_t calculate_crc(const PersistentData &data);
 
+private:
     std::unique_ptr<IPersistenceBackend> rtc_backend_;
     std::unique_ptr<IPersistenceBackend> nvs_backend_;
 };
