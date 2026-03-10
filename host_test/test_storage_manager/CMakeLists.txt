@@ -23,7 +23,11 @@ project(test_storage_manager)
 
 
 # Set the patterns to extract from the binary
-set(EXTRACT_PATTERNS_test_storage_manager "*/espnow_manager/src/storage_manager.cpp")
+set(EXTRACT_PATTERNS_test_storage_manager 
+    "*/espnow_manager/src/storage_manager.cpp"
+    "*/espnow_manager/src/persistence_backend.cpp"
+    
+    )
 
 # Set the patterns to remove from the binary
 # set(REMOVE_PATTERNS_test_channel_scanner 
