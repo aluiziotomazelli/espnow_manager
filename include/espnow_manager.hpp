@@ -7,7 +7,6 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#include "storage_manager.hpp"
 #include "i_channel_scanner.hpp"
 #include "i_espnow_manager.hpp"
 #include "i_heartbeat_manager.hpp"
@@ -15,7 +14,11 @@
 #include "i_message_router.hpp"
 #include "i_pairing_manager.hpp"
 #include "i_peer_manager.hpp"
+#include "i_timer_hal.hpp"
 #include "i_tx_manager.hpp"
+#include "i_tx_state_machine.hpp"
+#include "i_wifi_hal.hpp"
+#include "storage_manager.hpp"
 
 // ========================================
 // ESP-NOW Manager Implementation
@@ -38,15 +41,18 @@ public:
      * @internal
      */
     EspNowManager(
+        std::unique_ptr<IWiFiHAL> driver_hal,
+        std::unique_ptr<ITimerHAL> timer_hal,
         std::unique_ptr<IPeerManager> peer_manager,
-        std::unique_ptr<ITxManager> tx_manager,
-        IChannelScanner *scanner_ptr,
         std::unique_ptr<IMessageCodec> message_codec,
+        std::unique_ptr<IChannelScanner> scanner,
+        std::unique_ptr<ITxStateMachine> tx_fsm,
+        std::unique_ptr<ITxManager> tx_manager,
         std::unique_ptr<IHeartbeatManager> heartbeat_manager,
         std::unique_ptr<IPairingManager> pairing_manager,
         std::unique_ptr<IMessageRouter> message_router);
 
-    EspNowManager(const EspNowManager &)            = delete;
+    EspNowManager(const EspNowManager &) = delete;
     EspNowManager &operator=(const EspNowManager &) = delete;
     virtual ~EspNowManager();
 
@@ -112,10 +118,7 @@ public:
     // ========================================
 
     /** @copydoc IEspNowManager::is_initialized */
-    bool is_initialized() const override
-    {
-        return is_initialized_;
-    }
+    bool is_initialized() const override { return is_initialized_; }
 
 protected:
     // --- Notification Bits ---
@@ -124,22 +127,26 @@ protected:
     // --- Private Members ---
     EspNowConfig config_{};
 
-    std::unique_ptr<IPeerManager> peer_manager_;
-    std::unique_ptr<ITxManager> tx_manager_;
-    IChannelScanner *scanner_ptr_ = nullptr; // For updating node info in init()
-    std::unique_ptr<IMessageCodec> message_codec_;
-    std::unique_ptr<IHeartbeatManager> heartbeat_manager_;
-    std::unique_ptr<IPairingManager> pairing_manager_;
-    std::unique_ptr<IMessageRouter> message_router_;
+    // --- Sub-components (Interfaces) ---
+    std::unique_ptr<IWiFiHAL> driver_hal_;                 ///< Pointer to WiFi HAL
+    std::unique_ptr<ITimerHAL> timer_hal_;                 ///< Pointer to timer HAL
+    std::unique_ptr<IPeerManager> peer_manager_;           ///< Pointer to peer manager
+    std::unique_ptr<IMessageCodec> message_codec_;         ///< Pointer to message codec
+    std::unique_ptr<IChannelScanner> scanner_;             ///< Pointer to channel scanner
+    std::unique_ptr<ITxStateMachine> tx_fsm_;              ///< Pointer to tx state machine
+    std::unique_ptr<ITxManager> tx_manager_;               ///< Pointer to tx manager
+    std::unique_ptr<IHeartbeatManager> heartbeat_manager_; ///< Pointer to heartbeat manager
+    std::unique_ptr<IPairingManager> pairing_manager_;     ///< Pointer to pairing manager
+    std::unique_ptr<IMessageRouter> message_router_;       ///< Pointer to message router
 
     SemaphoreHandle_t ack_mutex_ = nullptr;
-    bool is_initialized_         = false;
-    bool esp_now_initialized_    = false;
+    bool is_initialized_ = false;
+    bool esp_now_initialized_ = false;
     std::optional<MessageHeader> last_header_requiring_ack_{};
 
-    QueueHandle_t rx_dispatch_queue_           = nullptr;
-    QueueHandle_t transport_worker_queue_      = nullptr;
-    TaskHandle_t rx_dispatch_task_handle_      = nullptr;
+    QueueHandle_t rx_dispatch_queue_ = nullptr;
+    QueueHandle_t transport_worker_queue_ = nullptr;
+    TaskHandle_t rx_dispatch_task_handle_ = nullptr;
     TaskHandle_t transport_worker_task_handle_ = nullptr;
 
 protected:

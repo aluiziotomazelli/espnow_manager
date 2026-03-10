@@ -11,6 +11,17 @@
  * @brief Common protocol types and constants for ESP-NOW communication.
  */
 
+/**
+ * @brief Notification Bits for tasks notification
+ */
+static constexpr uint32_t NOTIFY_LOGICAL_ACK = 0x01;
+static constexpr uint32_t NOTIFY_PHYSICAL_FAIL = 0x02;
+static constexpr uint32_t NOTIFY_HUB_FOUND = 0x04;
+static constexpr uint32_t NOTIFY_DATA = 0x20;
+static constexpr uint32_t NOTIFY_ACK_TIMEOUT = 0x40;
+static constexpr uint32_t NOTIFY_STOP = 0x100;
+static constexpr uint32_t NOTIFY_LINK_ALIVE = 0x200;
+
 /** @brief Correct size of the universal message header */
 constexpr size_t MESSAGE_HEADER_SIZE = 16;
 /** @brief Size of the CRC field in the packet */
@@ -102,14 +113,14 @@ constexpr PayloadType to_payload_type(T enum_val)
  */
 enum class MessageType : uint8_t
 {
-    PAIR_REQUEST          = 0x00, /**< Initial request from a Node to pair with a Hub */
-    PAIR_RESPONSE         = 0x01, /**< Response from the Hub to a pairing request */
-    HEARTBEAT             = 0x02, /**< Periodic keep-alive message from Node to Hub */
-    HEARTBEAT_RESPONSE    = 0x03, /**< Acknowledgment of heartbeat from Hub to Node */
-    DATA                  = 0x10, /**< Standard application data packet */
-    ACK                   = 0x11, /**< Logical acknowledgment for DATA or COMMAND packets */
-    COMMAND               = 0x20, /**< Control command sent from Hub to Node */
-    CHANNEL_SCAN_PROBE    = 0x30, /**< Broadcast probe sent during channel discovery */
+    PAIR_REQUEST = 0x00,          /**< Initial request from a Node to pair with a Hub */
+    PAIR_RESPONSE = 0x01,         /**< Response from the Hub to a pairing request */
+    HEARTBEAT = 0x02,             /**< Periodic keep-alive message from Node to Hub */
+    HEARTBEAT_RESPONSE = 0x03,    /**< Acknowledgment of heartbeat from Hub to Node */
+    DATA = 0x10,                  /**< Standard application data packet */
+    ACK = 0x11,                   /**< Logical acknowledgment for DATA or COMMAND packets */
+    COMMAND = 0x20,               /**< Control command sent from Hub to Node */
+    CHANNEL_SCAN_PROBE = 0x30,    /**< Broadcast probe sent during channel discovery */
     CHANNEL_SCAN_RESPONSE = 0x31, /**< Response to a scan probe to identify active Hubs */
 };
 
@@ -118,7 +129,7 @@ enum class MessageType : uint8_t
  */
 enum class PairStatus : uint8_t
 {
-    ACCEPTED             = 0x00, /**< Pairing successful; Node is registered */
+    ACCEPTED = 0x00,             /**< Pairing successful; Node is registered */
     REJECTED_NOT_ALLOWED = 0x01, /**< Pairing failed; registration not permitted */
 };
 
@@ -127,9 +138,9 @@ enum class PairStatus : uint8_t
  */
 enum class AckStatus : uint8_t
 {
-    OK                 = 0x00, /**< Message received and processed successfully */
+    OK = 0x00,                 /**< Message received and processed successfully */
     ERROR_INVALID_DATA = 0x01, /**< Message received but payload data is invalid */
-    ERROR_PROCESSING   = 0x02, /**< Message received but processing failed internally */
+    ERROR_PROCESSING = 0x02,   /**< Message received but processing failed internally */
 };
 
 /**
@@ -137,7 +148,7 @@ enum class AckStatus : uint8_t
  */
 enum class CommandType : uint8_t
 {
-    START_OTA           = 0x01, /**< Instructs the node to start an Over-The-Air update */
-    REBOOT              = 0x02, /**< Instructs the node to perform a system reset */
+    START_OTA = 0x01,           /**< Instructs the node to start an Over-The-Air update */
+    REBOOT = 0x02,              /**< Instructs the node to perform a system reset */
     SET_REPORT_INTERVAL = 0x03, /**< Instructs the node to change its data reporting frequency */
 };
