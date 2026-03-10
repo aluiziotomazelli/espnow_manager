@@ -10,6 +10,7 @@
 #include "i_persistence_backend.hpp"
 #include "i_storage_manager.hpp"
 #include "protocol_types.hpp"
+#include "nvs_hal.hpp"
 
 /**
  * @brief Internal structure for persistent data.
@@ -37,6 +38,7 @@ public:
     StorageManager(
         std::unique_ptr<IPersistenceBackend> rtc_backend = nullptr,
         std::unique_ptr<IPersistenceBackend> nvs_backend = nullptr);
+
     ~StorageManager();
 
     /**
