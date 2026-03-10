@@ -11,6 +11,7 @@ idf_component_register(
         "src/heartbeat_manager.cpp"
         "src/pairing_manager.cpp"
         "src/message_router.cpp"
+        "src/bootstrapper.cpp"
     
     INCLUDE_DIRS
         "include"
