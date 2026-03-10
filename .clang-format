@@ -77,7 +77,7 @@ BraceWrapping:
 # ============================================================================
 # INCLUDE SORTING
 # ============================================================================
-SortIncludes: true
+SortIncludes: false
 IncludeCategories:
   - Regex: '^<openthread/.*/'
     Priority: 4

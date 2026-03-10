@@ -12,6 +12,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
+#include "bootstraper.hpp"
 #include "channel_scanner.hpp"
 #include "espnow_manager.hpp"
 #include "heartbeat_manager.hpp"
@@ -20,6 +21,7 @@
 #include "pairing_manager.hpp"
 #include "peer_manager.hpp"
 #include "protocol_messages.hpp"
+#include "timer_hal.hpp"
 #include "tx_manager.hpp"
 #include "tx_state_machine.hpp"
 #include "wifi_hal.hpp"
@@ -30,15 +32,14 @@ static const char *TAG = "EspNow";
 EspNowManager &EspNowManager::instance()
 {
     static StorageManager storage;
+    static auto driver_hal = std::make_unique<WiFiHAL>();
+    static auto timer_hal = std::make_unique<TimerHAL>();
     static auto peer_manager = std::make_unique<PeerManager>(storage);
     static auto message_codec = std::make_unique<MessageCodec>();
-
-    static WiFiHAL wifi_hal;
-    static TxStateMachine tx_fsm;
-    static ChannelScanner scanner(wifi_hal, *message_codec, ReservedIds::HUB, ReservedTypes::HUB);
-
-    static auto tx_manager = std::make_unique<TxManager>(tx_fsm, scanner, wifi_hal, *message_codec);
-
+    static auto scanner =
+        std::make_unique<ChannelScanner>(*driver_hal, *message_codec, ReservedIds::HUB, ReservedTypes::HUB);
+    static auto tx_fsm = std::make_unique<TxStateMachine>();
+    static auto tx_manager = std::make_unique<TxManager>(*tx_fsm, *scanner, *driver_hal, *message_codec);
     static auto heartbeat_mgr =
         std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *message_codec, ReservedIds::HUB);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec);
@@ -46,10 +47,13 @@ EspNowManager &EspNowManager::instance()
         std::make_unique<MessageRouter>(*peer_manager, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
 
     static EspNowManager instance(
+        std::move(driver_hal),
+        std::move(timer_hal),
         std::move(peer_manager),
-        std::move(tx_manager),
-        &scanner,
         std::move(message_codec),
+        std::move(scanner),
+        std::move(tx_fsm),
+        std::move(tx_manager),
         std::move(heartbeat_mgr),
         std::move(pairing_mgr),
         std::move(message_router));
@@ -57,17 +61,23 @@ EspNowManager &EspNowManager::instance()
 }
 
 EspNowManager::EspNowManager(
+    std::unique_ptr<IWiFiHAL> driver_hal,
+    std::unique_ptr<ITimerHAL> timer_hal,
     std::unique_ptr<IPeerManager> peer_manager,
-    std::unique_ptr<ITxManager> tx_manager,
-    IChannelScanner *scanner_ptr,
     std::unique_ptr<IMessageCodec> message_codec,
+    std::unique_ptr<IChannelScanner> scanner,
+    std::unique_ptr<ITxStateMachine> tx_fsm,
+    std::unique_ptr<ITxManager> tx_manager,
     std::unique_ptr<IHeartbeatManager> heartbeat_manager,
     std::unique_ptr<IPairingManager> pairing_manager,
     std::unique_ptr<IMessageRouter> message_router)
-    : peer_manager_(std::move(peer_manager))
-    , tx_manager_(std::move(tx_manager))
-    , scanner_ptr_(scanner_ptr)
+    : driver_hal_(std::move(driver_hal))
+    , timer_hal_(std::move(timer_hal))
+    , peer_manager_(std::move(peer_manager))
     , message_codec_(std::move(message_codec))
+    , scanner_(std::move(scanner))
+    , tx_fsm_(std::move(tx_fsm))
+    , tx_manager_(std::move(tx_manager))
     , heartbeat_manager_(std::move(heartbeat_manager))
     , pairing_manager_(std::move(pairing_manager))
     , message_router_(std::move(message_router))
@@ -257,8 +267,8 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     is_initialized_ = true;
 
     heartbeat_manager_->update_node_id(config_.node_id);
-    if (scanner_ptr_)
-        scanner_ptr_->update_node_info(config_.node_id, config_.node_type);
+    if (scanner_)
+        scanner_->update_node_info(config_.node_id, config_.node_type);
     if (message_router_) {
         message_router_->set_app_queue(config_.app_rx_queue);
         message_router_->set_node_info(config_.node_id, config_.node_type);

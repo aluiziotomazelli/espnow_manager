@@ -41,7 +41,7 @@ public:
         return get_channel_ret;
     }
 
-    inline esp_err_t send_packet(const uint8_t *mac, const uint8_t *data, size_t len) override {
+    inline esp_err_t hal_esp_now_send(const uint8_t *mac, const uint8_t *data, size_t len) override {
         send_packet_calls++;
         if (mac) memcpy(last_dest_mac, mac, 6);
         if (data) {

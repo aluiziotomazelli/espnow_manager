@@ -1,9 +1,9 @@
+#include "mock_wifi_hal.hpp"
 #include "unity.h"
 #include "wifi_hal.hpp"
-#include "mock_wifi_hal.hpp"
 extern "C" {
-#include "Mockesp_wifi.h"
 #include "Mockesp_now.h"
+#include "Mockesp_wifi.h"
 }
 #include <cstring>
 
@@ -57,7 +57,7 @@ TEST_CASE("RealWiFiHAL get_channel calls esp_wifi_get_channel", "[wifi_hal]")
     TEST_ASSERT_EQUAL(expected_channel, actual_channel);
 }
 
-TEST_CASE("RealWiFiHAL send_packet with zero bytes returns error", "[wifi_hal]")
+TEST_CASE("RealWiFiHAL hal_esp_now_send with zero bytes returns error", "[wifi_hal]")
 {
     RealWiFiHAL hal;
     uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -65,12 +65,12 @@ TEST_CASE("RealWiFiHAL send_packet with zero bytes returns error", "[wifi_hal]")
     // Testing boundary condition: Sending 0 bytes should be rejected by the IDF.
     esp_now_send_ExpectAndReturn(mac, nullptr, 0, ESP_ERR_INVALID_ARG);
 
-    esp_err_t err = hal.send_packet(mac, nullptr, 0);
+    esp_err_t err = hal.hal_esp_now_send(mac, nullptr, 0);
 
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, err);
 }
 
-TEST_CASE("RealWiFiHAL send_packet with 1 byte (minimum) returns OK", "[wifi_hal]")
+TEST_CASE("RealWiFiHAL hal_esp_now_send with 1 byte (minimum) returns OK", "[wifi_hal]")
 {
     RealWiFiHAL hal;
     uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -79,12 +79,12 @@ TEST_CASE("RealWiFiHAL send_packet with 1 byte (minimum) returns OK", "[wifi_hal
     // Minimum valid payload size for ESP-NOW.
     esp_now_send_ExpectAndReturn(mac, &data, 1, ESP_OK);
 
-    esp_err_t err = hal.send_packet(mac, &data, 1);
+    esp_err_t err = hal.hal_esp_now_send(mac, &data, 1);
 
     TEST_ASSERT_EQUAL(ESP_OK, err);
 }
 
-TEST_CASE("RealWiFiHAL send_packet with 250 bytes (maximum) returns OK", "[wifi_hal]")
+TEST_CASE("RealWiFiHAL hal_esp_now_send with 250 bytes (maximum) returns OK", "[wifi_hal]")
 {
     RealWiFiHAL hal;
     uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -94,12 +94,12 @@ TEST_CASE("RealWiFiHAL send_packet with 250 bytes (maximum) returns OK", "[wifi_
     // Maximum valid payload size for ESP-NOW.
     esp_now_send_ExpectAndReturn(mac, data, 250, ESP_OK);
 
-    esp_err_t err = hal.send_packet(mac, data, 250);
+    esp_err_t err = hal.hal_esp_now_send(mac, data, 250);
 
     TEST_ASSERT_EQUAL(ESP_OK, err);
 }
 
-TEST_CASE("RealWiFiHAL send_packet with 251 bytes (above limit) returns error", "[wifi_hal]")
+TEST_CASE("RealWiFiHAL hal_esp_now_send with 251 bytes (above limit) returns error", "[wifi_hal]")
 {
     RealWiFiHAL hal;
     uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -108,7 +108,7 @@ TEST_CASE("RealWiFiHAL send_packet with 251 bytes (above limit) returns error", 
     // Boundary condition: Payload exceeds maximum ESP-NOW limit.
     esp_now_send_ExpectAndReturn(mac, data, 251, ESP_ERR_ESPNOW_ARG);
 
-    esp_err_t err = hal.send_packet(mac, data, 251);
+    esp_err_t err = hal.hal_esp_now_send(mac, data, 251);
 
     TEST_ASSERT_EQUAL(ESP_ERR_ESPNOW_ARG, err);
 }

@@ -11,13 +11,13 @@
 static const char *TAG = "TxManager";
 
 // Notification Bits (aligned with espnow_manager.hpp for now)
-static constexpr uint32_t NOTIFY_LOGICAL_ACK   = 0x01;
-static constexpr uint32_t NOTIFY_PHYSICAL_FAIL = 0x02;
-static constexpr uint32_t NOTIFY_HUB_FOUND     = 0x04;
-static constexpr uint32_t NOTIFY_DATA          = 0x20;
-static constexpr uint32_t NOTIFY_ACK_TIMEOUT   = 0x40;
-static constexpr uint32_t NOTIFY_STOP          = 0x100;
-static constexpr uint32_t NOTIFY_LINK_ALIVE    = 0x200;
+// static constexpr uint32_t NOTIFY_LOGICAL_ACK   = 0x01;
+// static constexpr uint32_t NOTIFY_PHYSICAL_FAIL = 0x02;
+// static constexpr uint32_t NOTIFY_HUB_FOUND     = 0x04;
+// static constexpr uint32_t NOTIFY_DATA          = 0x20;
+// static constexpr uint32_t NOTIFY_ACK_TIMEOUT   = 0x40;
+// static constexpr uint32_t NOTIFY_STOP          = 0x100;
+// static constexpr uint32_t NOTIFY_LINK_ALIVE    = 0x200;
 
 TxManager::TxManager(ITxStateMachine &fsm, IChannelScanner &scanner, IWiFiHAL &hal, IMessageCodec &codec)
     : fsm_(fsm)
@@ -123,7 +123,7 @@ void TxManager::run()
 
     while (true) {
         uint32_t notifications = 0;
-        TxState current_state  = fsm_.get_state();
+        TxState current_state = fsm_.get_state();
 
         switch (current_state) {
         case TxState::IDLE:
@@ -133,23 +133,23 @@ void TxManager::run()
                 // We'll handle sending in the next loop iteration or just fall through
                 // For simplicity, let's just use the logic from original task.
 
-                MessageHeader *header   = reinterpret_cast<MessageHeader *>(packet_to_send.data);
+                MessageHeader *header = reinterpret_cast<MessageHeader *>(packet_to_send.data);
                 header->sequence_number = sequence_counter_++;
                 // Update CRC
                 packet_to_send.data[packet_to_send.len - CRC_SIZE] =
                     codec_.calculate_crc(packet_to_send.data, packet_to_send.len - CRC_SIZE);
 
                 esp_err_t send_result =
-                    hal_.send_packet(packet_to_send.dest_mac, packet_to_send.data, packet_to_send.len);
+                    hal_.hal_esp_now_send(packet_to_send.dest_mac, packet_to_send.data, packet_to_send.len);
 
                 TxState next = fsm_.on_tx_success(packet_to_send.requires_ack && send_result == ESP_OK);
                 if (next == TxState::WAITING_FOR_ACK) {
                     PendingAck pending = {
                         .sequence_number = header->sequence_number,
-                        .timestamp_ms    = 0,
-                        .retries_left    = 3,
-                        .packet          = packet_to_send,
-                        .node_id         = header->dest_node_id};
+                        .timestamp_ms = 0,
+                        .retries_left = 3,
+                        .packet = packet_to_send,
+                        .node_id = header->dest_node_id};
                     fsm_.set_pending_ack(pending);
                     xTimerStart(ack_timeout_timer_, 0);
                 }
@@ -200,7 +200,7 @@ void TxManager::run()
                 pending.retries_left--;
                 fsm_.set_pending_ack(pending);
 
-                hal_.send_packet(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
+                hal_.hal_esp_now_send(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
                 xTimerStart(ack_timeout_timer_, 0);
                 fsm_.on_tx_success(true); // Back to WAITING_FOR_ACK
             }
