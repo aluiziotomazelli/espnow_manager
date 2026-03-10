@@ -1,11 +1,10 @@
 // src/persistence_backends.cpp
 
 #include "esp_log.h"
-// #include "esp_rom_crc.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
-#include "persistence_backends.hpp"
+#include "persistence_backend.hpp"
 
 static const char *TAG = "PersistenceBackend";
 static const char *NVS_NAMESPACE = "espnow_store";
@@ -15,7 +14,7 @@ static const char *NVS_KEY = "persist_data";
 static RTC_DATA_ATTR PersistentData g_rtc_storage;
 
 RtcBackend::RtcBackend(PersistentData *storage_ptr)
-    : storage_(storage_ptr ? storage_ptr : &g_rtc_storage)
+    : storage_(storage_ptr)
 {
 }
 
@@ -37,6 +36,11 @@ esp_err_t RtcBackend::save(const void *data, size_t size)
 
 // --- NVS Backend ---
 
+NvsBackend::NvsBackend(INvsHAL &nvs_hal)
+    : nvs_(nvs_hal)
+{
+}
+
 esp_err_t NvsBackend::load(void *data, size_t size)
 {
     esp_err_t err = init_nvs();
@@ -44,13 +48,13 @@ esp_err_t NvsBackend::load(void *data, size_t size)
         return err;
 
     nvs_handle_t handle;
-    err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    err = nvs_.hal_nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
     if (err != ESP_OK)
         return err;
 
     size_t actual_size = size;
-    err = nvs_get_blob(handle, NVS_KEY, data, &actual_size);
-    nvs_close(handle);
+    err = nvs_.hal_nvs_get_blob(handle, NVS_KEY, data, &actual_size);
+    nvs_.hal_nvs_close(handle);
 
     if (err != ESP_OK)
         return err;
@@ -67,15 +71,15 @@ esp_err_t NvsBackend::save(const void *data, size_t size)
         return err;
 
     nvs_handle_t handle;
-    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    err = nvs_.hal_nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err != ESP_OK)
         return err;
 
-    err = nvs_set_blob(handle, NVS_KEY, data, size);
+    err = nvs_.hal_nvs_set_blob(handle, NVS_KEY, data, size);
     if (err == ESP_OK) {
-        err = nvs_commit(handle);
+        err = nvs_.hal_nvs_commit(handle);
     }
-    nvs_close(handle);
+    nvs_.hal_nvs_close(handle);
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to save data to NVS: 0x%x", err);
@@ -86,16 +90,17 @@ esp_err_t NvsBackend::save(const void *data, size_t size)
 
 esp_err_t NvsBackend::init_nvs()
 {
-    static bool nvs_initialized = false;
-    if (nvs_initialized)
+    if (nvs_initialized_)
         return ESP_OK;
 
-    esp_err_t err = nvs_flash_init();
+    esp_err_t err;
+
+    err = nvs_.hal_nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
+        nvs_.hal_nvs_flash_erase();
+        err = nvs_.hal_nvs_flash_init();
     }
     if (err == ESP_OK)
-        nvs_initialized = true;
+        nvs_initialized_ = true;
     return err;
 }

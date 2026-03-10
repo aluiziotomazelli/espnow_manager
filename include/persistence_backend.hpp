@@ -25,9 +25,14 @@ private:
 class NvsBackend : public IPersistenceBackend
 {
 public:
+    explicit NvsBackend(INvsHAL &nvs_hal);
+
     esp_err_t load(void *data, size_t size) override;
     esp_err_t save(const void *data, size_t size) override;
 
 private:
     esp_err_t init_nvs();
+
+    INvsHAL &nvs_;
+    bool nvs_initialized_ = false;
 };
