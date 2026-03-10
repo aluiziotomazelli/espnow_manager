@@ -3,6 +3,7 @@ idf_component_register(
     SRCS
         "src/espnow_manager.cpp"
         "src/storage_manager.cpp"
+        "src/persinstence_backend.cpp"
         "src/peer_manager.cpp"
         "src/message_codec.cpp"
         "src/tx_state_machine.cpp"
