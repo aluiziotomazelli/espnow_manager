@@ -29,7 +29,7 @@ PeerManager::~PeerManager()
 }
 
 esp_err_t
-PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, uint32_t heartbeat_interval_ms)
+PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms) // TODO: Verify channel
 {
     if (mac == nullptr) {
         return ESP_ERR_INVALID_ARG;
@@ -48,12 +48,12 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
         ESP_LOGI(TAG, "Node ID %d already exists. Updating peer info.", (int)id);
 
         bool mac_changed = (memcmp(it->mac, mac, 6) != 0);
-        bool channel_changed = (it->channel != channel);
+        bool channel_changed = (it->channel != current_channel_);
 
         if (mac_changed) {
             esp_now_peer_info_t peer_info = {};
             memcpy(peer_info.peer_addr, mac, 6);
-            peer_info.channel = channel;
+            peer_info.channel = current_channel_;
             peer_info.ifidx = WIFI_IF_STA;
             peer_info.encrypt = false;
 
@@ -66,7 +66,7 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
         else if (channel_changed) {
             esp_now_peer_info_t peer_info = {};
             memcpy(peer_info.peer_addr, mac, 6);
-            peer_info.channel = channel;
+            peer_info.channel = current_channel_;
             peer_info.ifidx = WIFI_IF_STA;
             peer_info.encrypt = false;
             ret = driver_hal_.hal_esp_now_mod_peer(&peer_info);
@@ -75,7 +75,7 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
         if (ret == ESP_OK) {
             memcpy(it->mac, mac, 6);
             it->type = type;
-            it->channel = channel;
+            it->channel = current_channel_;
             it->heartbeat_interval_ms = heartbeat_interval_ms;
             // Move to front (LRU)
             PeerInfo updated = *it;
@@ -100,7 +100,7 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
 
         esp_now_peer_info_t peer_info = {};
         memcpy(peer_info.peer_addr, mac, 6);
-        peer_info.channel = channel;
+        peer_info.channel = current_channel_;
         peer_info.ifidx = WIFI_IF_STA;
         peer_info.encrypt = false;
         ret = driver_hal_.hal_esp_now_add_peer(&peer_info);
@@ -110,7 +110,7 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
             memcpy(new_peer.mac, mac, 6);
             new_peer.node_id = id;
             new_peer.type = type;
-            new_peer.channel = channel;
+            new_peer.channel = current_channel_;
             new_peer.last_seen_ms = 0; // Will be updated by caller if needed
             new_peer.paired = true;
             new_peer.heartbeat_interval_ms = heartbeat_interval_ms;
@@ -120,7 +120,7 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
     }
 
     if (ret == ESP_OK) {
-        save_to_storage(channel);
+        save_to_storage();
     }
 
     xSemaphoreGive(mutex_);
@@ -141,11 +141,10 @@ esp_err_t PeerManager::remove(NodeId id)
     }
 
     esp_err_t ret = driver_hal_.hal_esp_now_del_peer(it->mac);
-    uint8_t last_channel = it->channel;
 
-    if (ret == ESP_OK) {               // If peer is removed successfully from driver
-        peers_.erase(it);              // Remove from peer list
-        save_to_storage(last_channel); // Save to storage
+    if (ret == ESP_OK) {   // If peer is removed successfully from driver
+        peers_.erase(it);  // Remove from peer list
+        save_to_storage(); // Save to storage
     }
 
     xSemaphoreGive(mutex_);
@@ -231,21 +230,21 @@ esp_err_t PeerManager::load_from_storage(uint8_t &wifi_channel)
     return err;
 }
 
-void PeerManager::persist(uint8_t wifi_channel)
+void PeerManager::persist()
 {
     if (xSemaphoreTake(mutex_, portMAX_DELAY) == pdTRUE) {
-        save_to_storage(wifi_channel);
+        save_to_storage();
         xSemaphoreGive(mutex_);
     }
 }
 
-void PeerManager::save_to_storage(uint8_t wifi_channel)
+void PeerManager::save_to_storage()
 {
     std::vector<PersistentPeer> to_save;
     for (const auto &p : peers_) {
         to_save.push_back(info_to_persistent(p));
     }
-    esp_err_t err = storage_.save(wifi_channel, to_save, true);
+    esp_err_t err = storage_.save(current_channel_, to_save, true);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to save peers to storage: %s", esp_err_to_name(err));
     }
@@ -274,4 +273,12 @@ PeerInfo PeerManager::persistent_to_info(const PersistentPeer &persistent)
     info.paired = persistent.paired;
     info.heartbeat_interval_ms = persistent.heartbeat_interval_ms;
     return info;
+}
+
+void PeerManager::set_channel(uint8_t channel)
+{
+    if (xSemaphoreTake(mutex_, portMAX_DELAY) == pdTRUE) {
+        current_channel_ = channel;
+        xSemaphoreGive(mutex_);
+    }
 }

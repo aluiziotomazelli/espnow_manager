@@ -178,6 +178,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     if (peer_manager_->load_from_storage(stored_channel) == ESP_OK) {
         config_.wifi_channel = stored_channel;
     }
+    peer_manager_->set_channel(config_.wifi_channel);
 
     EspNowBootstrapConfig bootstrap_cfg = {};
     bootstrap_cfg.recv_cb = esp_now_recv_cb;
@@ -362,9 +363,9 @@ std::vector<NodeId> EspNowManager::get_offline_peers() const
 {
     return peer_manager_->get_offline(get_time_ms());
 }
-esp_err_t EspNowManager::add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type)
+esp_err_t EspNowManager::add_peer(NodeId node_id, const uint8_t *mac, NodeType type)
 {
-    return peer_manager_->add(node_id, mac, channel, type);
+    return peer_manager_->add(node_id, mac, type);
 }
 esp_err_t EspNowManager::remove_peer(NodeId node_id)
 {
@@ -489,6 +490,7 @@ void EspNowManager::update_wifi_channel(uint8_t channel)
         broadcast.ifidx = WIFI_IF_STA;
         broadcast.encrypt = false;
         esp_now_mod_peer(&broadcast);
-        peer_manager_->persist(channel);
+        peer_manager_->set_channel(channel);
+        peer_manager_->persist();
     }
 }

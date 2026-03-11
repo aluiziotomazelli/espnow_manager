@@ -11,11 +11,7 @@
 
 static const char *TAG = "HeartbeatMgr";
 
-HeartbeatManager::HeartbeatManager(
-    ITxManager &tx_mgr,
-    IPeerManager &peer_mgr,
-    IMessageCodec &codec,
-    NodeId my_id)
+HeartbeatManager::HeartbeatManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec, NodeId my_id)
     : tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
     , codec_(codec)
@@ -36,7 +32,7 @@ void HeartbeatManager::update_node_id(NodeId id)
 esp_err_t HeartbeatManager::init(uint32_t interval_ms, NodeType type)
 {
     interval_ms_ = interval_ms;
-    my_type_     = type;
+    my_type_ = type;
 
     if (my_type_ != ReservedTypes::HUB && interval_ms_ > 0) {
         timer_ = xTimerCreate("heartbeat", pdMS_TO_TICKS(interval_ms_), pdTRUE, this, timer_cb);
@@ -67,7 +63,7 @@ void HeartbeatManager::handle_response(NodeId hub_id, uint8_t channel)
     // Update the Hub's channel in PeerManager if we have its MAC
     uint8_t mac[6];
     if (peer_mgr_.find_mac(hub_id, mac)) {
-        peer_mgr_.add(hub_id, mac, channel, ReservedTypes::HUB);
+        peer_mgr_.add(hub_id, mac, ReservedTypes::HUB); // TODO: review channel
     }
 }
 
@@ -78,13 +74,13 @@ void HeartbeatManager::handle_request(NodeId sender_id, const uint8_t *mac, uint
     ESP_LOGI(TAG, "Heartbeat received from Node ID %d.", (int)sender_id);
 
     HeartbeatResponse response;
-    response.header.msg_type        = MessageType::HEARTBEAT_RESPONSE;
-    response.header.sender_node_id  = my_id_;
-    response.header.sender_type     = my_type_;
-    response.header.dest_node_id    = sender_id;
+    response.header.msg_type = MessageType::HEARTBEAT_RESPONSE;
+    response.header.sender_node_id = my_id_;
+    response.header.sender_type = my_type_;
+    response.header.dest_node_id = sender_id;
     response.header.sequence_number = 0;
-    response.server_time_ms         = now_ms;
-    response.wifi_channel           = 1; // Needs real channel, but for now fixed
+    response.server_time_ms = now_ms;
+    response.wifi_channel = 1; // Needs real channel, but for now fixed
 
     TxPacket tx_packet;
     memcpy(tx_packet.dest_mac, mac, 6);
@@ -107,12 +103,12 @@ void HeartbeatManager::send_heartbeat()
     }
 
     HeartbeatMessage heartbeat;
-    heartbeat.header.msg_type        = MessageType::HEARTBEAT;
-    heartbeat.header.sender_node_id  = my_id_;
-    heartbeat.header.sender_type     = my_type_;
-    heartbeat.header.dest_node_id    = ReservedIds::HUB;
+    heartbeat.header.msg_type = MessageType::HEARTBEAT;
+    heartbeat.header.sender_node_id = my_id_;
+    heartbeat.header.sender_type = my_type_;
+    heartbeat.header.dest_node_id = ReservedIds::HUB;
     heartbeat.header.sequence_number = 0;
-    heartbeat.uptime_ms              = esp_timer_get_time() / 1000;
+    heartbeat.uptime_ms = esp_timer_get_time() / 1000;
 
     auto encoded =
         codec_.encode(heartbeat.header, &heartbeat.battery_mv, sizeof(HeartbeatMessage) - sizeof(MessageHeader));

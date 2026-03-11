@@ -53,13 +53,13 @@ TEST_F(PeerManagerTest, AddPeersSuccessful)
 
     esp_err_t ret;
     // add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, uint32_t heartbeat_interval_ms)
-    ret = manager->add(ID_2, mac, 0, PEER, 10);
+    ret = manager->add(ID_2, mac, PEER, 10);
     EXPECT_EQ(ESP_OK, ret);
 }
 
 TEST_F(PeerManagerTest, AddPeerWithNullMacFails)
 {
-    EXPECT_EQ(ESP_ERR_INVALID_ARG, manager->add(ID_2, nullptr, 0, PEER, 10));
+    EXPECT_EQ(ESP_ERR_INVALID_ARG, manager->add(ID_2, nullptr, PEER, 10));
 }
 
 TEST_F(PeerManagerTest, AddPeerWithSameIdandMacDontOverwrite)
@@ -68,12 +68,12 @@ TEST_F(PeerManagerTest, AddPeerWithSameIdandMacDontOverwrite)
     make_mac(mac, ID_2);
 
     EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1); // First call
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, 0, PEER, 10)); // add the peer
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));    // add the peer
     auto peers = manager->get_all();                         // Get the peers
     EXPECT_EQ(1, peers.size());                              // Must be only one peer
 
     EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(0); // Will not call add again
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, 0, PEER, 10)); // Still returns ESP_OK
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));    // Still returns ESP_OK
     peers = manager->get_all();                              // get the peers
     EXPECT_EQ(1, peers.size());                              // Must be only one peer
 }
@@ -84,13 +84,13 @@ TEST_F(PeerManagerTest, AddPeerWithSameIdButDifferentMAcCallsDelAndAdd)
     make_mac(mac, ID_2);
 
     EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1); // First add
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, 0, PEER, 10));
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));
 
     make_mac(mac, 99); // Change mac
 
     EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1).WillOnce(Return(ESP_OK)); // Must call add
     EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_)).Times(1); // And call del if add returns ESP_OK
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, 0, PEER, 10)); // Nwe MAC but same ID
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));    // Nwe MAC but same ID
     EXPECT_EQ(1, manager->get_all().size());                 // Must be only one peer
 }
 
@@ -100,13 +100,13 @@ TEST_F(PeerManagerTest, AddPeerSameIdDifferentMAcFailsAndReturnsError)
     make_mac(mac, ID_2);
 
     EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1); // First add
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, 0, PEER, 10));
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));
 
     make_mac(mac, 99); // Change mac
 
     EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1).WillOnce(Return(ESP_FAIL)); // Must call add
     EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_)).Times(0);                            // Must not call del
-    EXPECT_EQ(ESP_FAIL, manager->add(ID_2, mac, 0, PEER, 10));                          // ESP_FAIL propagates
+    EXPECT_EQ(ESP_FAIL, manager->add(ID_2, mac, PEER, 10));                             // ESP_FAIL propagates
     EXPECT_EQ(1, manager->get_all().size());                                            // Must be only one peer
 }
 
@@ -114,15 +114,18 @@ TEST_F(PeerManagerTest, AddPeerWithSameIdButDifferentChannelCallsMod)
 {
     uint8_t mac[6];
     make_mac(mac, ID_2);
+
     uint8_t ch_1 = 1;
     uint8_t ch_2 = 2;
 
+    manager->set_channel(ch_1);                              // Set channel
     EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1); // First add
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, ch_1, PEER, 10));
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));
 
-    EXPECT_CALL(wifi_hal, hal_esp_now_mod_peer(_)).Times(1);    // Must call mod
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, ch_2, PEER, 10)); // New channel
-    EXPECT_EQ(1, manager->get_all().size());                    // Must be only one peer
+    manager->set_channel(ch_2);                              // Change channel
+    EXPECT_CALL(wifi_hal, hal_esp_now_mod_peer(_)).Times(1); // Must call mod
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));    // New channel
+    EXPECT_EQ(1, manager->get_all().size());                 // Must be only one peer
 }
 
 TEST_F(PeerManagerTest, AddPeersFailsAndDoesNotIncludePeer)
@@ -131,7 +134,7 @@ TEST_F(PeerManagerTest, AddPeersFailsAndDoesNotIncludePeer)
     make_mac(mac, ID_2);
 
     EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1).WillOnce(Return(ESP_FAIL)); // If Fails
-    EXPECT_EQ(ESP_FAIL, manager->add(ID_2, mac, 1, PEER, 10));
+    EXPECT_EQ(ESP_FAIL, manager->add(ID_2, mac, PEER, 10));
     EXPECT_EQ(0, manager->get_all().size()); // Must be no peers
 }
 
@@ -141,7 +144,7 @@ TEST_F(PeerManagerTest, AddExactlyMaxPeers)
         uint8_t mac[6];
         make_mac(mac, i);
         EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1).WillOnce(Return(ESP_OK));
-        EXPECT_EQ(ESP_OK, manager->add((NodeId)i, mac, 1, PEER, 10));
+        EXPECT_EQ(ESP_OK, manager->add((NodeId)i, mac, PEER, 10));
     }
 
     auto peers = manager->get_all();
@@ -159,7 +162,7 @@ TEST_F(PeerManagerTest, AddBeyondMaxRemovesPeerWithOldestLastSeen)
     for (int i = 0; i < MAX_PEERS; i++) {
         uint8_t mac[6];
         make_mac(mac, i);
-        manager->add((NodeId)i, mac, 1, PEER, 10);
+        manager->add((NodeId)i, mac, PEER, 10);
     }
 
     // Change last_seen from peers
@@ -170,7 +173,7 @@ TEST_F(PeerManagerTest, AddBeyondMaxRemovesPeerWithOldestLastSeen)
     // Add a new peer ID = 99
     uint8_t new_mac[6];
     make_mac(new_mac, 99);
-    manager->add((NodeId)99, new_mac, 1, PEER, 10);
+    manager->add((NodeId)99, new_mac, PEER, 10);
 
     EXPECT_EQ(MAX_PEERS, manager->get_all().size());
 
@@ -192,7 +195,7 @@ TEST_F(PeerManagerTest, RemovePeerCallsDel)
     uint8_t mac[6];
     make_mac(mac, ID_2);
 
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, 0, PEER, 10));
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));
     EXPECT_EQ(1, manager->get_all().size());
 
     EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_)).Times(1); // Must call del
@@ -206,12 +209,9 @@ TEST_F(PeerManagerTest, RemoveNonExistentPeerDoesNotCallDel)
     for (int i = 0; i < MAX_PEERS; i++) {
         uint8_t mac[6];
         make_mac(mac, i);
-        manager->add((NodeId)i, mac, 1, PEER, 10);
+        manager->add((NodeId)i, mac, PEER, 10);
     }
     EXPECT_EQ(MAX_PEERS, manager->get_all().size()); // Must be MAX_PEERS peers
-
-    // EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, 0, PEER, 10));
-    // EXPECT_EQ(1, manager->get_all().size());
 
     EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_)).Times(0); // Should not call del
     EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->remove(99));       // ID_99 does not exist
@@ -222,7 +222,7 @@ TEST_F(PeerManagerTest, RemoveReturnsErrorWhenDelFailsAndKeepsPeer)
 {
     uint8_t mac[6];
     make_mac(mac, ID_2);
-    manager->add(ID_2, mac, 0, PEER, 10);
+    manager->add(ID_2, mac, PEER, 10);
 
     EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_)).WillOnce(Return(ESP_FAIL)); // esp_now_del_peer fails
     EXPECT_EQ(ESP_FAIL, manager->remove(ID_2));                                // Must return error

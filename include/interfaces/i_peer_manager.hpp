@@ -24,8 +24,7 @@ public:
      * @brief Add peer to list
      * @internal
      */
-    virtual esp_err_t
-    add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, uint32_t heartbeat_interval_ms = 0) = 0;
+    virtual esp_err_t add(NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms = 0) = 0;
 
     /**
      * @brief Template for adding peer using enums
@@ -36,9 +35,9 @@ public:
         typename T2,
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
-    esp_err_t add(T1 id, const uint8_t *mac, uint8_t channel, T2 type, uint32_t heartbeat_interval_ms = 0)
+    esp_err_t add(T1 id, const uint8_t *mac, T2 type, uint32_t heartbeat_interval_ms = 0)
     {
-        return add(static_cast<NodeId>(id), mac, channel, static_cast<NodeType>(type), heartbeat_interval_ms);
+        return add(static_cast<NodeId>(id), mac, static_cast<NodeType>(type), heartbeat_interval_ms);
     }
 
     /**
@@ -111,5 +110,7 @@ public:
      * @brief Persist peer list to storage
      * @internal
      */
-    virtual void persist(uint8_t wifi_channel) = 0;
+    virtual void persist() = 0;
+
+    virtual void set_channel(uint8_t channel) = 0;
 };

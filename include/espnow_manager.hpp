@@ -96,7 +96,7 @@ public:
 
     using IEspNowManager::add_peer;
     /** @copydoc IEspNowManager::add_peer */
-    esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type) override;
+    esp_err_t add_peer(NodeId node_id, const uint8_t *mac, NodeType type) override; // TODO: Verify channel
 
     using IEspNowManager::remove_peer;
     /** @copydoc IEspNowManager::remove_peer */

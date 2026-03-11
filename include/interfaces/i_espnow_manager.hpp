@@ -198,7 +198,7 @@ public:
      *
      * @warning ESP-NOW hardware limit is 20 peers, but 1 is reserved for broadcast
      */
-    virtual esp_err_t add_peer(NodeId node_id, const uint8_t *mac, uint8_t channel, NodeType type) = 0;
+    virtual esp_err_t add_peer(NodeId node_id, const uint8_t *mac, NodeType type) = 0; // TODO: Verify channel
 
     /**
      * @brief Template overload for add_peer using enums
@@ -212,9 +212,9 @@ public:
         typename T2,
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
-    esp_err_t add_peer(T1 node_id, const uint8_t *mac, uint8_t channel, T2 type)
+    esp_err_t add_peer(T1 node_id, const uint8_t *mac, T2 type) // TODO: Verify channel
     {
-        return add_peer(static_cast<NodeId>(node_id), mac, channel, static_cast<NodeType>(type));
+        return add_peer(static_cast<NodeId>(node_id), mac, static_cast<NodeType>(type)); // TODO: Verify channel
     }
 
     /**

@@ -104,7 +104,11 @@ void PairingManager::handle_request(const RxPacket &packet)
     }
     else {
         // TODO: Verify why channel 1 is hardcoded used bellow
-        peer_mgr_.add(header.sender_node_id, packet.src_mac, 1, header.sender_type, req->heartbeat_interval_ms);
+        peer_mgr_.add(
+            header.sender_node_id,
+            packet.src_mac,
+            header.sender_type,
+            req->heartbeat_interval_ms); // TODO: review channel
         resp.status = PairStatus::ACCEPTED;
         resp.wifi_channel = 1; // Needs real channel
     }
@@ -137,7 +141,7 @@ void PairingManager::handle_response(const RxPacket &packet)
     const PairResponse *resp = reinterpret_cast<const PairResponse *>(packet.data);
     if (resp->status == PairStatus::ACCEPTED) {
         ESP_LOGI(TAG, "Pairing accepted by Hub.");
-        peer_mgr_.add(header_opt->sender_node_id, packet.src_mac, resp->wifi_channel, header_opt->sender_type);
+        peer_mgr_.add(header_opt->sender_node_id, packet.src_mac, header_opt->sender_type); // TODO: review channel
         is_active_ = false;
         if (periodic_timer_) {
             xTimerStop(periodic_timer_, 0);
