@@ -142,9 +142,11 @@ esp_err_t PeerManager::remove(NodeId id)
 
     esp_err_t ret = driver_hal_.hal_esp_now_del_peer(it->mac);
     uint8_t last_channel = it->channel;
-    peers_.erase(it);
 
-    save_to_storage(last_channel);
+    if (ret == ESP_OK) {               // If peer is removed successfully from driver
+        peers_.erase(it);              // Remove from peer list
+        save_to_storage(last_channel); // Save to storage
+    }
 
     xSemaphoreGive(mutex_);
     return ret;
