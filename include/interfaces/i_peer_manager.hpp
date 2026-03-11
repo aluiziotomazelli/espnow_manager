@@ -58,6 +58,12 @@ public:
 
     /**
      * @brief Find MAC address for a given Node ID
+     * @param id Node ID
+     * @param mac Pointer to 6-byte MAC address: uint8_t mac[6]
+     * @return True if ID was found
+     *
+     * @note Dont crash if mac argument is nullptr, can be used for find ID only
+     *
      * @internal
      */
     virtual bool find_mac(NodeId id, uint8_t *mac) = 0;
@@ -102,6 +108,7 @@ public:
 
     /**
      * @brief Load peer list from persistent storage
+     * @note clears the current peer list - intended for initialization only
      * @internal
      */
     virtual esp_err_t load_from_storage(uint8_t &wifi_channel) = 0;
