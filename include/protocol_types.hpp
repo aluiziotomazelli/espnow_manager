@@ -37,7 +37,7 @@ constexpr uint32_t DEFAULT_HEARTBEAT_INTERVAL_MS = 60000;
 /** @brief Default WiFi channel to use if none is specified */
 constexpr uint8_t DEFAULT_WIFI_CHANNEL = 1;
 /** @brief Multiplier applied to heartbeat interval to determine if a node is offline */
-constexpr float HEARTBEAT_OFFLINE_MULTIPLIER = 2.5f;
+constexpr uint8_t HEARTBEAT_OFFLINE_MULTIPLIER = 3;
 
 // Constants for retry logic
 /** @brief Timeout for logical acknowledgments in milliseconds */
