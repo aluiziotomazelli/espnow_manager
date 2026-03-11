@@ -7,6 +7,7 @@
 
 #include "i_peer_manager.hpp"
 #include "i_wifi_hal.hpp"
+#include "i_storage_manager.hpp"
 
 class PeerManager : public IPeerManager
 {

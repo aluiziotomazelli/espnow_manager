@@ -36,7 +36,7 @@ EspNowManager &EspNowManager::instance()
     static auto driver_hal = std::make_unique<WiFiHAL>();
     static auto timer_hal = std::make_unique<TimerHAL>();
     static auto bootstraper = std::make_unique<Bootstrapper>(*driver_hal);
-    static auto peer_manager = std::make_unique<PeerManager>(storage);
+    static auto peer_manager = std::make_unique<PeerManager>(storage, *driver_hal);
     static auto message_codec = std::make_unique<MessageCodec>();
     static auto scanner =
         std::make_unique<ChannelScanner>(*driver_hal, *message_codec, ReservedIds::HUB, ReservedTypes::HUB);
