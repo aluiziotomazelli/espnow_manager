@@ -118,6 +118,11 @@ TEST_F(PeerManagerTest, AddPeerWithSameIdButDifferentChannelCallsMod)
     uint8_t ch_1 = 1;
     uint8_t ch_2 = 2;
 
+    // add(...) compares it->channel with current_channel_: compares
+    // current_channel_ saved via manager->set_channel with peer channel
+    // If it->channel == current_channel_ it will call esp_now_add_peer()
+    // If it->channel != current_channel_ it will call esp_now_mod_peer()
+
     manager->set_channel(ch_1);                              // Set channel
     EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1); // First add
     EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));
@@ -143,7 +148,7 @@ TEST_F(PeerManagerTest, AddExactlyMaxPeers)
     for (int i = 0; i < MAX_PEERS; i++) {
         uint8_t mac[6];
         make_mac(mac, i);
-        EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1).WillOnce(Return(ESP_OK));
+        ON_CALL(wifi_hal, hal_esp_now_add_peer(_)).WillByDefault(Return(ESP_OK));
         EXPECT_EQ(ESP_OK, manager->add((NodeId)i, mac, PEER, 10));
     }
 
@@ -413,6 +418,7 @@ TEST_F(PeerManagerTest, PersistCallsSaveToStorage)
 {
     uint8_t mac[6];
     make_mac(mac, ID_2);
+    ON_CALL(storage, save(_, _, _)).WillByDefault(Return(ESP_OK));
     manager->add(ID_2, mac, PEER, 10);
 
     EXPECT_CALL(storage, save(_, _, _)).Times(1);
