@@ -85,10 +85,16 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
     else {
         // New peer
         if (peers_.size() >= MAX_PEERS) {
-            ESP_LOGW(TAG, "Peer list is full. Removing the oldest peer.");
-            const PeerInfo &oldest = peers_.back();
-            esp_now_del_peer(oldest.mac);
-            peers_.pop_back();
+            ESP_LOGW(TAG, "Peer list is full. Removing the last seen peer.");
+            // const PeerInfo &oldest = peers_.back();
+
+            // Returns a iterator to the element with the smallest last_seen_ms
+            auto oldest = std::min_element(peers_.begin(), peers_.end(), [](const PeerInfo &a, const PeerInfo &b) {
+                return a.last_seen_ms < b.last_seen_ms;
+            });
+
+            esp_now_del_peer(oldest->mac);
+            peers_.erase(oldest);
         }
 
         esp_now_peer_info_t peer_info = {};
