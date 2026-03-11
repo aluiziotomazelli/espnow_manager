@@ -33,7 +33,7 @@ PairingManager::~PairingManager()
 esp_err_t PairingManager::init(NodeType type, NodeId id)
 {
     my_type_ = type;
-    my_id_   = id;
+    my_id_ = id;
     return ESP_OK;
 }
 
@@ -88,23 +88,24 @@ void PairingManager::handle_request(const RxPacket &packet)
     if (!header_opt)
         return;
     const MessageHeader &header = header_opt.value();
-    const PairRequest *req      = reinterpret_cast<const PairRequest *>(packet.data);
+    const PairRequest *req = reinterpret_cast<const PairRequest *>(packet.data);
 
     ESP_LOGI(TAG, "Pair request from Node ID %d", (int)header.sender_node_id);
 
     PairResponse resp;
-    resp.header.msg_type        = MessageType::PAIR_RESPONSE;
-    resp.header.sender_node_id  = my_id_;
-    resp.header.sender_type     = my_type_;
-    resp.header.dest_node_id    = header.sender_node_id;
+    resp.header.msg_type = MessageType::PAIR_RESPONSE;
+    resp.header.sender_node_id = my_id_;
+    resp.header.sender_type = my_type_;
+    resp.header.dest_node_id = header.sender_node_id;
     resp.header.sequence_number = 0;
 
     if (header.sender_type == ReservedTypes::HUB) {
         resp.status = PairStatus::REJECTED_NOT_ALLOWED;
     }
     else {
+        // TODO: Verify why channel 1 is hardcoded used bellow
         peer_mgr_.add(header.sender_node_id, packet.src_mac, 1, header.sender_type, req->heartbeat_interval_ms);
-        resp.status       = PairStatus::ACCEPTED;
+        resp.status = PairStatus::ACCEPTED;
         resp.wifi_channel = 1; // Needs real channel
     }
 
@@ -151,12 +152,12 @@ void PairingManager::handle_response(const RxPacket &packet)
 void PairingManager::send_pair_request()
 {
     PairRequest req;
-    req.header.msg_type        = MessageType::PAIR_REQUEST;
-    req.header.sender_node_id  = my_id_;
-    req.header.sender_type     = my_type_;
-    req.header.dest_node_id    = ReservedIds::HUB;
+    req.header.msg_type = MessageType::PAIR_REQUEST;
+    req.header.sender_node_id = my_id_;
+    req.header.sender_type = my_type_;
+    req.header.dest_node_id = ReservedIds::HUB;
     req.header.sequence_number = 0;
-    req.heartbeat_interval_ms  = 60000;
+    req.heartbeat_interval_ms = 60000;
 
     TxPacket tx_packet;
     const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
