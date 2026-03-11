@@ -14,8 +14,9 @@
 
 static const char *TAG = "PeerManager";
 
-PeerManager::PeerManager(IStorageManager &storage)
+PeerManager::PeerManager(IStorageManager &storage, IWiFiHAL &driver_hal)
     : storage_(storage)
+    , driver_hal_(driver_hal)
 {
     mutex_ = xSemaphoreCreateMutex();
 }
@@ -38,7 +39,7 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
         return ESP_ERR_TIMEOUT;
     }
 
-    esp_err_t result = ESP_OK;
+    esp_err_t ret = ESP_OK;
 
     // Check if peer already exists
     auto it = std::find_if(peers_.begin(), peers_.end(), [id](const PeerInfo &p) { return p.node_id == id; });
@@ -56,10 +57,10 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
             peer_info.ifidx = WIFI_IF_STA;
             peer_info.encrypt = false;
 
-            result = esp_now_add_peer(&peer_info);
+            ret = driver_hal_.hal_esp_now_add_peer(&peer_info);
 
-            if (result == ESP_OK) {
-                result = esp_now_del_peer(it->mac);
+            if (ret == ESP_OK) {
+                ret = driver_hal_.hal_esp_now_del_peer(it->mac);
             }
         }
         else if (channel_changed) {
@@ -68,10 +69,10 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
             peer_info.channel = channel;
             peer_info.ifidx = WIFI_IF_STA;
             peer_info.encrypt = false;
-            result = esp_now_mod_peer(&peer_info);
+            ret = driver_hal_.hal_esp_now_mod_peer(&peer_info);
         }
 
-        if (result == ESP_OK) {
+        if (ret == ESP_OK) {
             memcpy(it->mac, mac, 6);
             it->type = type;
             it->channel = channel;
@@ -93,7 +94,7 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
                 return a.last_seen_ms < b.last_seen_ms;
             });
 
-            esp_now_del_peer(oldest->mac);
+            driver_hal_.hal_esp_now_del_peer(oldest->mac);
             peers_.erase(oldest);
         }
 
@@ -102,9 +103,9 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
         peer_info.channel = channel;
         peer_info.ifidx = WIFI_IF_STA;
         peer_info.encrypt = false;
-        result = esp_now_add_peer(&peer_info);
+        ret = driver_hal_.hal_esp_now_add_peer(&peer_info);
 
-        if (result == ESP_OK) {
+        if (ret == ESP_OK) {
             PeerInfo new_peer;
             memcpy(new_peer.mac, mac, 6);
             new_peer.node_id = id;
@@ -118,12 +119,12 @@ PeerManager::add(NodeId id, const uint8_t *mac, uint8_t channel, NodeType type, 
         }
     }
 
-    if (result == ESP_OK) {
+    if (ret == ESP_OK) {
         save_to_storage(channel);
     }
 
     xSemaphoreGive(mutex_);
-    return result;
+    return ret;
 }
 
 esp_err_t PeerManager::remove(NodeId id)
@@ -139,14 +140,14 @@ esp_err_t PeerManager::remove(NodeId id)
         return ESP_ERR_NOT_FOUND;
     }
 
-    esp_err_t result = esp_now_del_peer(it->mac);
+    esp_err_t ret = driver_hal_.hal_esp_now_del_peer(it->mac);
     uint8_t last_channel = it->channel;
     peers_.erase(it);
 
     save_to_storage(last_channel);
 
     xSemaphoreGive(mutex_);
-    return result;
+    return ret;
 }
 
 bool PeerManager::find_mac(NodeId id, uint8_t *mac)
