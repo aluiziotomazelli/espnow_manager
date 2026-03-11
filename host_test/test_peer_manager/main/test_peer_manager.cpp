@@ -232,3 +232,189 @@ TEST_F(PeerManagerTest, RemoveReturnsErrorWhenDelFailsAndKeepsPeer)
     uint8_t found_mac[6];
     EXPECT_TRUE(manager->find_mac(ID_2, found_mac)); // Must find peer
 }
+
+// =========================================================================
+// PeerManager::find_mac
+// =========================================================================
+
+TEST_F(PeerManagerTest, ExistingPeerReturnsMac)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 10); // Add peer
+
+    uint8_t found_mac[6];                            // Buffer to store found mac
+    EXPECT_TRUE(manager->find_mac(ID_2, found_mac)); // Must find peer
+    EXPECT_EQ(0, memcmp(mac, found_mac, 6));         // Must find the same mac
+}
+
+TEST_F(PeerManagerTest, NonExistentPeerReturnsFalse)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 10); // Add peer ID_2
+
+    uint8_t found_mac[6];
+    EXPECT_FALSE(manager->find_mac(ID_3, found_mac)); // Must not find peer ID_3
+}
+
+TEST_F(PeerManagerTest, FindMacWithNullptrDoesNotCrash)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 10); // add com mac válido
+
+    EXPECT_NO_FATAL_FAILURE(manager->find_mac(ID_2, nullptr)); // não crasha
+}
+
+// =========================================================================
+// PeerManager::get_offline
+// =========================================================================
+
+TEST_F(PeerManagerTest, GetOfflineReturnsPeerWhenExpired)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    uint32_t heartbeat_ms = 1000;
+    manager->add(ID_2, mac, PEER, heartbeat_ms);
+
+    uint64_t last_seen = 100;
+    manager->update_last_seen(ID_2, last_seen);
+
+    // timeout = heartbeat_ms * HEARTBEAT_OFFLINE_MULTIPLIER
+    // now = last_seen + timeout + 1 -> expired
+    uint64_t now = last_seen + (heartbeat_ms * HEARTBEAT_OFFLINE_MULTIPLIER) + 1;
+    auto offline = manager->get_offline(now);
+
+    ASSERT_EQ(1, offline.size());
+    EXPECT_EQ(ID_2, offline[0]);
+}
+
+TEST_F(PeerManagerTest, GetOfflineDoesNotReturnPeerWhenNotExpired)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    uint32_t heartbeat_ms = 1000;
+    manager->add(ID_2, mac, PEER, heartbeat_ms);
+
+    uint64_t last_seen = 100;
+    manager->update_last_seen(ID_2, last_seen);
+
+    // if (p.last_seen_ms > 0 && (now_ms - p.last_seen_ms > timeout))
+    // now = last_seen + timeout -> still within timeout
+    uint64_t now = last_seen + (heartbeat_ms * HEARTBEAT_OFFLINE_MULTIPLIER);
+    EXPECT_TRUE(manager->get_offline(now).empty());
+}
+
+TEST_F(PeerManagerTest, GetOfflineReturnsEmptyWhenNopeersAdded)
+{
+    EXPECT_TRUE(manager->get_offline(9999).empty());
+}
+
+TEST_F(PeerManagerTest, GetOfflineReturnsEmptyWhenLastSeenIsZero)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 1000); // heartbeat_interval = 1000ms
+
+    // last_seen_ms = 0 - never seen from boot, so dont go offline
+    EXPECT_TRUE(manager->get_offline(9999).empty());
+}
+
+TEST_F(PeerManagerTest, GetOfflineReturnsEmptyWhenHeartbeatIntervalIsZero)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 0); // heartbeat_interval = 0 - never monitor
+
+    manager->update_last_seen(ID_2, 100);            // even if last_seen_ms != 0
+    EXPECT_TRUE(manager->get_offline(9999).empty()); // dont go offline
+}
+
+// =========================================================================
+// PeerManager::load_from_storage
+// =========================================================================
+
+TEST_F(PeerManagerTest, LoadFromStorageReturnsErrorWhenEmpty)
+{
+    // Default ON_CALL already returns ESP_ERR_NOT_FOUND
+    uint8_t channel = 0;
+    EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load_from_storage(channel));
+    EXPECT_TRUE(manager->get_all().empty());
+}
+
+TEST_F(PeerManagerTest, LoadFromStoragePopulatesPeerList)
+{
+    // Storage returns 2 peers
+    std::vector<PersistentPeer> stored;
+    PersistentPeer p1 = {};
+    p1.node_id = ID_2;
+    p1.channel = 6;
+    memset(p1.mac, 0xAA, 6);
+
+    PersistentPeer p2 = {};
+    p2.node_id = ID_3;
+    p2.channel = 6;
+    memset(p2.mac, 0xBB, 6);
+
+    stored.push_back(p1);
+    stored.push_back(p2);
+
+    ON_CALL(storage, load(_, _)).WillByDefault([&](uint8_t &channel, std::vector<PersistentPeer> &peers) {
+        channel = 6;
+        peers = stored;
+        return ESP_OK;
+    });
+
+    uint8_t channel = 0;
+    EXPECT_EQ(ESP_OK, manager->load_from_storage(channel));
+    EXPECT_EQ(6, channel); // channel was updated
+    EXPECT_EQ(2, manager->get_all().size());
+
+    // Verify peer data was correctly mapped
+    uint8_t found_mac[6];
+    EXPECT_TRUE(manager->find_mac(ID_2, found_mac));
+    EXPECT_EQ(0, memcmp(found_mac, p1.mac, 6));
+
+    EXPECT_TRUE(manager->find_mac(ID_3, found_mac));
+    EXPECT_EQ(0, memcmp(found_mac, p2.mac, 6));
+}
+
+TEST_F(PeerManagerTest, LoadFromStorageClearsPreviousPeers)
+{
+    // Add a peer manually first
+    uint8_t mac[6];
+    make_mac(mac, ID_4);
+    manager->add(ID_4, mac, PEER, 10);
+    EXPECT_EQ(1, manager->get_all().size());
+
+    // Storage returns different peer
+    PersistentPeer p1 = {};
+    p1.node_id = ID_2;
+    memset(p1.mac, 0xAA, 6);
+
+    ON_CALL(storage, load(_, _)).WillByDefault([&](uint8_t &channel, std::vector<PersistentPeer> &peers) {
+        channel = 1;
+        peers = {p1};
+        return ESP_OK;
+    });
+
+    uint8_t channel = 0;
+    EXPECT_EQ(ESP_OK, manager->load_from_storage(channel));
+
+    // ID_4 must be gone, ID_2 must be present
+    EXPECT_EQ(1, manager->get_all().size());
+    uint8_t found_mac[6];
+    EXPECT_FALSE(manager->find_mac(ID_4, found_mac));
+    EXPECT_TRUE(manager->find_mac(ID_2, found_mac));
+}
+
+TEST_F(PeerManagerTest, PersistCallsSaveToStorage)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 10);
+
+    EXPECT_CALL(storage, save(_, _, _)).Times(1);
+    manager->persist();
+}
