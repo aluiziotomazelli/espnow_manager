@@ -4,7 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include "i_nvs_hal.hpp"
+#include "i_hal_wifi.hpp"
 
 class MockStorageManager : public IStorageManager
 {
