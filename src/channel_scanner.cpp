@@ -28,28 +28,26 @@ void ChannelScanner::update_node_info(NodeId id, NodeType type)
 IChannelScanner::ScanResult ChannelScanner::scan(uint8_t start_channel)
 {
     ESP_LOGI(TAG, "Starting channel scan to find Hub.");
+
     bool hub_found = false;
     uint8_t current_channel = start_channel;
+
     if (current_channel < 1 || current_channel > 13) {
         current_channel = 1;
     }
 
-    // Note: get_time_ms logic should be handled by HAL or passed?
-    // Let's assume HAL provides time or we just use a loop count.
-    // Original used get_time_ms.
-
-    // For simplicity, let's keep the loop.
+    // In total loop for scan, we will start from actual channel (most likely to be the correct one)
+    // and make SCAN_CHANNEL_ATTEMPTS on each of 13 wifi channels
     for (uint8_t offset = 0; offset < 13 && !hub_found; ++offset) {
         uint8_t channel = ((current_channel - 1 + offset) % 13) + 1;
         wifi_hal_.wifi_set_channel(channel);
 
-        MessageHeader probe_header;
+        // empty initializer to avoid memory garbage on unused fields
+        MessageHeader probe_header = {};
         probe_header.msg_type = MessageType::CHANNEL_SCAN_PROBE;
         probe_header.sender_node_id = my_node_id_;
         probe_header.sender_type = my_node_type_;
-        probe_header.dest_node_id = ReservedIds::HUB;
-        probe_header.sequence_number = 0;
-        probe_header.timestamp_ms = 0; // Not critical for probe
+        probe_header.dest_node_id = ReservedIds::HUB; // Destination is always hub
 
         auto encoded = message_codec_.encode(probe_header, nullptr, 0);
         if (encoded.empty())
@@ -57,6 +55,7 @@ IChannelScanner::ScanResult ChannelScanner::scan(uint8_t start_channel)
 
         const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
+        // Loop to send probe * SCAN_CHANNEL_ATTEMPTS until the hub is not found
         for (uint8_t attempt = 0; attempt < SCAN_CHANNEL_ATTEMPTS && !hub_found; attempt++) {
             wifi_hal_.hal_esp_now_send(broadcast_mac, encoded.data(), encoded.size());
 
@@ -67,7 +66,7 @@ IChannelScanner::ScanResult ChannelScanner::scan(uint8_t start_channel)
                 if (notifications & (NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE)) {
                     ESP_LOGI(TAG, "Hub found on channel %d.", channel);
                     hub_found = true;
-                    current_channel = channel;
+                    current_channel = channel; // update only if hub is found
                     break;
                 }
             }

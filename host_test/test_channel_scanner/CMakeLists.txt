@@ -7,13 +7,17 @@ list(APPEND EXTRA_COMPONENT_DIRS
     "../common"
     "$ENV{IDF_PATH}/tools/mocks/esp_wifi"
     "$ENV{IDF_PATH}/tools/mocks/esp_netif"
-    "$ENV{IDF_PATH}/tools/mocks/esp_event"
     "$ENV{IDF_PATH}/tools/mocks/lwip"
     "$ENV{IDF_PATH}/tools/mocks/esp_timer"
+    "$ENV{IDF_PATH}/tools/mocks/driver"
+
 )
 
 # Explicitly list the components to be included in the build.
-set(COMPONENTS main espnow_manager)
+set(COMPONENTS 
+    "main" 
+    "espnow_manager"
+)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
