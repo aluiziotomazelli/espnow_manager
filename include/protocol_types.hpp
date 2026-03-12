@@ -42,10 +42,9 @@ constexpr uint8_t HEARTBEAT_OFFLINE_MULTIPLIER = 3;
 // Constants for retry logic
 /** @brief Timeout for logical acknowledgments in milliseconds */
 constexpr uint32_t LOGICAL_ACK_TIMEOUT_MS = 500;
-/** @brief Maximum number of logical retries for unacknowledged packets */
-constexpr uint8_t MAX_LOGICAL_RETRIES = 3;
+
 /** @brief Maximum number of physical transmission failures before giving up or scanning */
-constexpr uint8_t MAX_PHYSICAL_FAILURES = 3;
+constexpr uint8_t MAX_FAILURES = 3;
 
 /** @brief Timeout for scanning a single channel during discovery (ms) */
 constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 50;

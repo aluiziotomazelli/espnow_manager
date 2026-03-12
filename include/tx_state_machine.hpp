@@ -14,21 +14,14 @@ public:
     TxState on_max_retries() override;
     void on_link_alive() override;
 
-    TxState get_state() const override
-    {
-        return current_state_;
-    }
+    TxState get_state() const override { return current_state_; }
     void reset() override;
 
     void set_pending_ack(const PendingAck &pending_ack) override;
-    std::optional<PendingAck> get_pending_ack() const override
-    {
-        return pending_ack_;
-    }
+    std::optional<PendingAck> get_pending_ack() const override { return pending_ack_; }
 
 private:
     TxState current_state_;
     std::optional<PendingAck> pending_ack_;
-    uint8_t phy_send_fail_count_;
-    uint8_t phy_consecutive_fail_count_;
+    uint8_t send_fail_count_;
 };

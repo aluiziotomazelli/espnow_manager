@@ -88,7 +88,7 @@ public:
      * @return ESP_FAIL: failed to send message to tx_queue_
      *
      * @note Non-blocking unless require_ack=true
-     * @note Enter in channel SCANNING mode after MAX_PHYSICAL_FAILURES or MAX_LOGICAL_RETRIES
+     * @note Enter in channel SCANNING mode after MAX_FAILURES
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
      */
@@ -136,7 +136,7 @@ public:
      * @return ESP_FAIL: failed to send message to tx_queue_
      *
      * @note Non-blocking unless require_ack=true
-     * @note Enter in channel SCANNING mode after MAX_PHYSICAL_FAILURES or MAX_LOGICAL_RETRIES
+     * @note Enter in channel SCANNING mode after MAX_FAILURES
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
      */
