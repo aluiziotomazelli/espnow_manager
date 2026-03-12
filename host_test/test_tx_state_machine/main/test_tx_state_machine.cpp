@@ -103,7 +103,7 @@ TEST_F(TxStateMachineTest, OnTxSuccessWithoutAckSetsStateToIdle)
     fsm.on_ack_timeout();
     EXPECT_EQ(TxState::RETRYING, fsm.get_state());
 
-    // on_tx_success(bool requires_ack = false) sends to WAITING_FOR_ACK
+    // on_tx_success(bool requires_ack = false) sends to IDLE
     fsm.on_tx_success(false);
     EXPECT_EQ(TxState::IDLE, fsm.get_state());
 }
