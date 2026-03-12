@@ -7,17 +7,17 @@
 #include "freertos/timers.h"
 
 /**
- * @interface IFreertosHAL
+ * @interface IFreeRTOSHAL
  * @brief Hardware Abstraction Layer for FreeRTOS drivers (internal)
  * @internal
  */
-class IFreertosHAL
+class IFreeRTOSHAL
 {
 public:
-    virtual ~IFreertosHAL() = default;
+    virtual ~IFreeRTOSHAL() = default;
 
     // Task
-    virtual void hal_task_delay(uint32_t delay_ms) = 0;
+    virtual void task_delay(uint32_t delay_ms) = 0;
     virtual TaskHandle_t get_task_handle() = 0;
     virtual BaseType_t task_create(
         TaskFunction_t pvTaskCode,
@@ -26,10 +26,10 @@ public:
         void *const pvParameters,
         UBaseType_t uxPriority,
         TaskHandle_t *const pxCreatedTask) = 0;
-    virtual void task_delete(TaskHandle_t task_handle);
-    virtual void task_notify(TaskHandle_t task_handle, uint32_t bits, eNotifyAction action);
+    virtual void task_delete(TaskHandle_t task_handle) = 0;
+    virtual void task_notify(TaskHandle_t task_handle, uint32_t bits, eNotifyAction action) = 0;
     virtual BaseType_t
-    task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t *value, uint32_t timeout_ms);
+    task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t *value, uint32_t timeout_ms) = 0;
 
     // Queue
     virtual QueueHandle_t queue_create(UBaseType_t length, UBaseType_t item_size) = 0;
@@ -47,4 +47,10 @@ public:
     virtual BaseType_t timer_start(TimerHandle_t timer_handle, uint32_t timeout_ms) = 0;
     virtual BaseType_t timer_stop(TimerHandle_t timer_handle, uint32_t timeout_ms) = 0;
     virtual void timer_delete(TimerHandle_t timer_handle, uint32_t timeout_ms) = 0;
+
+    // Mutex
+    virtual SemaphoreHandle_t mutex_create() = 0;
+    virtual BaseType_t semaphore_take(SemaphoreHandle_t semaphore_handle, uint32_t timeout_ms) = 0;
+    virtual BaseType_t semaphore_give(SemaphoreHandle_t semaphore_handle) = 0;
+    virtual void semaphore_delete(SemaphoreHandle_t semaphore_handle) = 0;
 };

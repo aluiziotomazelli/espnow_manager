@@ -1,4 +1,4 @@
-// include/internface/i_nvs_hal.hpp
+// include/internface/i_hal_wifi.hpp
 #pragma once
 
 #include "esp_err.h"
