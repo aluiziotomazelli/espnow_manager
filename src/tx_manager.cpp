@@ -19,11 +19,17 @@ static const char *TAG = "TxManager";
 // static constexpr uint32_t NOTIFY_STOP          = 0x100;
 // static constexpr uint32_t NOTIFY_LINK_ALIVE    = 0x200;
 
-TxManager::TxManager(ITxStateMachine &fsm, IChannelScanner &scanner, IWiFiHAL &hal, IMessageCodec &codec)
+TxManager::TxManager(
+    ITxStateMachine &fsm,
+    IChannelScanner &scanner,
+    IWiFiHAL &hal,
+    IFreeRTOSHAL &freertos_hal,
+    IMessageCodec &codec)
     : fsm_(fsm)
     , scanner_(scanner)
     , hal_(hal)
     , codec_(codec)
+    , freertos_hal_(freertos_hal)
 {
 }
 
@@ -49,7 +55,7 @@ esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
         return ESP_FAIL;
     }
 
-    hal_.set_task_to_notify(task_handle_);
+    // freertos_hal_.set_task_to_notify(task_handle_);
 
     return ESP_OK;
 }

@@ -1,3 +1,4 @@
+// src/espnow_manager.cpp
 #include <algorithm>
 #include <cstring>
 #include <inttypes.h>
@@ -14,18 +15,20 @@
 
 #include "bootstrapper.hpp"
 #include "channel_scanner.hpp"
-#include "espnow_manager.hpp"
 #include "heartbeat_manager.hpp"
 #include "message_codec.hpp"
 #include "message_router.hpp"
 #include "pairing_manager.hpp"
 #include "peer_manager.hpp"
 #include "protocol_messages.hpp"
-#include "timer_hal.hpp"
+#include "hal_timer.hpp"
 #include "tx_manager.hpp"
 #include "tx_state_machine.hpp"
-#include "wifi_hal.hpp"
+#include "hal_wifi.hpp"
 #include "bootstrapper.hpp"
+#include "freertos_hal.hpp"
+
+#include "espnow_manager.hpp"
 
 static const char *TAG = "EspNow";
 
@@ -35,13 +38,14 @@ EspNowManager &EspNowManager::instance()
     static StorageManager storage;
     static auto driver_hal = std::make_unique<WiFiHAL>();
     static auto timer_hal = std::make_unique<TimerHAL>();
-    static auto bootstraper = std::make_unique<Bootstrapper>(*driver_hal);
+    static auto freertos_hal = std::make_unique<FreeRTOSHAL>();
+    static auto bootstraper = std::make_unique<Bootstrapper>(*driver_hal, *freertos_hal);
     static auto peer_manager = std::make_unique<PeerManager>(storage, *driver_hal);
     static auto message_codec = std::make_unique<MessageCodec>();
-    static auto scanner =
-        std::make_unique<ChannelScanner>(*driver_hal, *message_codec, ReservedIds::HUB, ReservedTypes::HUB);
+    static auto scanner = std::make_unique<ChannelScanner>(
+        *driver_hal, *message_codec, *freertos_hal, ReservedIds::HUB, ReservedTypes::HUB);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
-    static auto tx_manager = std::make_unique<TxManager>(*tx_fsm, *scanner, *driver_hal, *message_codec);
+    static auto tx_manager = std::make_unique<TxManager>(*tx_fsm, *scanner, *driver_hal, *freertos_hal, *message_codec);
     static auto heartbeat_mgr =
         std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *message_codec, ReservedIds::HUB);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec);
@@ -51,6 +55,7 @@ EspNowManager &EspNowManager::instance()
     static EspNowManager instance(
         std::move(driver_hal),
         std::move(timer_hal),
+        std::move(freertos_hal),
         std::move(bootstraper),
         std::move(peer_manager),
         std::move(message_codec),
@@ -66,6 +71,7 @@ EspNowManager &EspNowManager::instance()
 EspNowManager::EspNowManager(
     std::unique_ptr<IWiFiHAL> driver_hal,
     std::unique_ptr<ITimerHAL> timer_hal,
+    std::unique_ptr<IFreeRTOSHAL> freertos_hal,
     std::unique_ptr<IBootstrapper> bootstraper,
     std::unique_ptr<IPeerManager> peer_manager,
     std::unique_ptr<IMessageCodec> message_codec,
@@ -77,6 +83,7 @@ EspNowManager::EspNowManager(
     std::unique_ptr<IMessageRouter> message_router)
     : driver_hal_(std::move(driver_hal))
     , timer_hal_(std::move(timer_hal))
+    , freertos_hal_(std::move(freertos_hal))
     , bootstrapper_(std::move(bootstraper))
     , peer_manager_(std::move(peer_manager))
     , message_codec_(std::move(message_codec))
@@ -113,6 +120,7 @@ esp_err_t EspNowManager::deinit()
 
     // Signal tasks to stop
     if (rx_dispatch_task_handle_ != nullptr) {
+        // freertos_hal_.task_notify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
         xTaskNotify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
     }
     if (transport_worker_task_handle_ != nullptr) {

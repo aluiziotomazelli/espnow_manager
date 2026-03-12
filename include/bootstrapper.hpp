@@ -4,7 +4,8 @@
 #include "esp_err.h"
 
 #include "i_bootstrapper.hpp"
-#include "i_wifi_hal.hpp"
+#include "i_hal_wifi.hpp"
+#include "i_freertos_hal.hpp"
 #include "i_peer_manager.hpp"
 #include "i_tx_manager.hpp"
 #include "i_heartbeat_manager.hpp"
@@ -17,7 +18,7 @@
 class Bootstrapper : public IBootstrapper
 {
 public:
-    Bootstrapper(IWiFiHAL &wifi_hal);
+    Bootstrapper(IWiFiHAL &wifi_hal, IFreeRTOSHAL &freertos_hal);
 
     esp_err_t init(
         const EspNowConfig &config,
@@ -37,4 +38,5 @@ public:
 
 private:
     IWiFiHAL &wifi_hal_;
+    IFreeRTOSHAL &freertos_hal_;
 };

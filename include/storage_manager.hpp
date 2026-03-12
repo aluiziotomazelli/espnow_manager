@@ -10,7 +10,7 @@
 #include "i_persistence_backend.hpp"
 #include "i_storage_manager.hpp"
 #include "protocol_types.hpp"
-#include "nvs_hal.hpp"
+#include "hal_wifi.hpp"
 
 /**
  * @brief Internal structure for persistent data.

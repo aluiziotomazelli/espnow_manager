@@ -1,14 +1,18 @@
 // include/freertos_hal.hpp
 #pragma once
 
-#include "interfaces/i_freertos_hal.hpp"
+#include "i_freertos_hal.hpp"
 
 /**
  * @brief Hardware Abstraction Layer for FreeRTOS drivers
  * @internal
  */
-class FreeRTOSHAL : public IFreertosHAL
+class FreeRTOSHAL : public IFreeRTOSHAL
 {
+public:
+    FreeRTOSHAL() = default;
+
+    // Task
     void task_delay(uint32_t delay_ms) override { vTaskDelay(pdMS_TO_TICKS(delay_ms)); }
     TaskHandle_t get_task_handle() override { return xTaskGetCurrentTaskHandle(); }
     BaseType_t task_create(
@@ -69,4 +73,13 @@ class FreeRTOSHAL : public IFreertosHAL
     {
         xTimerDelete(timer_handle, pdMS_TO_TICKS(timeout_ms));
     }
+
+    // Mutex
+    SemaphoreHandle_t mutex_create() override { return xSemaphoreCreateMutex(); }
+    BaseType_t semaphore_take(SemaphoreHandle_t semaphore_handle, uint32_t timeout_ms) override
+    {
+        return xSemaphoreTake(semaphore_handle, pdMS_TO_TICKS(timeout_ms));
+    }
+    BaseType_t semaphore_give(SemaphoreHandle_t semaphore_handle) override { return xSemaphoreGive(semaphore_handle); }
+    void semaphore_delete(SemaphoreHandle_t semaphore_handle) override { vSemaphoreDelete(semaphore_handle); }
 };

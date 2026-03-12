@@ -1,3 +1,4 @@
+// include/espnow_manager.hpp
 #pragma once
 
 #include <memory>
@@ -14,11 +15,12 @@
 #include "i_message_router.hpp"
 #include "i_pairing_manager.hpp"
 #include "i_peer_manager.hpp"
-#include "i_timer_hal.hpp"
+#include "i_hal_timer.hpp"
 #include "i_tx_manager.hpp"
 #include "i_tx_state_machine.hpp"
-#include "i_wifi_hal.hpp"
+#include "i_hal_nvs.hpp"
 #include "i_bootstrapper.hpp"
+#include "i_freertos_hal.hpp"
 #include "storage_manager.hpp"
 
 // ========================================
@@ -44,6 +46,7 @@ public:
     EspNowManager(
         std::unique_ptr<IWiFiHAL> driver_hal,
         std::unique_ptr<ITimerHAL> timer_hal,
+        std::unique_ptr<IFreeRTOSHAL> freertos_hal,
         std::unique_ptr<IBootstrapper> bootstrapper,
         std::unique_ptr<IPeerManager> peer_manager,
         std::unique_ptr<IMessageCodec> message_codec,
@@ -132,6 +135,7 @@ protected:
     // --- Sub-components (Interfaces) ---
     std::unique_ptr<IWiFiHAL> driver_hal_;                 ///< Pointer to WiFi HAL
     std::unique_ptr<ITimerHAL> timer_hal_;                 ///< Pointer to timer HAL
+    std::unique_ptr<IFreeRTOSHAL> freertos_hal_;           ///< Pointer to FreeRTOS HAL
     std::unique_ptr<IBootstrapper> bootstrapper_;          ///< Pointer to bootstrapper
     std::unique_ptr<IPeerManager> peer_manager_;           ///< Pointer to peer manager
     std::unique_ptr<IMessageCodec> message_codec_;         ///< Pointer to message codec

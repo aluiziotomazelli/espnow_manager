@@ -10,10 +10,12 @@ static const char *TAG = "ChannelScanner";
 ChannelScanner::ChannelScanner(
     IWiFiHAL &wifi_hal,
     IMessageCodec &message_codec,
+    IFreeRTOSHAL &freertos_hal,
     NodeId my_node_id,
     NodeType my_node_type)
     : wifi_hal_(wifi_hal)
     , message_codec_(message_codec)
+    , freertos_hal_(freertos_hal)
     , my_node_id_(my_node_id)
     , my_node_type_(my_node_type)
 {
@@ -61,8 +63,8 @@ IChannelScanner::ScanResult ChannelScanner::scan(uint8_t start_channel)
 
             // Wait for hub to respond
             uint32_t notifications = 0;
-            if (wifi_hal_.hal_task_notify_wait(
-                    NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE, &notifications, SCAN_CHANNEL_TIMEOUT_MS) == pdPASS) {
+            if (freertos_hal_.task_notify_wait(
+                    0, NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE, &notifications, SCAN_CHANNEL_TIMEOUT_MS) == pdPASS) {
                 if (notifications & (NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE)) {
                     ESP_LOGI(TAG, "Hub found on channel %d.", channel);
                     hub_found = true;

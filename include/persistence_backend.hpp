@@ -1,6 +1,8 @@
 #pragma once
 
 #include "i_persistence_backend.hpp"
+#include "i_hal_nvs.hpp"
+
 #include "storage_manager.hpp"
 
 /**

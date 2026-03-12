@@ -6,8 +6,9 @@
 
 const char *TAG = "Bootstrapper";
 
-Bootstrapper::Bootstrapper(IWiFiHAL &wifi_hal)
+Bootstrapper::Bootstrapper(IWiFiHAL &wifi_hal, IFreeRTOSHAL &freertos_hal)
     : wifi_hal_(wifi_hal)
+    , freertos_hal_(freertos_hal)
 
 {
 }
@@ -86,7 +87,7 @@ esp_err_t Bootstrapper::init(
     }
 
     // Use the injected task function pointer instead of a hardcoded symbol
-    BaseType_t task_rx = wifi_hal_.task_create(
+    BaseType_t task_rx = freertos_hal_.task_create(
         bootstrap_cfg.rx_dispatch_fn,
         "rx_dispatch_task",
         config.stack_size_rx_dispatch,
@@ -98,7 +99,7 @@ esp_err_t Bootstrapper::init(
         return ESP_ERR_NO_MEM;
     }
 
-    BaseType_t task_worker = wifi_hal_.task_create(
+    BaseType_t task_worker = freertos_hal_.task_create(
         bootstrap_cfg.transport_worker_fn,
         "worker_task",
         config.stack_size_transport_worker,
@@ -122,24 +123,24 @@ esp_err_t Bootstrapper::deinit(
 {
     // Delete tasks
     if (rx_handle != nullptr) {
-        wifi_hal_.task_delete(rx_handle);
+        freertos_hal_.task_delete(rx_handle);
         ESP_LOGW(TAG, "Deleting rx dispatch task");
 
         rx_handle = nullptr;
     }
     if (worker_handle != nullptr) {
-        wifi_hal_.task_delete(worker_handle);
+        freertos_hal_.task_delete(worker_handle);
         ESP_LOGW(TAG, "Deleting worker task");
         worker_handle = nullptr;
     }
 
     // Delete queues
     if (rx_queue != nullptr) {
-        vQueueDelete(rx_queue);
+        freertos_hal_.queue_delete(rx_queue);
         rx_queue = nullptr;
     }
     if (worker_queue != nullptr) {
-        vQueueDelete(worker_queue);
+        freertos_hal_.queue_delete(worker_queue);
         worker_queue = nullptr;
     }
 

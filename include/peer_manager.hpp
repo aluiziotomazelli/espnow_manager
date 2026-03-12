@@ -6,7 +6,7 @@
 #include "freertos/task.h"
 
 #include "i_peer_manager.hpp"
-#include "i_wifi_hal.hpp"
+#include "i_hal_wifi.hpp"
 #include "i_storage_manager.hpp"
 
 class PeerManager : public IPeerManager
