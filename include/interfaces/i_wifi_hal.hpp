@@ -30,30 +30,4 @@ public:
     virtual esp_err_t hal_esp_now_del_peer(const uint8_t *peer_addr) = 0;
 
     virtual esp_err_t hal_esp_now_send(const uint8_t *mac, const uint8_t *data, size_t len) = 0;
-
-    virtual BaseType_t
-    hal_task_notify_wait(uint32_t bits_to_clear, uint32_t *notification_value, uint32_t timeout_ms) = 0;
-
-    /**
-     * @brief Create a FreeRTOS task.
-     * @internal
-     * @param pvTaskCode Task entry function.
-     * @param pcName Task name.
-     * @param usStackDepth Stack depth.
-     * @param pvParameters Task parameters.
-     * @param uxPriority Task priority.
-     * @param pxCreatedTask[out] Output task handle.
-     * @return pdPASS on success.
-     */
-    virtual BaseType_t task_create(
-        TaskFunction_t pvTaskCode,
-        const char *const pcName,
-        const uint32_t usStackDepth,
-        void *const pvParameters,
-        UBaseType_t uxPriority,
-        TaskHandle_t *const pxCreatedTask) = 0;
-
-    virtual void task_delete(TaskHandle_t task_handle) = 0;
-
-    virtual void set_task_to_notify(TaskHandle_t task_handle) = 0; // TODO: verify if will be necessary on new tests
 };
