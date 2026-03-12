@@ -12,6 +12,8 @@ class FreeRTOSHAL : public IFreeRTOSHAL
 public:
     FreeRTOSHAL() = default;
 
+    static constexpr uint32_t MAX_DELAY = 0xffffffffUL; ///< Equivalent to portMAX_DELAY — wait forever
+
     // Task
     void task_delay(uint32_t delay_ms) override { vTaskDelay(pdMS_TO_TICKS(delay_ms)); }
     TaskHandle_t get_task_handle() override { return xTaskGetCurrentTaskHandle(); }
