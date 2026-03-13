@@ -29,6 +29,7 @@ public:
         UBaseType_t uxPriority,
         TaskHandle_t *const pxCreatedTask) = 0;
     virtual void task_delete(TaskHandle_t task_handle) = 0;
+    virtual void task_suspend(TaskHandle_t task_handle) = 0;
     virtual void task_notify(TaskHandle_t task_handle, uint32_t bits, eNotifyAction action) = 0;
     virtual BaseType_t
     task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t *value, uint32_t timeout_ms) = 0;

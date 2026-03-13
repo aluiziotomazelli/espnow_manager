@@ -15,6 +15,7 @@ public:
         (TaskFunction_t, const char *const, const uint32_t, void *const, UBaseType_t, TaskHandle_t *const),
         (override));
     MOCK_METHOD(void, task_delete, (TaskHandle_t), (override));
+    MOCK_METHOD(void, task_suspend, (TaskHandle_t), (override));
     MOCK_METHOD(void, task_notify, (TaskHandle_t, uint32_t, eNotifyAction), (override));
     MOCK_METHOD(BaseType_t, task_notify_wait, (uint32_t, uint32_t, uint32_t *, uint32_t), (override));
 

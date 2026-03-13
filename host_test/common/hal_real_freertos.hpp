@@ -31,6 +31,7 @@ public:
     }
 
     void task_delete(TaskHandle_t task_handle) override { vTaskDelete(task_handle); }
+    void task_suspend(TaskHandle_t task_handle) override { vTaskSuspend(task_handle); }
 
     void task_notify(TaskHandle_t task_handle, uint32_t bits, eNotifyAction action) override
     {

@@ -2,7 +2,8 @@
 #include <gtest/gtest.h>
 
 #include "channel_scanner.hpp"
-#include "mock_wifi_hal.hpp"
+#include "mock_hal_wifi.hpp"
+#include "mock_hal_freertos.hpp"
 #include "mock_message_codec.hpp"
 
 using ::testing::_;
@@ -16,6 +17,7 @@ class ChannelScannerTest : public ::testing::Test
 {
 protected:
     NiceMock<MockWiFiHAL> wifi_hal;
+    NiceMock<MockFreeRTOSHAL> freertos_hal;
     NiceMock<MockMessageCodec> codec;
     std::unique_ptr<ChannelScanner> scanner;
 
@@ -31,9 +33,9 @@ protected:
         ON_CALL(wifi_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
 
         // default: notify_wait timeout, hub not found
-        ON_CALL(wifi_hal, hal_task_notify_wait(_, _, _)).WillByDefault(Return(pdFAIL));
+        ON_CALL(freertos_hal, task_notify_wait(_, _, _, _)).WillByDefault(Return(pdFAIL));
 
-        scanner = std::make_unique<ChannelScanner>(wifi_hal, codec, MY_ID, MY_TYPE);
+        scanner = std::make_unique<ChannelScanner>(wifi_hal, codec, freertos_hal, MY_ID, MY_TYPE);
     }
 };
 
@@ -43,10 +45,10 @@ TEST_F(ChannelScannerTest, FindHubOnFirstChannel)
     // each function is called exactly once
     EXPECT_CALL(wifi_hal, wifi_set_channel(VALID_CHANNEL)).Times(1).WillOnce(Return(ESP_OK)); // set channel
     EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(1).WillOnce(Return(ESP_OK));       // send probe
-    EXPECT_CALL(wifi_hal, hal_task_notify_wait(_, _, _))
+    EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
         .Times(1)
         .WillOnce(DoAll(
-            SetArgPointee<1>(NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE), // received bits
+            SetArgPointee<2>(NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE), // received bits
             Return(pdPASS)));                                       // return pdPASS
 
     IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL);
@@ -60,10 +62,10 @@ TEST_F(ChannelScannerTest, InvalidStartChannelShiftsToFirstChannel)
     uint8_t first_channel = 1;
     uint8_t invalid_channel = 99;
 
-    EXPECT_CALL(wifi_hal, hal_task_notify_wait(_, _, _))
+    EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
         .Times(1)                                                   // in the first call
         .WillOnce(DoAll(                                            // we assume that
-            SetArgPointee<1>(NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE), // hub is found
+            SetArgPointee<2>(NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE), // hub is found
             Return(pdPASS)));                                       // return pdPASS
 
     IChannelScanner::ScanResult res = scanner->scan(invalid_channel); // invalid channel as argument
@@ -84,7 +86,7 @@ TEST_F(ChannelScannerTest, HubNotFoundOnAnyChannel)
 
     // In each channel, the probe is sent SCAN_CHANNEL_ATTEMPTS times
     EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(call_times).WillRepeatedly(Return(ESP_OK));
-    EXPECT_CALL(wifi_hal, hal_task_notify_wait(_, _, _)).Times(call_times).WillRepeatedly(Return(pdFAIL));
+    EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _)).Times(call_times).WillRepeatedly(Return(pdFAIL));
 
     IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL); // start channel
     ASSERT_FALSE(res.hub_found);                                    // hub not found
@@ -97,7 +99,7 @@ TEST_F(ChannelScannerTest, EmptyEncodedMessageDontCallSend)
     ON_CALL(codec, encode(_, _, _)).WillByDefault(Return(std::vector<uint8_t>{}));
 
     // esp_now_send is not called
-    EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(0);
+    EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _)).Times(0);
 
     IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL); // start channel
     ASSERT_FALSE(res.hub_found);                                    // hub not found
@@ -107,9 +109,9 @@ TEST_F(ChannelScannerTest, EmptyEncodedMessageDontCallSend)
 TEST_F(ChannelScannerTest, NotificationBitIncorrectReturnsHubNotFound)
 {
     // If the notification bit is incorrect, hub is not found
-    ON_CALL(wifi_hal, hal_task_notify_wait(_, _, _))
+    ON_CALL(freertos_hal, task_notify_wait(_, _, _, _))
         .WillByDefault(DoAll(
-            SetArgPointee<1>(NOTIFY_LOGICAL_ACK), // incorrect bit
+            SetArgPointee<2>(NOTIFY_LOGICAL_ACK), // incorrect bit
             Return(pdPASS)));                     // return pdPASS
 
     IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL); // start channel
@@ -132,8 +134,8 @@ TEST_F(ChannelScannerTest, ProbeMessageHasCorrectHeader)
         .WillOnce(DoAll(testing::SaveArg<0>(&captured_header), Return(std::vector<uint8_t>{0x01}))); // non-empty
 
     // We assume that hub is found
-    EXPECT_CALL(wifi_hal, hal_task_notify_wait(_, _, _))
-        .WillOnce(DoAll(SetArgPointee<1>(NOTIFY_HUB_FOUND), Return(pdPASS)));
+    EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
+        .WillOnce(DoAll(SetArgPointee<2>(NOTIFY_HUB_FOUND), Return(pdPASS)));
 
     scanner->scan(VALID_CHANNEL);
 
@@ -170,13 +172,13 @@ TEST_F(ChannelScannerTest, HubFoundOnSecondAttemptOfSameChannel)
 
     // In first attempt, one call of each, hub is not found (pdFAIL)
     EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(1);
-    EXPECT_CALL(wifi_hal, hal_task_notify_wait(_, _, _)).Times(1).WillOnce(Return(pdFAIL));
+    EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _)).Times(1).WillOnce(Return(pdFAIL));
 
     // In second attempt, one call of each, hub is found (pdPASS)
     EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(1);
-    EXPECT_CALL(wifi_hal, hal_task_notify_wait(_, _, _))
+    EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
         .Times(1)
-        .WillOnce(DoAll(SetArgPointee<1>(NOTIFY_HUB_FOUND), Return(pdPASS)));
+        .WillOnce(DoAll(SetArgPointee<2>(NOTIFY_HUB_FOUND), Return(pdPASS)));
 
     IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL);
     ASSERT_TRUE(res.hub_found);
