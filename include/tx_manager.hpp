@@ -1,3 +1,4 @@
+// include/tx_manager.hpp
 #pragma once
 
 #include <memory>
@@ -9,7 +10,7 @@
 
 #include "i_channel_scanner.hpp"
 #include "i_hal_wifi.hpp"
-#include "i_freertos_hal.hpp"
+#include "i_hal_freertos.hpp"
 #include "i_message_codec.hpp"
 #include "i_tx_manager.hpp"
 #include "i_tx_state_machine.hpp"
@@ -45,11 +46,13 @@ private:
     IMessageCodec &codec_;
     IFreeRTOSHAL &freertos_hal_;
 
+    uint16_t sequence_counter_ = 0;
+    SemaphoreHandle_t task_done_semaphore_;
     QueueHandle_t tx_queue_ = nullptr;
     TaskHandle_t task_handle_ = nullptr;
     TimerHandle_t ack_timeout_timer_ = nullptr;
-    uint16_t sequence_counter_ = 0;
 
     static void tx_task_func(void *arg);
     void run();
+    static void ack_timeout_callback(TimerHandle_t xTimer);
 };

@@ -2,7 +2,7 @@
 #pragma once
 
 #include <gmock/gmock.h>
-#include "i_freertos_hal.hpp"
+#include "i_hal_freertos.hpp"
 
 class MockFreeRTOSHAL : public IFreeRTOSHAL
 {
@@ -22,6 +22,7 @@ public:
     MOCK_METHOD(void, queue_delete, (QueueHandle_t), (override));
     MOCK_METHOD(BaseType_t, queue_send, (QueueHandle_t, const void *, uint32_t), (override));
     MOCK_METHOD(BaseType_t, queue_receive, (QueueHandle_t, void *, uint32_t), (override));
+    MOCK_METHOD(void *, timer_get_id, (TimerHandle_t), (override));
 
     MOCK_METHOD(
         TimerHandle_t,
@@ -33,6 +34,7 @@ public:
     MOCK_METHOD(void, timer_delete, (TimerHandle_t, uint32_t), (override));
 
     MOCK_METHOD(SemaphoreHandle_t, mutex_create, (), (override));
+    MOCK_METHOD(SemaphoreHandle_t, semaphore_create_binary, (), (override));
     MOCK_METHOD(BaseType_t, semaphore_take, (SemaphoreHandle_t, uint32_t), (override));
     MOCK_METHOD(BaseType_t, semaphore_give, (SemaphoreHandle_t), (override));
     MOCK_METHOD(void, semaphore_delete, (SemaphoreHandle_t), (override));

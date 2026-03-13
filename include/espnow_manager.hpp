@@ -20,7 +20,7 @@
 #include "i_tx_state_machine.hpp"
 #include "i_hal_nvs.hpp"
 #include "i_bootstrapper.hpp"
-#include "i_freertos_hal.hpp"
+#include "i_hal_freertos.hpp"
 #include "storage_manager.hpp"
 
 // ========================================

@@ -2,7 +2,7 @@
 
 #include "i_channel_scanner.hpp"
 #include "i_hal_wifi.hpp"
-#include "i_freertos_hal.hpp"
+#include "i_hal_freertos.hpp"
 #include "i_message_codec.hpp"
 
 class ChannelScanner : public IChannelScanner

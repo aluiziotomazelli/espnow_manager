@@ -75,7 +75,6 @@ struct TxPacket
 enum class TxState
 {
     IDLE,            /**< No active transmission */
-    SENDING,         /**< Waiting for the physical ESP-NOW callback */
     WAITING_FOR_ACK, /**< Physical send success, waiting for logical AckMessage */
     RETRYING,        /**< Waiting before attempting a retransmission */
     SCANNING         /**< Performing a channel scan to locate the destination */

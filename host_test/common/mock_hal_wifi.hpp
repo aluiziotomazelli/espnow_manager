@@ -4,7 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include "i_wifi_hal.hpp"
+#include "i_hal_wifi.hpp"
 
 class MockWiFiHAL : public IWiFiHAL
 {
@@ -22,21 +22,4 @@ public:
     MOCK_METHOD(esp_err_t, hal_esp_now_mod_peer, (const esp_now_peer_info_t *peer), (override));
     MOCK_METHOD(esp_err_t, hal_esp_now_del_peer, (const uint8_t *peer_addr), (override));
     MOCK_METHOD(esp_err_t, hal_esp_now_send, (const uint8_t *mac, const uint8_t *data, size_t len), (override));
-    MOCK_METHOD(
-        BaseType_t,
-        hal_task_notify_wait,
-        (uint32_t bits_to_clear, uint32_t *notification_value, uint32_t timeout_ms),
-        (override));
-    MOCK_METHOD(
-        BaseType_t,
-        task_create,
-        (TaskFunction_t pvTaskCode,
-         const char *pcName,
-         uint32_t usStackDepth,
-         void *pvParameters,
-         UBaseType_t uxPriority,
-         TaskHandle_t *pxCreatedTask),
-        (override));
-    MOCK_METHOD(void, task_delete, (TaskHandle_t xTaskToDelete), (override));
-    MOCK_METHOD(void, set_task_to_notify, (TaskHandle_t task_handle), (override));
 };

@@ -1,7 +1,7 @@
 // include/freertos_hal.hpp
 #pragma once
 
-#include "i_freertos_hal.hpp"
+#include "i_hal_freertos.hpp"
 
 /**
  * @brief Hardware Abstraction Layer for FreeRTOS drivers
@@ -11,8 +11,6 @@ class FreeRTOSHAL : public IFreeRTOSHAL
 {
 public:
     FreeRTOSHAL() = default;
-
-    static constexpr uint32_t MAX_DELAY = 0xffffffffUL; ///< Equivalent to portMAX_DELAY — wait forever
 
     // Task
     void task_delay(uint32_t delay_ms) override { vTaskDelay(pdMS_TO_TICKS(delay_ms)); }
@@ -75,9 +73,11 @@ public:
     {
         xTimerDelete(timer_handle, pdMS_TO_TICKS(timeout_ms));
     }
+    void *timer_get_id(TimerHandle_t timer_handle) override { return pvTimerGetTimerID(timer_handle); }
 
     // Mutex
     SemaphoreHandle_t mutex_create() override { return xSemaphoreCreateMutex(); }
+    SemaphoreHandle_t semaphore_create_binary() override { return xSemaphoreCreateBinary(); }
     BaseType_t semaphore_take(SemaphoreHandle_t semaphore_handle, uint32_t timeout_ms) override
     {
         return xSemaphoreTake(semaphore_handle, pdMS_TO_TICKS(timeout_ms));

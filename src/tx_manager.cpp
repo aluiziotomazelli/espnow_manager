@@ -10,15 +10,6 @@
 
 static const char *TAG = "TxManager";
 
-// Notification Bits (aligned with espnow_manager.hpp for now)
-// static constexpr uint32_t NOTIFY_LOGICAL_ACK   = 0x01;
-// static constexpr uint32_t NOTIFY_PHYSICAL_FAIL = 0x02;
-// static constexpr uint32_t NOTIFY_HUB_FOUND     = 0x04;
-// static constexpr uint32_t NOTIFY_DATA          = 0x20;
-// static constexpr uint32_t NOTIFY_ACK_TIMEOUT   = 0x40;
-// static constexpr uint32_t NOTIFY_STOP          = 0x100;
-// static constexpr uint32_t NOTIFY_LINK_ALIVE    = 0x200;
-
 TxManager::TxManager(
     ITxStateMachine &fsm,
     IChannelScanner &scanner,
@@ -30,32 +21,50 @@ TxManager::TxManager(
     , hal_(hal)
     , codec_(codec)
     , freertos_hal_(freertos_hal)
+    , sequence_counter_(0)
+    , task_done_semaphore_(nullptr)
+    , tx_queue_(nullptr)
+    , task_handle_(nullptr)
+    , ack_timeout_timer_(nullptr)
 {
 }
 
 TxManager::~TxManager()
 {
-    deinit();
+    // deinit(); must be called before destruction to clean up resources
+}
+
+void TxManager::ack_timeout_callback(TimerHandle_t xTimer)
+{
+    TxManager *self = static_cast<TxManager *>(pvTimerGetTimerID(xTimer));
+    self->freertos_hal_.task_notify(self->task_handle_, NOTIFY_ACK_TIMEOUT, eSetBits);
 }
 
 esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
 {
-    tx_queue_ = xQueueCreate(20, sizeof(TxPacket));
-    if (!tx_queue_)
+    tx_queue_ = freertos_hal_.queue_create(20, sizeof(TxPacket));
+    if (!tx_queue_) {
         return ESP_ERR_NO_MEM;
-
-    ack_timeout_timer_ = xTimerCreate("ack_timeout", pdMS_TO_TICKS(500), pdFALSE, this, [](TimerHandle_t xTimer) {
-        TxManager *self = static_cast<TxManager *>(pvTimerGetTimerID(xTimer));
-        if (self->task_handle_) {
-            xTaskNotify(self->task_handle_, NOTIFY_ACK_TIMEOUT, eSetBits);
-        }
-    });
-
-    if (xTaskCreate(tx_task_func, "tx_manager_task", stack_size, this, priority, &task_handle_) != pdPASS) {
-        return ESP_FAIL;
     }
 
-    // freertos_hal_.set_task_to_notify(task_handle_);
+    task_done_semaphore_ = freertos_hal_.semaphore_create_binary();
+    if (!task_done_semaphore_) {
+        deinit();
+        return ESP_ERR_NO_MEM;
+    }
+
+    ack_timeout_timer_ = freertos_hal_.timer_create("ack_timeout", 500, pdFALSE, this, ack_timeout_callback);
+    if (!ack_timeout_timer_) {
+        deinit();
+        return ESP_ERR_NO_MEM;
+    }
+
+    BaseType_t task_creation =
+        freertos_hal_.task_create(tx_task_func, "tx_manager_task", stack_size, this, priority, &task_handle_);
+    if (task_creation != pdPASS) {
+        deinit();
+        return ESP_ERR_NO_MEM;
+    }
 
     return ESP_OK;
 }
@@ -63,19 +72,40 @@ esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
 esp_err_t TxManager::deinit()
 {
     if (task_handle_) {
-        xTaskNotify(task_handle_, NOTIFY_STOP, eSetBits);
+        // Notify task to stop
+        freertos_hal_.task_notify(task_handle_, NOTIFY_STOP, eSetBits);
+
+        // Send packet to weakup task
+        TxPacket stop_packet = {};
+        if (tx_queue_)
+            freertos_hal_.queue_send(tx_queue_, &stop_packet, 0);
+
         // Wait for task to exit
-        vTaskDelay(pdMS_TO_TICKS(100));
-        task_handle_ = nullptr;
+        uint8_t delay = 10;
+        for (int timeout = 1000; timeout > 0; timeout -= delay) {
+            if (freertos_hal_.semaphore_take(task_done_semaphore_, delay) == pdPASS)
+                break;
+        }
+        // Forcing deleting task
+        if (task_handle_) {
+            ESP_LOGW(TAG, "Forcing deletion of tx manager task");
+            freertos_hal_.task_delete(task_handle_);
+            task_handle_ = nullptr;
+        }
+    }
+
+    if (task_done_semaphore_) {
+        freertos_hal_.semaphore_delete(task_done_semaphore_);
+        task_done_semaphore_ = nullptr;
     }
 
     if (tx_queue_) {
-        vQueueDelete(tx_queue_);
+        freertos_hal_.queue_delete(tx_queue_);
         tx_queue_ = nullptr;
     }
 
     if (ack_timeout_timer_) {
-        xTimerDelete(ack_timeout_timer_, portMAX_DELAY);
+        freertos_hal_.timer_delete(ack_timeout_timer_, PORT_MAX_DELAY);
         ack_timeout_timer_ = nullptr;
     }
 
@@ -86,39 +116,42 @@ esp_err_t TxManager::queue_packet(const TxPacket &packet)
 {
     if (!tx_queue_)
         return ESP_ERR_INVALID_STATE;
-    if (xQueueSend(tx_queue_, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+
+    if (freertos_hal_.queue_send(tx_queue_, &packet, 100) != pdTRUE)
         return ESP_FAIL;
-    }
-    if (task_handle_) {
-        xTaskNotify(task_handle_, NOTIFY_DATA, eSetBits);
-    }
+
+    if (task_handle_)
+        freertos_hal_.task_notify(task_handle_, NOTIFY_DATA, eSetBits);
+
     return ESP_OK;
 }
 
 void TxManager::notify_physical_fail()
 {
     if (task_handle_)
-        xTaskNotify(task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits);
+        freertos_hal_.task_notify(task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits);
 }
 void TxManager::notify_link_alive()
 {
     if (task_handle_)
-        xTaskNotify(task_handle_, NOTIFY_LINK_ALIVE, eSetBits);
+        freertos_hal_.task_notify(task_handle_, NOTIFY_LINK_ALIVE, eSetBits);
 }
 void TxManager::notify_logical_ack()
 {
     if (task_handle_)
-        xTaskNotify(task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
+        freertos_hal_.task_notify(task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
 }
 void TxManager::notify_hub_found()
 {
     if (task_handle_)
-        xTaskNotify(task_handle_, NOTIFY_HUB_FOUND, eSetBits);
+        freertos_hal_.task_notify(task_handle_, NOTIFY_HUB_FOUND, eSetBits);
 }
 
 void TxManager::tx_task_func(void *arg)
 {
     static_cast<TxManager *>(arg)->run();
+
+    // Should never reach here — run() self-deletes via freertos_hal_
     vTaskDelete(NULL);
 }
 
@@ -134,11 +167,8 @@ void TxManager::run()
         switch (current_state) {
         case TxState::IDLE:
         {
-            if (xQueueReceive(tx_queue_, &packet_to_send, 0) == pdTRUE) {
-                // Transition to SENDING
-                // We'll handle sending in the next loop iteration or just fall through
-                // For simplicity, let's just use the logic from original task.
-
+            if (freertos_hal_.queue_receive(tx_queue_, &packet_to_send, 0) == pdTRUE) {
+                // Update sequence number
                 MessageHeader *header = reinterpret_cast<MessageHeader *>(packet_to_send.data);
                 header->sequence_number = sequence_counter_++;
                 // Update CRC
@@ -157,29 +187,25 @@ void TxManager::run()
                         .packet = packet_to_send,
                         .node_id = header->dest_node_id};
                     fsm_.set_pending_ack(pending);
-                    xTimerStart(ack_timeout_timer_, 0);
+                    freertos_hal_.timer_start(ack_timeout_timer_, 0);
                 }
                 break;
             }
 
-            if (xTaskNotifyWait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
+            if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, PORT_MAX_DELAY) == pdTRUE) {
                 if (notifications & NOTIFY_STOP)
                     goto exit;
                 if (notifications & NOTIFY_LINK_ALIVE)
                     fsm_.on_link_alive();
-                if (notifications & NOTIFY_PHYSICAL_FAIL) {
-                    if (fsm_.on_physical_fail() == TxState::SCANNING) {
-                        // Handle scanning below
-                    }
-                }
-                // NOTIFY_DATA is handled by xQueueReceive at start of loop
+                if (notifications & NOTIFY_PHYSICAL_FAIL)
+                    fsm_.on_physical_fail();
             }
             break;
         }
 
         case TxState::WAITING_FOR_ACK:
         {
-            if (xTaskNotifyWait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
+            if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, PORT_MAX_DELAY) == pdTRUE) {
                 if (notifications & NOTIFY_STOP)
                     goto exit;
                 if (notifications & NOTIFY_LINK_ALIVE)
@@ -206,8 +232,13 @@ void TxManager::run()
                 pending.retries_left--;
                 fsm_.set_pending_ack(pending);
 
-                hal_.hal_esp_now_send(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
-                xTimerStart(ack_timeout_timer_, 0);
+                esp_err_t send_result =
+                    hal_.hal_esp_now_send(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
+                if (send_result != ESP_OK) {
+                    fsm_.on_physical_fail();
+                    break;
+                }
+                freertos_hal_.timer_start(ack_timeout_timer_, 0);
                 fsm_.on_tx_success(true); // Back to WAITING_FOR_ACK
             }
             else {
@@ -215,10 +246,6 @@ void TxManager::run()
             }
             break;
         }
-
-        case TxState::SENDING:
-            // This state is transient in our implementation
-            break;
 
         case TxState::SCANNING:
         {
@@ -237,4 +264,7 @@ void TxManager::run()
 
 exit:
     ESP_LOGI(TAG, "TX Manager task exiting.");
+    task_handle_ = nullptr;
+    freertos_hal_.semaphore_give(task_done_semaphore_);
+    freertos_hal_.task_delete(nullptr);
 }

@@ -6,6 +6,8 @@
 #include "freertos/task.h"
 #include "freertos/timers.h"
 
+static constexpr uint32_t PORT_MAX_DELAY = 0xffffffffUL; ///< Equivalent to portMAX_DELAY — wait forever
+
 /**
  * @interface IFreeRTOSHAL
  * @brief Hardware Abstraction Layer for FreeRTOS drivers (internal)
@@ -47,9 +49,11 @@ public:
     virtual BaseType_t timer_start(TimerHandle_t timer_handle, uint32_t timeout_ms) = 0;
     virtual BaseType_t timer_stop(TimerHandle_t timer_handle, uint32_t timeout_ms) = 0;
     virtual void timer_delete(TimerHandle_t timer_handle, uint32_t timeout_ms) = 0;
+    virtual void *timer_get_id(TimerHandle_t timer_handle) = 0;
 
-    // Mutex
+    // Mutex and Semaphore
     virtual SemaphoreHandle_t mutex_create() = 0;
+    virtual SemaphoreHandle_t semaphore_create_binary() = 0;
     virtual BaseType_t semaphore_take(SemaphoreHandle_t semaphore_handle, uint32_t timeout_ms) = 0;
     virtual BaseType_t semaphore_give(SemaphoreHandle_t semaphore_handle) = 0;
     virtual void semaphore_delete(SemaphoreHandle_t semaphore_handle) = 0;

@@ -26,7 +26,7 @@
 #include "tx_state_machine.hpp"
 #include "hal_wifi.hpp"
 #include "bootstrapper.hpp"
-#include "freertos_hal.hpp"
+#include "hal_freertos.hpp"
 
 #include "espnow_manager.hpp"
 
