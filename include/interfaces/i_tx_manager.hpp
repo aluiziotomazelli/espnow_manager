@@ -38,8 +38,5 @@ public:
     virtual void notify_logical_ack() = 0;
 
     /** @internal */
-    virtual void notify_hub_found() = 0;
-
-    /** @internal */
     virtual TaskHandle_t get_task_handle() const = 0;
 };

@@ -3,7 +3,7 @@
 
 #include "esp_err.h"
 
-#include "i_hal_wifi.hpp"
+#include "i_hal_nvs.hpp"
 #include "nvs_flash.h"
 
 /**

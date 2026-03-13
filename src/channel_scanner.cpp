@@ -63,9 +63,9 @@ IChannelScanner::ScanResult ChannelScanner::scan(uint8_t start_channel)
 
             // Wait for hub to respond
             uint32_t notifications = 0;
-            if (freertos_hal_.task_notify_wait(
-                    0, NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE, &notifications, SCAN_CHANNEL_TIMEOUT_MS) == pdPASS) {
-                if (notifications & (NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE)) {
+            if (freertos_hal_.task_notify_wait(0, NOTIFY_LINK_ALIVE, &notifications, SCAN_CHANNEL_TIMEOUT_MS) ==
+                pdPASS) {
+                if (notifications & NOTIFY_LINK_ALIVE) {
                     ESP_LOGI(TAG, "Hub found on channel %d.", channel);
                     hub_found = true;
                     current_channel = channel; // update only if hub is found

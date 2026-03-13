@@ -79,7 +79,8 @@ void MessageRouter::handle_packet(const RxPacket &packet)
         uint8_t ch;
         esp_wifi_get_channel(&ch, nullptr);
         peer_manager_.add(header.sender_node_id, packet.src_mac, header.sender_type); // TODO: Verify channel
-        tx_manager_.notify_hub_found();
+        // tx_manager_.notify_hub_found(); // By now, link alive is enough
+        tx_manager_.notify_link_alive();
         break;
     }
     case MessageType::DATA:

@@ -4,8 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include "i_hal_wifi.hpp"
-
+#include "i_hal_nvs.hpp"
 class MockNvsHAL : public INvsHAL
 {
 public:

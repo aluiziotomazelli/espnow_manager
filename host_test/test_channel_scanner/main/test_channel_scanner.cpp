@@ -48,8 +48,8 @@ TEST_F(ChannelScannerTest, FindHubOnFirstChannel)
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
         .Times(1)
         .WillOnce(DoAll(
-            SetArgPointee<2>(NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE), // received bits
-            Return(pdPASS)));                                       // return pdPASS
+            SetArgPointee<2>(NOTIFY_LINK_ALIVE), // received bits
+            Return(pdPASS)));                    // return pdPASS
 
     IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL);
     ASSERT_TRUE(res.hub_found);
@@ -65,7 +65,7 @@ TEST_F(ChannelScannerTest, InvalidStartChannelShiftsToFirstChannel)
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
         .Times(1)                                                   // in the first call
         .WillOnce(DoAll(                                            // we assume that
-            SetArgPointee<2>(NOTIFY_HUB_FOUND | NOTIFY_LINK_ALIVE), // hub is found
+            SetArgPointee<2>(NOTIFY_LINK_ALIVE), // hub is found
             Return(pdPASS)));                                       // return pdPASS
 
     IChannelScanner::ScanResult res = scanner->scan(invalid_channel); // invalid channel as argument
@@ -135,7 +135,7 @@ TEST_F(ChannelScannerTest, ProbeMessageHasCorrectHeader)
 
     // We assume that hub is found
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
-        .WillOnce(DoAll(SetArgPointee<2>(NOTIFY_HUB_FOUND), Return(pdPASS)));
+        .WillOnce(DoAll(SetArgPointee<2>(NOTIFY_LINK_ALIVE), Return(pdPASS)));
 
     scanner->scan(VALID_CHANNEL);
 
@@ -178,7 +178,7 @@ TEST_F(ChannelScannerTest, HubFoundOnSecondAttemptOfSameChannel)
     EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(1);
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
         .Times(1)
-        .WillOnce(DoAll(SetArgPointee<2>(NOTIFY_HUB_FOUND), Return(pdPASS)));
+        .WillOnce(DoAll(SetArgPointee<2>(NOTIFY_LINK_ALIVE), Return(pdPASS)));
 
     IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL);
     ASSERT_TRUE(res.hub_found);

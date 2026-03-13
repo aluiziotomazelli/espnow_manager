@@ -141,11 +141,6 @@ void TxManager::notify_logical_ack()
     if (task_handle_)
         freertos_hal_.task_notify(task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
 }
-void TxManager::notify_hub_found()
-{
-    if (task_handle_)
-        freertos_hal_.task_notify(task_handle_, NOTIFY_HUB_FOUND, eSetBits);
-}
 
 void TxManager::tx_task_func(void *arg)
 {
@@ -175,13 +170,10 @@ void TxManager::handle_esp_now_send_errors(esp_err_t error)
 void TxManager::handle_notifications(uint32_t notifications)
 {
     // TODO: Verify if chaining is correct or if else f is correct?
-    // if (notifications & NOTIFY_HUB_FOUND) {
-    //     fsm_.on_hub_found();
-    // }
     if (notifications & NOTIFY_LINK_ALIVE) {
         fsm_.on_link_alive();
     }
-    if (notifications == NOTIFY_PHYSICAL_FAIL) {
+    if (notifications & NOTIFY_PHYSICAL_FAIL) {
         fsm_.on_physical_fail();
     }
     if (notifications & NOTIFY_LOGICAL_ACK) {
@@ -290,7 +282,6 @@ void TxManager::run()
             if (result.hub_found) {
                 hal_.wifi_set_channel(result.channel);
                 fsm_.on_link_alive();
-                fsm_.
             }
             else {
                 fsm_.reset(); // Back to IDLE

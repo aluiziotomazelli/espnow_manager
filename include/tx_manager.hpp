@@ -35,7 +35,6 @@ public:
     void notify_physical_fail() override;
     void notify_link_alive() override;
     void notify_logical_ack() override;
-    void notify_hub_found() override;
 
     TaskHandle_t get_task_handle() const override { return task_handle_; }
 

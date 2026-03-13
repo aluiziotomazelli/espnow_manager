@@ -2,7 +2,7 @@
 #include <gmock/gmock.h>
 
 #include "peer_manager.hpp"
-#include "mock_wifi_hal.hpp"
+#include "mock_hal_wifi.hpp"
 #include "mock_storage_manager.hpp"
 
 using ::testing::_;

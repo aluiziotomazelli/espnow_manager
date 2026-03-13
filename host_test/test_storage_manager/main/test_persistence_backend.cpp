@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
-#include "mock_hal_wifi.hpp"
+#include "mock_hal_nvs.hpp"
 
 #include "persistence_backend.hpp"
 

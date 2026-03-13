@@ -2,7 +2,8 @@
 #include <gmock/gmock.h>
 
 #include "bootstrapper.hpp"
-#include "mock_wifi_hal.hpp"
+#include "mock_hal_wifi.hpp"
+#include "mock_hal_freertos.hpp"
 
 using ::testing::_;
 using ::testing::NiceMock;
@@ -24,6 +25,7 @@ class BootstrapperTest : public ::testing::Test
 {
 protected:
     NiceMock<MockWiFiHAL> wifi_hal;
+    NiceMock<MockFreeRTOSHAL> freertos_hal;
     std::unique_ptr<Bootstrapper> bootstrapper;
 
     TaskHandle_t rx_handle = nullptr;
@@ -37,7 +39,7 @@ protected:
 
     void SetUp() override
     {
-        bootstrapper = std::make_unique<Bootstrapper>(wifi_hal);
+        bootstrapper = std::make_unique<Bootstrapper>(wifi_hal, freertos_hal);
 
         bootstrap_cfg.recv_cb = nullptr;
         bootstrap_cfg.send_cb = nullptr;
@@ -55,7 +57,7 @@ protected:
         ON_CALL(wifi_hal, hal_espnow_register_send_cb(_)).WillByDefault(Return(ESP_OK));
         ON_CALL(wifi_hal, wifi_set_channel(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(wifi_hal, hal_esp_now_add_peer(_)).WillByDefault(Return(ESP_OK));
-        ON_CALL(wifi_hal, task_create(_, _, _, _, _, _)).WillByDefault(Return(pdPASS));
+        ON_CALL(freertos_hal, task_create(_, _, _, _, _, _)).WillByDefault(Return(pdPASS));
     }
 
     void TearDown() override
@@ -131,19 +133,19 @@ TEST_F(BootstrapperTest, HalWifiSetChannelFails)
 TEST_F(BootstrapperTest, HalEspNowAddPeerFails)
 {
     ON_CALL(wifi_hal, hal_esp_now_add_peer(_)).WillByDefault(Return(ESP_FAIL));
-    EXPECT_CALL(wifi_hal, task_create(_, _, _, _, _, _)).Times(0); // Must not call task_create
+    EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _)).Times(0); // Must not call task_create
     ASSERT_EQ(ESP_FAIL, do_init());
 }
 
 TEST_F(BootstrapperTest, InitReturnsErrorWhenRxTaskCreateFails)
 {
-    ON_CALL(wifi_hal, task_create(_, _, _, _, _, _)).WillByDefault(Return(pdFAIL));
+    ON_CALL(freertos_hal, task_create(_, _, _, _, _, _)).WillByDefault(Return(pdFAIL));
     ASSERT_EQ(ESP_ERR_NO_MEM, do_init());
 }
 
 TEST_F(BootstrapperTest, InitReturnsErrorWhenWorkerTaskCreateFails)
 {
-    EXPECT_CALL(wifi_hal, task_create(_, _, _, _, _, _))
+    EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _))
         .WillOnce(Return(pdPASS))  // rx_dispatch pass
         .WillOnce(Return(pdFAIL)); // worker fails
     EXPECT_EQ(ESP_ERR_NO_MEM, do_init());
@@ -164,7 +166,7 @@ TEST_F(BootstrapperTest, DeinitReturnsErrorWhenEspDeitFails)
 TEST_F(BootstrapperTest, DeinitDeletesTasksWhenHandlesNotNull)
 {
     // task create returns pdPASSS but populates the handle with fake value
-    EXPECT_CALL(wifi_hal, task_create(_, _, _, _, _, _))
+    EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _))
         .WillOnce([](TaskFunction_t, const char *, uint32_t, void *, UBaseType_t, TaskHandle_t *handle) {
             *handle = reinterpret_cast<TaskHandle_t>(0x1);
             return pdPASS;
@@ -177,8 +179,8 @@ TEST_F(BootstrapperTest, DeinitDeletesTasksWhenHandlesNotNull)
     ASSERT_EQ(ESP_OK, do_init());
 
     // Now rx_handle and worker_handle != nullptr
-    EXPECT_CALL(wifi_hal, task_delete(reinterpret_cast<TaskHandle_t>(0x1))).Times(1);
-    EXPECT_CALL(wifi_hal, task_delete(reinterpret_cast<TaskHandle_t>(0x2))).Times(1);
+    EXPECT_CALL(freertos_hal, task_delete(reinterpret_cast<TaskHandle_t>(0x1))).Times(1);
+    EXPECT_CALL(freertos_hal, task_delete(reinterpret_cast<TaskHandle_t>(0x2))).Times(1);
     EXPECT_CALL(wifi_hal, hal_esp_now_deinit()).WillOnce(Return(ESP_OK));
 
     bootstrapper->deinit(rx_queue, worker_queue, ack_mutex, rx_handle, worker_handle);
