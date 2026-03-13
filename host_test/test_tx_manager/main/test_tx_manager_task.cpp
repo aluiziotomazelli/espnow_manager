@@ -51,11 +51,6 @@ protected:
         codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
         scanner_owned = std::make_unique<NiceMock<MockChannelScanner>>();
 
-        // auto fsm_owned = std::make_unique<NiceMock<MockTxStateMachine>>();
-        // auto hal_owned = std::make_unique<NiceMock<MockWiFiHAL>>();
-        // auto codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
-        // auto scanner_owned = std::make_unique<NiceMock<MockChannelScanner>>();
-
         fsm = fsm_owned.get();
         hal = hal_owned.get();
         codec = codec_owned.get();
