@@ -399,7 +399,7 @@ void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8
 
 void EspNowManager::esp_now_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status)
 {
-    if (info->tx_status == WIFI_SEND_FAIL)
+    if (info->tx_status == ESP_NOW_SEND_FAIL)
         instance().tx_manager_->notify_physical_fail();
 }
 

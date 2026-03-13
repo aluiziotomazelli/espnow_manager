@@ -77,6 +77,10 @@ protected:
             current_state = TxState::IDLE;
             return current_state;
         }));
+        ON_CALL(*fsm, on_link_alive()).WillByDefault(Invoke([this]() {
+            current_state = TxState::IDLE;
+            return current_state;
+        }));
         ON_CALL(*fsm, reset()).WillByDefault(Invoke([this]() {
             current_state = TxState::IDLE;
             pending_ack = std::nullopt;
@@ -161,6 +165,20 @@ TEST_F(TxManagerTaskTest, IdleStateWithNoAckPacketStaysIdle)
     init_and_wait();
 
     manager->queue_packet(make_packet(false));
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    EXPECT_EQ(TxState::IDLE, current_state);
+}
+
+TEST_F(TxManagerTaskTest, IdleStateWithAckStaysIdleIfSendFails)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_NOW_SEND_FAIL)); // Send fail
+    EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);                                   // Pending ack should not be set
+    EXPECT_CALL(*fsm, on_physical_fail()).Times(1);                                   // Should call on_physical_fail
+
+    manager->queue_packet(make_packet(true));
     vTaskDelay(pdMS_TO_TICKS(50));
 
     EXPECT_EQ(TxState::IDLE, current_state);
@@ -276,6 +294,7 @@ TEST_F(TxManagerTaskTest, ScanningStateCallsScannerAndResetsOnHubNotFound)
 
 TEST_F(TxManagerTaskTest, ScanningStateWithHubFoundSetsChannelAndCallsOnLinkAlive)
 {
+    // GTEST_SKIP() << "TODO";
     init_and_wait();
 
     current_state = TxState::SCANNING;

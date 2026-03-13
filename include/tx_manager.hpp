@@ -55,4 +55,6 @@ private:
     static void tx_task_func(void *arg);
     void run();
     static void ack_timeout_callback(TimerHandle_t xTimer);
+    void handle_esp_now_send_errors(esp_err_t error);
+    void handle_notifications(uint32_t notification);
 };

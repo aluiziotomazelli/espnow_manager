@@ -155,6 +155,51 @@ void TxManager::tx_task_func(void *arg)
     vTaskDelete(NULL);
 }
 
+void TxManager::handle_esp_now_send_errors(esp_err_t error)
+{
+    if (error == ESP_ERR_ESPNOW_NO_MEM) {
+        // Transient: do not penalize the FSM, ACK timeout will handle retry
+        ESP_LOGW(TAG, "hal_esp_now_send: out of memory, will retry via timeout");
+    }
+    else if (error == ESP_ERR_ESPNOW_NOT_INIT || error == ESP_ERR_ESPNOW_ARG) {
+        // Programming errors: log and discard
+        ESP_LOGE(TAG, "hal_esp_now_send: unrecoverable error %s", esp_err_to_name(error));
+    }
+    else {
+        // ESP_ERR_ESPNOW_NOT_FOUND, CHAN, IF, INTERNAL — link-level failures
+        ESP_LOGW(TAG, "hal_esp_now_send failed: %s", esp_err_to_name(error));
+        fsm_.on_physical_fail();
+    }
+}
+
+void TxManager::handle_notifications(uint32_t notifications)
+{
+    // TODO: Verify if chaining is correct or if else f is correct?
+    // if (notifications & NOTIFY_HUB_FOUND) {
+    //     fsm_.on_hub_found();
+    // }
+    if (notifications & NOTIFY_LINK_ALIVE) {
+        fsm_.on_link_alive();
+    }
+    if (notifications == NOTIFY_PHYSICAL_FAIL) {
+        fsm_.on_physical_fail();
+    }
+    if (notifications & NOTIFY_LOGICAL_ACK) {
+        fsm_.on_ack_received();
+        freertos_hal_.timer_start(ack_timeout_timer_, 0);
+    }
+    if (notifications & NOTIFY_ACK_TIMEOUT) {
+        fsm_.on_ack_timeout();
+    }
+    if (notifications & NOTIFY_STOP) {
+        ESP_LOGI(TAG, "TX Manager task exiting.");
+        task_handle_ = nullptr;
+        freertos_hal_.semaphore_give(task_done_semaphore_);
+        freertos_hal_.task_suspend(nullptr); // NULL / nullptr == current task
+        freertos_hal_.task_delete(nullptr);  // NULL / nullptr == current task
+    }
+}
+
 void TxManager::run()
 {
     TxPacket packet_to_send;
@@ -178,48 +223,36 @@ void TxManager::run()
                 esp_err_t send_result =
                     hal_.hal_esp_now_send(packet_to_send.dest_mac, packet_to_send.data, packet_to_send.len);
 
-                TxState next = fsm_.on_tx_success(packet_to_send.requires_ack && send_result == ESP_OK);
-                if (next == TxState::WAITING_FOR_ACK) {
-                    PendingAck pending = {
-                        .sequence_number = header->sequence_number,
-                        .timestamp_ms = 0,
-                        .retries_left = 3,
-                        .packet = packet_to_send,
-                        .node_id = header->dest_node_id};
-                    fsm_.set_pending_ack(pending);
-                    freertos_hal_.timer_start(ack_timeout_timer_, 0);
+                if (send_result == ESP_OK) {
+                    TxState next = fsm_.on_tx_success(packet_to_send.requires_ack);
+                    if (next == TxState::WAITING_FOR_ACK) {
+                        PendingAck pending = {
+                            .sequence_number = header->sequence_number,
+                            .timestamp_ms = 0,
+                            .retries_left = 3,
+                            .packet = packet_to_send,
+                            .node_id = header->dest_node_id};
+                        fsm_.set_pending_ack(pending);
+                        freertos_hal_.timer_start(ack_timeout_timer_, 0);
+                    }
+                }
+                else {
+                    handle_esp_now_send_errors(send_result);
                 }
                 break;
             }
 
             if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, PORT_MAX_DELAY) == pdTRUE) {
-                if (notifications & NOTIFY_STOP)
-                    goto exit;
-                if (notifications & NOTIFY_LINK_ALIVE)
-                    fsm_.on_link_alive();
-                if (notifications & NOTIFY_PHYSICAL_FAIL)
-                    fsm_.on_physical_fail();
+                handle_notifications(notifications);
             }
+
             break;
         }
 
         case TxState::WAITING_FOR_ACK:
         {
             if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, PORT_MAX_DELAY) == pdTRUE) {
-                if (notifications & NOTIFY_STOP)
-                    goto exit;
-                if (notifications & NOTIFY_LINK_ALIVE)
-                    fsm_.on_link_alive();
-                if (notifications & NOTIFY_LOGICAL_ACK) {
-                    fsm_.on_ack_received();
-                    xTimerStop(ack_timeout_timer_, 0);
-                }
-                else if (notifications & NOTIFY_PHYSICAL_FAIL) {
-                    fsm_.on_physical_fail();
-                }
-                else if (notifications & NOTIFY_ACK_TIMEOUT) {
-                    fsm_.on_ack_timeout();
-                }
+                handle_notifications(notifications);
             }
             break;
         }
@@ -234,12 +267,14 @@ void TxManager::run()
 
                 esp_err_t send_result =
                     hal_.hal_esp_now_send(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
-                if (send_result != ESP_OK) {
-                    fsm_.on_physical_fail();
-                    break;
+
+                if (send_result == ESP_OK) {
+                    freertos_hal_.timer_start(ack_timeout_timer_, 0);
+                    fsm_.on_tx_success(true); // Back to WAITING_FOR_ACK
                 }
-                freertos_hal_.timer_start(ack_timeout_timer_, 0);
-                fsm_.on_tx_success(true); // Back to WAITING_FOR_ACK
+                else {
+                    handle_esp_now_send_errors(send_result);
+                }
             }
             else {
                 fsm_.on_max_retries();
@@ -255,16 +290,14 @@ void TxManager::run()
             if (result.hub_found) {
                 hal_.wifi_set_channel(result.channel);
                 fsm_.on_link_alive();
+                fsm_.
             }
-            fsm_.reset(); // Back to IDLE
+            else {
+                fsm_.reset(); // Back to IDLE
+            }
+
             break;
         }
         }
     }
-
-exit:
-    ESP_LOGI(TAG, "TX Manager task exiting.");
-    task_handle_ = nullptr;
-    freertos_hal_.semaphore_give(task_done_semaphore_);
-    freertos_hal_.task_delete(nullptr);
 }
