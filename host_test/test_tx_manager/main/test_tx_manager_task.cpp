@@ -26,6 +26,13 @@ using ::testing::SaveArg;
 class TxManagerTaskTest : public ::testing::Test
 {
 protected:
+    // Owned pointers to correct destruction and no mock leakage on tests
+    std::unique_ptr<NiceMock<MockTxStateMachine>> fsm_owned;
+    std::unique_ptr<NiceMock<MockWiFiHAL>> hal_owned;
+    std::unique_ptr<NiceMock<MockMessageCodec>> codec_owned;
+    std::unique_ptr<NiceMock<MockChannelScanner>> scanner_owned;
+
+    // Raw pointers to use in tests
     NiceMock<MockTxStateMachine> *fsm;
     NiceMock<MockWiFiHAL> *hal;
     NiceMock<MockMessageCodec> *codec;
@@ -39,10 +46,15 @@ protected:
 
     void SetUp() override
     {
-        auto fsm_owned = std::make_unique<NiceMock<MockTxStateMachine>>();
-        auto hal_owned = std::make_unique<NiceMock<MockWiFiHAL>>();
-        auto codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
-        auto scanner_owned = std::make_unique<NiceMock<MockChannelScanner>>();
+        fsm_owned = std::make_unique<NiceMock<MockTxStateMachine>>();
+        hal_owned = std::make_unique<NiceMock<MockWiFiHAL>>();
+        codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
+        scanner_owned = std::make_unique<NiceMock<MockChannelScanner>>();
+
+        // auto fsm_owned = std::make_unique<NiceMock<MockTxStateMachine>>();
+        // auto hal_owned = std::make_unique<NiceMock<MockWiFiHAL>>();
+        // auto codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
+        // auto scanner_owned = std::make_unique<NiceMock<MockChannelScanner>>();
 
         fsm = fsm_owned.get();
         hal = hal_owned.get();
@@ -88,14 +100,15 @@ protected:
         // Scanner defaults — hub not found
         ON_CALL(*scanner, scan(_)).WillByDefault(Return(IChannelScanner::ScanResult{1, false}));
 
-        manager = std::make_unique<TxManager>(
-            *fsm_owned.release(), *scanner_owned.release(), *hal_owned.release(), freertos_hal, *codec_owned.release());
+        manager = std::make_unique<TxManager>(*fsm_owned, *scanner_owned, *hal_owned, freertos_hal, *codec_owned);
     }
 
     void TearDown() override
     {
         manager->deinit();
         vTaskDelay(pdMS_TO_TICKS(150)); // give task time to exit cleanly
+        manager.reset();                // destroy TxManager before mocks
+        // Mocks are destroyed automatically
     }
 
     // Helper: init and give task time to start and block

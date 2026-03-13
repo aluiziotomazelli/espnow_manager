@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "main.cpp"
         "test_tx_manager.cpp"
+        "test_tx_manager_task.cpp"
     INCLUDE_DIRS
         "."
         "../../common"
