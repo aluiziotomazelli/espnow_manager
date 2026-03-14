@@ -31,7 +31,7 @@ public:
         (override));
     MOCK_METHOD(BaseType_t, timer_start, (TimerHandle_t, TickType_t), (override));
     MOCK_METHOD(BaseType_t, timer_stop, (TimerHandle_t, TickType_t), (override));
-    MOCK_METHOD(void, timer_delete, (TimerHandle_t, TickType_t), (override));
+    MOCK_METHOD(BaseType_t, timer_delete, (TimerHandle_t, TickType_t), (override));
     MOCK_METHOD(void *, timer_get_id, (TimerHandle_t), (override));
 
     MOCK_METHOD(SemaphoreHandle_t, mutex_create, (), (override));

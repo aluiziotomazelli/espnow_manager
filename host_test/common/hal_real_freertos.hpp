@@ -87,9 +87,9 @@ public:
         return xTimerStop(timer_handle, xTicksToWait);
     }
 
-    void timer_delete(TimerHandle_t timer_handle, TickType_t xTicksToWait) override
+    BaseType_t timer_delete(TimerHandle_t timer_handle, TickType_t xTicksToWait) override
     {
-        xTimerDelete(timer_handle, xTicksToWait);
+        return xTimerDelete(timer_handle, xTicksToWait);
     }
 
     void *timer_get_id(TimerHandle_t timer_handle) override { return pvTimerGetTimerID(timer_handle); }
