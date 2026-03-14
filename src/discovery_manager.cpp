@@ -17,10 +17,10 @@ DiscoveryManager::DiscoveryManager(IWiFiHAL &wifi_hal, IMessageCodec &message_co
 
 esp_err_t DiscoveryManager::init(NodeId id, NodeType type, ITxManager &tx_mgr, IChannelObserver *observer)
 {
-    my_node_id_   = id;
+    my_node_id_ = id;
     my_node_type_ = type;
-    tx_mgr_       = &tx_mgr;
-    observer_     = observer;
+    tx_mgr_ = &tx_mgr;
+    observer_ = observer;
     return ESP_OK;
 }
 
@@ -39,6 +39,9 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan(uint8_t start_channel)
     // and make SCAN_CHANNEL_ATTEMPTS on each of 13 wifi channels
     for (uint8_t offset = 0; offset < 13 && !result.hub_found; ++offset) {
         uint8_t channel = ((current_channel - 1 + offset) % 13) + 1;
+
+        // Temporarily set channel to send probe; final channel update
+        // is handled by EspNowManager via on_channel_found() callback
         hal_wifi_.wifi_set_channel(channel);
 
         // empty initializer to avoid memory garbage on unused fields
@@ -52,11 +55,9 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan(uint8_t start_channel)
         if (encoded.empty())
             continue;
 
-        const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
         // Loop to send probe * SCAN_CHANNEL_ATTEMPTS until the hub is not found
         for (uint8_t attempt = 0; attempt < SCAN_CHANNEL_ATTEMPTS && !result.hub_found; attempt++) {
-            hal_wifi_.hal_esp_now_send(broadcast_mac, encoded.data(), encoded.size());
+            hal_wifi_.hal_esp_now_send(BROADCAST_MAC, encoded.data(), encoded.size());
 
             // Wait for hub to respond
             uint32_t notifications = 0;
@@ -64,10 +65,10 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan(uint8_t start_channel)
                     0, NOTIFY_LINK_ALIVE, &notifications, pdMS_TO_TICKS(SCAN_CHANNEL_TIMEOUT_MS)) == pdPASS) {
                 if (notifications & NOTIFY_LINK_ALIVE) {
                     ESP_LOGI(TAG, "Hub found on channel %d.", channel);
-                    if (observer_) {
+                    if (observer_) { // programmatic error if init() wasn't called
                         observer_->on_channel_found(channel);
                     }
-                    result.channel   = channel;
+                    result.channel = channel;
                     result.hub_found = true;
                     break;
                 }

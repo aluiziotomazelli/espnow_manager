@@ -22,6 +22,8 @@ static constexpr uint32_t NOTIFY_ACK_TIMEOUT = 0x40;
 static constexpr uint32_t NOTIFY_STOP = 0x100;
 static constexpr uint32_t NOTIFY_LINK_ALIVE = 0x200;
 
+static constexpr uint8_t BROADCAST_MAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
 /** @brief Correct size of the universal message header */
 constexpr size_t MESSAGE_HEADER_SIZE = 16;
 /** @brief Size of the CRC field in the packet */
