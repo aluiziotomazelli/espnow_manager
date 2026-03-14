@@ -2,20 +2,28 @@
 
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/task.h"
-#include "freertos/timers.h"
+// #include "freertos/FreeRTOS.h"
+// #include "freertos/queue.h"
+// #include "freertos/task.h"
+// #include "freertos/timers.h"
 
 #include "heartbeat_manager.hpp"
 
 static const char *TAG = "HeartbeatMgr";
 
-HeartbeatManager::HeartbeatManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec, NodeId my_id)
-    : tx_mgr_(tx_mgr)
+HeartbeatManager::HeartbeatManager(
+    NodeId my_id,
+    ITxManager &tx_mgr,
+    IPeerManager &peer_mgr,
+    IMessageCodec &codec,
+    IFreeRTOSHAL &hal_freertos,
+    ITimerHAL &hal_timer)
+    : my_id_(my_id)
+    , tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
     , codec_(codec)
-    , my_id_(my_id)
+    , hal_freertos_(hal_freertos)
+    , hal_timer_(hal_timer)
 {
 }
 
@@ -35,10 +43,10 @@ esp_err_t HeartbeatManager::init(uint32_t interval_ms, NodeType type)
     my_type_ = type;
 
     if (my_type_ != ReservedTypes::HUB && interval_ms_ > 0) {
-        timer_ = xTimerCreate("heartbeat", pdMS_TO_TICKS(interval_ms_), pdTRUE, this, timer_cb);
+        timer_ = hal_freertos_.timer_create("heartbeat", interval_ms_, pdTRUE, this, timer_cb);
         if (timer_ == nullptr)
             return ESP_FAIL;
-        xTimerStart(timer_, 0);
+        hal_freertos_.timer_start(timer_, 0);
     }
     return ESP_OK;
 }
@@ -46,6 +54,7 @@ esp_err_t HeartbeatManager::init(uint32_t interval_ms, NodeType type)
 esp_err_t HeartbeatManager::deinit()
 {
     if (timer_) {
+        hal_freertos_.timer_stop(timer_, 0);
         xTimerStop(timer_, portMAX_DELAY);
         xTimerDelete(timer_, portMAX_DELAY);
         timer_ = nullptr;
