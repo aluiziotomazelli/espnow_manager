@@ -22,5 +22,5 @@ public:
      * @internal
      * @return uint64_t uptime in ms.
      */
-    virtual uint64_t get_time_ms() const = 0;
+    virtual uint64_t get_time_us() const = 0;
 };

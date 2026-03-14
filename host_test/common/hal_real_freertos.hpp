@@ -69,27 +69,27 @@ public:
     // -------------------------------------------------------------------------
     TimerHandle_t timer_create(
         const char *name,
-        uint32_t period_ms,
+        TickType_t xTimerPeriodInTicks,
         UBaseType_t auto_reload,
         void *id,
         TimerCallbackFunction_t callback) override
     {
-        return xTimerCreate(name, pdMS_TO_TICKS(period_ms), auto_reload, id, callback);
+        return xTimerCreate(name, xTimerPeriodInTicks, auto_reload, id, callback);
     }
 
-    BaseType_t timer_start(TimerHandle_t timer_handle, uint32_t timeout_ms) override
+    BaseType_t timer_start(TimerHandle_t timer_handle, TickType_t xTicksToWait) override
     {
-        return xTimerStart(timer_handle, pdMS_TO_TICKS(timeout_ms));
+        return xTimerStart(timer_handle, xTicksToWait);
     }
 
-    BaseType_t timer_stop(TimerHandle_t timer_handle, uint32_t timeout_ms) override
+    BaseType_t timer_stop(TimerHandle_t timer_handle, TickType_t xTicksToWait) override
     {
-        return xTimerStop(timer_handle, pdMS_TO_TICKS(timeout_ms));
+        return xTimerStop(timer_handle, xTicksToWait);
     }
 
-    void timer_delete(TimerHandle_t timer_handle, uint32_t timeout_ms) override
+    void timer_delete(TimerHandle_t timer_handle, TickType_t xTicksToWait) override
     {
-        xTimerDelete(timer_handle, pdMS_TO_TICKS(timeout_ms));
+        xTimerDelete(timer_handle, xTicksToWait);
     }
 
     void *timer_get_id(TimerHandle_t timer_handle) override { return pvTimerGetTimerID(timer_handle); }

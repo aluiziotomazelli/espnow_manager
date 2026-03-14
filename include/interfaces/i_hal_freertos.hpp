@@ -43,13 +43,13 @@ public:
     // Timer
     virtual TimerHandle_t timer_create(
         const char *name,
-        uint32_t period_ms,
+        TickType_t xTimerPeriodInTicks,
         UBaseType_t auto_reload,
         void *id,
         TimerCallbackFunction_t callback) = 0;
-    virtual BaseType_t timer_start(TimerHandle_t timer_handle, uint32_t timeout_ms) = 0;
-    virtual BaseType_t timer_stop(TimerHandle_t timer_handle, uint32_t timeout_ms) = 0;
-    virtual void timer_delete(TimerHandle_t timer_handle, uint32_t timeout_ms) = 0;
+    virtual BaseType_t timer_start(TimerHandle_t timer_handle, TickType_t xTicksToWait) = 0;
+    virtual BaseType_t timer_stop(TimerHandle_t timer_handle, TickType_t xTicksToWait) = 0;
+    virtual void timer_delete(TimerHandle_t timer_handle, TickType_t xTicksToWait) = 0;
     virtual void *timer_get_id(TimerHandle_t timer_handle) = 0;
 
     // Mutex and Semaphore

@@ -1,10 +1,10 @@
 #include <cstring>
 
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/task.h"
-#include "freertos/timers.h"
+// #include "freertos/FreeRTOS.h"
+// #include "freertos/queue.h"
+// #include "freertos/task.h"
+// #include "freertos/timers.h"
 
 #include "tx_manager.hpp"
 
@@ -56,7 +56,7 @@ esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
     }
 
     ack_timeout_timer_ =
-        freertos_hal_.timer_create("ack_timeout", ack_timeout_ms_, pdFALSE, this, ack_timeout_callback);
+        freertos_hal_.timer_create("ack_timeout", pdMS_TO_TICKS(ack_timeout_ms_), pdFALSE, this, ack_timeout_callback);
     if (!ack_timeout_timer_) {
         deinit();
         return ESP_ERR_NO_MEM;
@@ -108,7 +108,7 @@ esp_err_t TxManager::deinit()
     }
 
     if (ack_timeout_timer_) {
-        freertos_hal_.timer_delete(ack_timeout_timer_, PORT_MAX_DELAY);
+        freertos_hal_.timer_delete(ack_timeout_timer_, portMAX_DELAY);
         ack_timeout_timer_ = nullptr;
     }
 
@@ -183,7 +183,7 @@ void TxManager::handle_notifications(uint32_t notifications)
     }
     if (notifications & NOTIFY_LOGICAL_ACK) {
         fsm_.on_ack_received();
-        freertos_hal_.timer_start(ack_timeout_timer_, 0);
+        freertos_hal_.timer_start(ack_timeout_timer_, pdMS_TO_TICKS(10));
     }
     if (notifications & NOTIFY_ACK_TIMEOUT) {
         fsm_.on_ack_timeout();
@@ -230,7 +230,7 @@ void TxManager::run()
                             .packet = packet_to_send,
                             .node_id = header->dest_node_id};
                         fsm_.set_pending_ack(pending);
-                        freertos_hal_.timer_start(ack_timeout_timer_, 0);
+                        freertos_hal_.timer_start(ack_timeout_timer_, pdMS_TO_TICKS(10));
                     }
                 }
                 else {
@@ -266,7 +266,7 @@ void TxManager::run()
                     hal_.hal_esp_now_send(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
 
                 if (send_result == ESP_OK) {
-                    freertos_hal_.timer_start(ack_timeout_timer_, 0);
+                    freertos_hal_.timer_start(ack_timeout_timer_, pdMS_TO_TICKS(10));
                     fsm_.on_tx_success(true); // Back to WAITING_FOR_ACK
                 }
                 else {

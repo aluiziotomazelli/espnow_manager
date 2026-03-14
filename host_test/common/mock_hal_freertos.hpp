@@ -23,16 +23,16 @@ public:
     MOCK_METHOD(void, queue_delete, (QueueHandle_t), (override));
     MOCK_METHOD(BaseType_t, queue_send, (QueueHandle_t, const void *, uint32_t), (override));
     MOCK_METHOD(BaseType_t, queue_receive, (QueueHandle_t, void *, uint32_t), (override));
-    MOCK_METHOD(void *, timer_get_id, (TimerHandle_t), (override));
 
     MOCK_METHOD(
         TimerHandle_t,
         timer_create,
-        (const char *, uint32_t, UBaseType_t, void *, TimerCallbackFunction_t),
+        (const char *, TickType_t, UBaseType_t, void *, TimerCallbackFunction_t),
         (override));
-    MOCK_METHOD(BaseType_t, timer_start, (TimerHandle_t, uint32_t), (override));
-    MOCK_METHOD(BaseType_t, timer_stop, (TimerHandle_t, uint32_t), (override));
-    MOCK_METHOD(void, timer_delete, (TimerHandle_t, uint32_t), (override));
+    MOCK_METHOD(BaseType_t, timer_start, (TimerHandle_t, TickType_t), (override));
+    MOCK_METHOD(BaseType_t, timer_stop, (TimerHandle_t, TickType_t), (override));
+    MOCK_METHOD(void, timer_delete, (TimerHandle_t, TickType_t), (override));
+    MOCK_METHOD(void *, timer_get_id, (TimerHandle_t), (override));
 
     MOCK_METHOD(SemaphoreHandle_t, mutex_create, (), (override));
     MOCK_METHOD(SemaphoreHandle_t, semaphore_create_binary, (), (override));
