@@ -28,11 +28,19 @@ protected:
     NiceMock<MockFreeRTOSHAL> freertos_hal;
     std::unique_ptr<Bootstrapper> bootstrapper;
 
+    // Real handles
     TaskHandle_t rx_handle = nullptr;
     TaskHandle_t worker_handle = nullptr;
     QueueHandle_t rx_queue = nullptr;
     QueueHandle_t worker_queue = nullptr;
     SemaphoreHandle_t ack_mutex = nullptr;
+
+    // Fake handles == nullptr
+    TaskHandle_t fake_rx_handle = reinterpret_cast<TaskHandle_t>(0x1);
+    TaskHandle_t fake_worker_handle = reinterpret_cast<TaskHandle_t>(0x2);
+    QueueHandle_t fake_rx_queue = reinterpret_cast<QueueHandle_t>(0x3);
+    QueueHandle_t fake_worker_queue = reinterpret_cast<QueueHandle_t>(0x4);
+    SemaphoreHandle_t fake_ack_mutex = reinterpret_cast<SemaphoreHandle_t>(0x5);
 
     EspNowConfig config;
     EspNowBootstrapConfig bootstrap_cfg;
@@ -57,23 +65,19 @@ protected:
         ON_CALL(wifi_hal, hal_espnow_register_send_cb(_)).WillByDefault(Return(ESP_OK));
         ON_CALL(wifi_hal, wifi_set_channel(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(wifi_hal, hal_esp_now_add_peer(_)).WillByDefault(Return(ESP_OK));
-        ON_CALL(freertos_hal, task_create(_, _, _, _, _, _)).WillByDefault(Return(pdPASS));
+
+        ON_CALL(freertos_hal, mutex_create()).WillByDefault(Return(fake_ack_mutex));
+        ON_CALL(freertos_hal, queue_create(_, _)).WillByDefault(Return(fake_rx_queue));
+        ON_CALL(freertos_hal, task_create(_, _, _, _, _, _))
+            .WillByDefault([this](TaskFunction_t, const char *, uint32_t, void *, UBaseType_t, TaskHandle_t *handle) {
+                *handle = fake_rx_handle;
+                return pdPASS;
+            });
     }
 
     void TearDown() override
     {
-        if (rx_queue) {
-            vQueueDelete(rx_queue);
-            rx_queue = nullptr;
-        }
-        if (worker_queue) {
-            vQueueDelete(worker_queue);
-            worker_queue = nullptr;
-        }
-        if (ack_mutex) {
-            vSemaphoreDelete(ack_mutex);
-            ack_mutex = nullptr;
-        }
+        // Empty by now
     }
 
     esp_err_t do_init()
@@ -83,6 +87,10 @@ protected:
 
     esp_err_t do_deinit() { return bootstrapper->deinit(rx_queue, worker_queue, ack_mutex, rx_handle, worker_handle); }
 };
+
+// =========================================================================
+// Init
+// =========================================================================
 
 TEST_F(BootstrapperTest, InitFailGetWifiMode)
 {
@@ -133,27 +141,79 @@ TEST_F(BootstrapperTest, HalWifiSetChannelFails)
 TEST_F(BootstrapperTest, HalEspNowAddPeerFails)
 {
     ON_CALL(wifi_hal, hal_esp_now_add_peer(_)).WillByDefault(Return(ESP_FAIL));
-    EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _)).Times(0); // Must not call task_create
+    EXPECT_CALL(freertos_hal, mutex_create()).Times(0); // Must not call mutex_create
     ASSERT_EQ(ESP_FAIL, do_init());
+}
+
+TEST_F(BootstrapperTest, InitReturnsErrorWhenMutexCreateFails)
+{
+    ON_CALL(freertos_hal, mutex_create()).WillByDefault(Return(nullptr));
+    EXPECT_CALL(freertos_hal, queue_create(_, _)).Times(0); // Must not call queue_create
+    ASSERT_EQ(ESP_ERR_NO_MEM, do_init());
+}
+
+TEST_F(BootstrapperTest, InitReturnsErrorWhenQueueCreateFails)
+{
+    EXPECT_CALL(freertos_hal, queue_create(_, _)).WillOnce(Return(nullptr));
+    EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _)).Times(0); // Must not call task_create
+    ASSERT_EQ(ESP_ERR_NO_MEM, do_init());
+}
+
+TEST_F(BootstrapperTest, InitReturnsErrorWhenSecondQueueCreateFails)
+{
+    EXPECT_CALL(freertos_hal, queue_create(_, _))
+        .Times(2)
+        .WillOnce(Return(fake_rx_queue))                               // First call returns fake_rx_queue
+        .WillOnce(Return(nullptr));                                    // Second call returns nullptr
+    EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _)).Times(0); // Must not call task_create
+    ASSERT_EQ(ESP_ERR_NO_MEM, do_init());
 }
 
 TEST_F(BootstrapperTest, InitReturnsErrorWhenRxTaskCreateFails)
 {
-    ON_CALL(freertos_hal, task_create(_, _, _, _, _, _)).WillByDefault(Return(pdFAIL));
-    ASSERT_EQ(ESP_ERR_NO_MEM, do_init());
+    EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _))
+        .Times(1)                         // On first task
+        .WillOnce(Return(pdFAIL));        // rx_dispatch fails
+    ASSERT_EQ(ESP_ERR_NO_MEM, do_init()); // Returns error
 }
 
 TEST_F(BootstrapperTest, InitReturnsErrorWhenWorkerTaskCreateFails)
 {
     EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _))
+        .Times(2)
         .WillOnce(Return(pdPASS))  // rx_dispatch pass
         .WillOnce(Return(pdFAIL)); // worker fails
     EXPECT_EQ(ESP_ERR_NO_MEM, do_init());
 }
 
+TEST_F(BootstrapperTest, InitCompletesSuccessfully)
+{
+    EXPECT_CALL(wifi_hal, wifi_get_mode(_)).Times(1);
+    EXPECT_CALL(wifi_hal, hal_esp_now_init()).Times(1);
+    EXPECT_CALL(wifi_hal, hal_espnow_register_recv_cb(_)).Times(1);
+    EXPECT_CALL(wifi_hal, hal_espnow_register_send_cb(_)).Times(1);
+    EXPECT_CALL(wifi_hal, wifi_set_channel(_, _)).Times(1);
+    EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1);
+    EXPECT_CALL(freertos_hal, mutex_create()).Times(1);
+    EXPECT_CALL(freertos_hal, queue_create(_, _)).Times(2);
+    EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _)).Times(2);
+
+    EXPECT_EQ(ESP_OK, do_init());
+}
+
+// =========================================================================
+// Deinit
+// =========================================================================
+
 TEST_F(BootstrapperTest, DeinitSuccess)
 {
+    EXPECT_EQ(ESP_OK, do_init());
+
+    EXPECT_CALL(freertos_hal, task_delete(_)).Times(2);
+    EXPECT_CALL(freertos_hal, queue_delete(_)).Times(2);
+    EXPECT_CALL(freertos_hal, semaphore_delete(_)).Times(1);
     EXPECT_CALL(wifi_hal, hal_esp_now_deinit()).Times(1);
+
     ASSERT_EQ(ESP_OK, do_deinit());
 }
 
@@ -163,25 +223,56 @@ TEST_F(BootstrapperTest, DeinitReturnsErrorWhenEspDeitFails)
     ASSERT_EQ(ESP_FAIL, do_deinit());
 }
 
+TEST_F(BootstrapperTest, DeinitDoesNotDeleteTasksWhenHandlesNull)
+{
+    // Create tasks without handles
+    EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _)).WillRepeatedly(Return(pdPASS));
+    ASSERT_EQ(ESP_OK, do_init());
+
+    EXPECT_CALL(freertos_hal, task_delete(_)).Times(0); // Tasks will not be deleted
+
+    EXPECT_EQ(ESP_OK, do_deinit()); // But deinit does not fail
+}
+
 TEST_F(BootstrapperTest, DeinitDeletesTasksWhenHandlesNotNull)
 {
-    // task create returns pdPASSS but populates the handle with fake value
+    // Create tasks with distinct handles
     EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _))
-        .WillOnce([](TaskFunction_t, const char *, uint32_t, void *, UBaseType_t, TaskHandle_t *handle) {
-            *handle = reinterpret_cast<TaskHandle_t>(0x1);
+        .WillOnce([this](TaskFunction_t, const char *, uint32_t, void *, UBaseType_t, TaskHandle_t *handle) {
+            *handle = fake_rx_handle;
             return pdPASS;
         })
-        .WillOnce([](TaskFunction_t, const char *, uint32_t, void *, UBaseType_t, TaskHandle_t *handle) {
-            *handle = reinterpret_cast<TaskHandle_t>(0x2);
+        .WillOnce([this](TaskFunction_t, const char *, uint32_t, void *, UBaseType_t, TaskHandle_t *handle) {
+            *handle = fake_worker_handle;
             return pdPASS;
         });
 
     ASSERT_EQ(ESP_OK, do_init());
 
-    // Now rx_handle and worker_handle != nullptr
-    EXPECT_CALL(freertos_hal, task_delete(reinterpret_cast<TaskHandle_t>(0x1))).Times(1);
-    EXPECT_CALL(freertos_hal, task_delete(reinterpret_cast<TaskHandle_t>(0x2))).Times(1);
+    // Delete tasks
+    EXPECT_CALL(freertos_hal, task_delete(fake_rx_handle)).Times(1);
+    EXPECT_CALL(freertos_hal, task_delete(fake_worker_handle)).Times(1);
     EXPECT_CALL(wifi_hal, hal_esp_now_deinit()).WillOnce(Return(ESP_OK));
 
     bootstrapper->deinit(rx_queue, worker_queue, ack_mutex, rx_handle, worker_handle);
+}
+
+TEST_F(BootstrapperTest, DeinitDoesNotDeleteQueuesWhenHandlesNull)
+{
+    // With nullptr handles
+    ON_CALL(freertos_hal, queue_create(_, _)).WillByDefault(Return(nullptr));
+    ASSERT_EQ(ESP_ERR_NO_MEM, do_init()); // Init fails
+
+    EXPECT_CALL(freertos_hal, queue_delete(_)).Times(0); // Queues should not be deleted
+    EXPECT_EQ(ESP_OK, do_deinit());                      // But deinit does not fail
+}
+
+TEST_F(BootstrapperTest, DeinitDoesNotDeleteMutexWhenHandleNull)
+{
+    // With nullptr handle
+    ON_CALL(freertos_hal, mutex_create()).WillByDefault(Return(nullptr));
+    ASSERT_EQ(ESP_ERR_NO_MEM, do_init()); // Init fails
+
+    EXPECT_CALL(freertos_hal, semaphore_delete(_)).Times(0); // Mutex should not be deleted
+    EXPECT_EQ(ESP_OK, do_deinit());                          // But deinit does not fail
 }

@@ -76,16 +76,22 @@ esp_err_t Bootstrapper::init(
         }
     }
 
+    // Mutex
     ack_mutex = freertos_hal_.mutex_create();
     if (ack_mutex == nullptr) {
         ESP_LOGE(TAG, "Failed to create ack mutex");
         return ESP_ERR_NO_MEM;
     }
 
+    // Queues
     rx_queue = freertos_hal_.queue_create(RX_QUEUE_SIZE, sizeof(RxPacket));
+    if (rx_queue == nullptr) {
+        ESP_LOGE(TAG, "Failed to create rx queue");
+        return ESP_ERR_NO_MEM;
+    }
     worker_queue = freertos_hal_.queue_create(WORKER_QUEUE_SIZE, sizeof(RxPacket));
-    if (rx_queue == nullptr || worker_queue == nullptr) {
-        ESP_LOGE(TAG, "Failed to create queues");
+    if (worker_queue == nullptr) {
+        ESP_LOGE(TAG, "Failed to create worker queue");
         return ESP_ERR_NO_MEM;
     }
 
