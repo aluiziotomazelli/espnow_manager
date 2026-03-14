@@ -17,8 +17,8 @@ class ChannelScannerTest : public ::testing::Test
 {
 protected:
     NiceMock<MockWiFiHAL> wifi_hal;
-    NiceMock<MockFreeRTOSHAL> freertos_hal;
     NiceMock<MockMessageCodec> codec;
+    NiceMock<MockFreeRTOSHAL> freertos_hal;
     std::unique_ptr<ChannelScanner> scanner;
 
     static constexpr NodeId MY_ID = 2;
@@ -63,10 +63,10 @@ TEST_F(ChannelScannerTest, InvalidStartChannelShiftsToFirstChannel)
     uint8_t invalid_channel = 99;
 
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
-        .Times(1)                                                   // in the first call
-        .WillOnce(DoAll(                                            // we assume that
+        .Times(1)                                // in the first call
+        .WillOnce(DoAll(                         // we assume that
             SetArgPointee<2>(NOTIFY_LINK_ALIVE), // hub is found
-            Return(pdPASS)));                                       // return pdPASS
+            Return(pdPASS)));                    // return pdPASS
 
     IChannelScanner::ScanResult res = scanner->scan(invalid_channel); // invalid channel as argument
     ASSERT_TRUE(res.hub_found);                                       // hub found on first channel

@@ -239,7 +239,7 @@ void TxManager::run()
                 break;
             }
 
-            if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, PORT_MAX_DELAY) == pdTRUE) {
+            if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
                 handle_notifications(notifications);
             }
 
@@ -248,7 +248,7 @@ void TxManager::run()
 
         case TxState::WAITING_FOR_ACK:
         {
-            if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, PORT_MAX_DELAY) == pdTRUE) {
+            if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
                 handle_notifications(notifications);
             }
             break;

@@ -13,7 +13,7 @@ public:
     FreeRTOSHAL() = default;
 
     // Task
-    void task_delay(uint32_t delay_ms) override { vTaskDelay(pdMS_TO_TICKS(delay_ms)); }
+    void task_delay(TickType_t xTicksToWait) override { vTaskDelay(xTicksToWait); }
     TaskHandle_t get_task_handle() override { return xTaskGetCurrentTaskHandle(); }
     BaseType_t task_create(
         TaskFunction_t pvTaskCode,
@@ -32,9 +32,10 @@ public:
         xTaskNotify(task_handle, bits, action);
     }
     BaseType_t
-    task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t *value, uint32_t timeout_ms) override
+    task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t *value, TickType_t xTicksToWait)
+        override
     {
-        return xTaskNotifyWait(bits_clear_entry, bits_clear_exit, value, pdMS_TO_TICKS(timeout_ms));
+        return xTaskNotifyWait(bits_clear_entry, bits_clear_exit, value, xTicksToWait);
     }
 
     // Queue
@@ -43,13 +44,18 @@ public:
         return xQueueCreate(length, item_size);
     }
     void queue_delete(QueueHandle_t queue_handle) override { vQueueDelete(queue_handle); }
-    BaseType_t queue_send(QueueHandle_t queue_handle, const void *data, uint32_t timeout_ms) override
+    BaseType_t queue_send(QueueHandle_t queue_handle, const void *data, TickType_t xTicksToWait) override
     {
-        return xQueueSend(queue_handle, data, pdMS_TO_TICKS(timeout_ms));
+        return xQueueSend(queue_handle, data, xTicksToWait);
     }
-    BaseType_t queue_receive(QueueHandle_t queue_handle, void *data, uint32_t timeout_ms) override
+    BaseType_t queue_receive(QueueHandle_t queue_handle, void *data, TickType_t xTicksToWait) override
     {
-        return xQueueReceive(queue_handle, data, pdMS_TO_TICKS(timeout_ms));
+        return xQueueReceive(queue_handle, data, xTicksToWait);
+    }
+    BaseType_t
+    queue_send_fromISR(QueueHandle_t queue_handle, const void *data, BaseType_t *pxHigherPriorityTaskWoken) override
+    {
+        return xQueueSendFromISR(queue_handle, data, pxHigherPriorityTaskWoken);
     }
 
     // Timer
@@ -79,9 +85,9 @@ public:
     // Mutex
     SemaphoreHandle_t mutex_create() override { return xSemaphoreCreateMutex(); }
     SemaphoreHandle_t semaphore_create_binary() override { return xSemaphoreCreateBinary(); }
-    BaseType_t semaphore_take(SemaphoreHandle_t semaphore_handle, uint32_t timeout_ms) override
+    BaseType_t semaphore_take(SemaphoreHandle_t semaphore_handle, TickType_t xTicksToWait) override
     {
-        return xSemaphoreTake(semaphore_handle, pdMS_TO_TICKS(timeout_ms));
+        return xSemaphoreTake(semaphore_handle, xTicksToWait);
     }
     BaseType_t semaphore_give(SemaphoreHandle_t semaphore_handle) override { return xSemaphoreGive(semaphore_handle); }
     void semaphore_delete(SemaphoreHandle_t semaphore_handle) override { vSemaphoreDelete(semaphore_handle); }

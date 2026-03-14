@@ -36,7 +36,7 @@ PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbea
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (freertos_hal_.semaphore_take(mutex_, PORT_MAX_DELAY) != pdTRUE) {
+    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }
 
@@ -129,7 +129,7 @@ PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbea
 
 esp_err_t PeerManager::remove(NodeId id)
 {
-    if (freertos_hal_.semaphore_take(mutex_, PORT_MAX_DELAY) != pdTRUE) {
+    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }
 
@@ -153,7 +153,7 @@ esp_err_t PeerManager::remove(NodeId id)
 
 bool PeerManager::find_mac(NodeId id, uint8_t *mac)
 {
-    if (freertos_hal_.semaphore_take(mutex_, PORT_MAX_DELAY) != pdTRUE) {
+    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return false;
     }
 
@@ -173,7 +173,7 @@ bool PeerManager::find_mac(NodeId id, uint8_t *mac)
 
 std::vector<PeerInfo> PeerManager::get_all()
 {
-    if (freertos_hal_.semaphore_take(mutex_, PORT_MAX_DELAY) != pdTRUE) {
+    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return {};
     }
 
@@ -184,7 +184,7 @@ std::vector<PeerInfo> PeerManager::get_all()
 
 std::vector<NodeId> PeerManager::get_offline(uint64_t now_ms)
 {
-    if (freertos_hal_.semaphore_take(mutex_, PORT_MAX_DELAY) != pdTRUE) {
+    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return {};
     }
 
@@ -204,7 +204,7 @@ std::vector<NodeId> PeerManager::get_offline(uint64_t now_ms)
 
 void PeerManager::update_last_seen(NodeId id, uint64_t now_ms)
 {
-    if (freertos_hal_.semaphore_take(mutex_, PORT_MAX_DELAY) != pdTRUE) {
+    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return;
     }
     for (auto &p : peers_) {
@@ -221,7 +221,7 @@ esp_err_t PeerManager::load_from_storage(uint8_t &wifi_channel)
     std::vector<PersistentPeer> stored_peers;
     esp_err_t err = storage_.load(wifi_channel, stored_peers);
     if (err == ESP_OK) {
-        if (freertos_hal_.semaphore_take(mutex_, PORT_MAX_DELAY) == pdTRUE) {
+        if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
             peers_.clear();
             for (const auto &sp : stored_peers) {
                 peers_.push_back(persistent_to_info(sp));
@@ -237,7 +237,7 @@ esp_err_t PeerManager::load_from_storage(uint8_t &wifi_channel)
 
 void PeerManager::persist()
 {
-    if (freertos_hal_.semaphore_take(mutex_, PORT_MAX_DELAY) == pdTRUE) {
+    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
         save_to_storage();
         freertos_hal_.semaphore_give(mutex_);
     }
@@ -282,7 +282,7 @@ PeerInfo PeerManager::persistent_to_info(const PersistentPeer &persistent)
 
 void PeerManager::set_channel(uint8_t channel)
 {
-    if (freertos_hal_.semaphore_take(mutex_, PORT_MAX_DELAY) == pdTRUE) {
+    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
         current_channel_ = channel;
         freertos_hal_.semaphore_give(mutex_);
     }

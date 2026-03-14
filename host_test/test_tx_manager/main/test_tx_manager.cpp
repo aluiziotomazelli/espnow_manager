@@ -47,7 +47,7 @@ protected:
         ON_CALL(freertos_hal, task_delete(_)).WillByDefault(Return());
         ON_CALL(freertos_hal, semaphore_delete(_)).WillByDefault(Return());
         ON_CALL(freertos_hal, queue_delete(_)).WillByDefault(Return());
-        ON_CALL(freertos_hal, timer_delete(_, _)).WillByDefault(Return());
+        ON_CALL(freertos_hal, timer_delete(_, _)).WillByDefault(Return(pdPASS));
 
         manager = std::make_unique<TxManager>(fsm, scanner, hal, freertos_hal, codec, 10);
     }

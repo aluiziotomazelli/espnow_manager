@@ -19,7 +19,7 @@ public:
     virtual ~IFreeRTOSHAL() = default;
 
     // Task
-    virtual void task_delay(uint32_t delay_ms) = 0;
+    virtual void task_delay(TickType_t xTicksToWait) = 0;
     virtual TaskHandle_t get_task_handle() = 0;
     virtual BaseType_t task_create(
         TaskFunction_t pvTaskCode,
@@ -32,13 +32,15 @@ public:
     virtual void task_suspend(TaskHandle_t task_handle) = 0;
     virtual void task_notify(TaskHandle_t task_handle, uint32_t bits, eNotifyAction action) = 0;
     virtual BaseType_t
-    task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t *value, uint32_t timeout_ms) = 0;
+    task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t *value, TickType_t xTicksToWait) = 0;
 
     // Queue
     virtual QueueHandle_t queue_create(UBaseType_t length, UBaseType_t item_size) = 0;
     virtual void queue_delete(QueueHandle_t queue_handle) = 0;
-    virtual BaseType_t queue_send(QueueHandle_t queue_handle, const void *data, uint32_t timeout_ms) = 0;
-    virtual BaseType_t queue_receive(QueueHandle_t queue_handle, void *data, uint32_t timeout_ms) = 0;
+    virtual BaseType_t queue_send(QueueHandle_t queue_handle, const void *data, TickType_t xTicksToWait) = 0;
+    virtual BaseType_t queue_receive(QueueHandle_t queue_handle, void *data, TickType_t xTicksToWait) = 0;
+    virtual BaseType_t
+    queue_send_fromISR(QueueHandle_t queue_handle, const void *data, BaseType_t *pxHigherPriorityTaskWoken) = 0;
 
     // Timer
     virtual TimerHandle_t timer_create(
@@ -55,7 +57,7 @@ public:
     // Mutex and Semaphore
     virtual SemaphoreHandle_t mutex_create() = 0;
     virtual SemaphoreHandle_t semaphore_create_binary() = 0;
-    virtual BaseType_t semaphore_take(SemaphoreHandle_t semaphore_handle, uint32_t timeout_ms) = 0;
+    virtual BaseType_t semaphore_take(SemaphoreHandle_t semaphore_handle, TickType_t xTicksToWait) = 0;
     virtual BaseType_t semaphore_give(SemaphoreHandle_t semaphore_handle) = 0;
     virtual void semaphore_delete(SemaphoreHandle_t semaphore_handle) = 0;
 };
