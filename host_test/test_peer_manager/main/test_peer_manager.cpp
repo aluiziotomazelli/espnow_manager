@@ -3,6 +3,7 @@
 
 #include "peer_manager.hpp"
 #include "mock_hal_wifi.hpp"
+#include "mock_hal_freertos.hpp"
 #include "mock_storage_manager.hpp"
 
 using ::testing::_;
@@ -14,7 +15,11 @@ class PeerManagerTest : public ::testing::Test
 protected:
     NiceMock<MockWiFiHAL> wifi_hal;
     NiceMock<MockStorageManager> storage;
+    NiceMock<MockFreeRTOSHAL> freertos_hal;
     std::unique_ptr<PeerManager> manager;
+
+    // Fake handle
+    SemaphoreHandle_t fake_mutex_ = reinterpret_cast<SemaphoreHandle_t>(0xDEAD);
 
     // Helper to create a unique mac for each peer.
     static void make_mac(uint8_t *mac, uint8_t id)
@@ -25,14 +30,24 @@ protected:
 
     void SetUp() override
     {
-        // Default happy path
+        // Mutex lifecycle
+        ON_CALL(freertos_hal, mutex_create()).WillByDefault(Return(fake_mutex_));
+        ON_CALL(freertos_hal, semaphore_delete(_)).WillByDefault(Return());
+
+        // All public methods take/give the mutex — simulate successful acquisition
+        ON_CALL(freertos_hal, semaphore_take(_, _)).WillByDefault(Return(pdTRUE));
+        ON_CALL(freertos_hal, semaphore_give(_)).WillByDefault(Return(pdTRUE));
+
+        // WiFiHAL happy path
         ON_CALL(wifi_hal, hal_esp_now_add_peer(_)).WillByDefault(Return(ESP_OK));
         ON_CALL(wifi_hal, hal_esp_now_del_peer(_)).WillByDefault(Return(ESP_OK));
         ON_CALL(wifi_hal, hal_esp_now_mod_peer(_)).WillByDefault(Return(ESP_OK));
+
+        // Storage happy path
         ON_CALL(storage, save(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(storage, load(_, _)).WillByDefault(Return(ESP_ERR_NOT_FOUND));
 
-        manager = std::make_unique<PeerManager>(storage, wifi_hal);
+        manager = std::make_unique<PeerManager>(storage, wifi_hal, freertos_hal);
     }
 
     static constexpr NodeId ID_2 = 2;
@@ -191,6 +206,25 @@ TEST_F(PeerManagerTest, AddBeyondMaxRemovesPeerWithOldestLastSeen)
     EXPECT_TRUE(manager->find_mac(99, found_mac));
 }
 
+TEST_F(PeerManagerTest, AddBeyondMaxDelOldestDelFailsStillAdds)
+{
+    // Fill to max
+    for (int i = 0; i < MAX_PEERS; i++) {
+        uint8_t mac[6];
+        make_mac(mac, i);
+        manager->add((NodeId)i, mac, PEER, 10);
+    }
+
+    // del_peer for evicted peer will fail — but add() ignores that return value
+    EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_)).WillOnce(Return(ESP_FAIL));
+
+    uint8_t new_mac[6];
+    make_mac(new_mac, 99);
+    // add() still proceeds to hal_esp_now_add_peer regardless of del result
+    EXPECT_EQ(ESP_OK, manager->add((NodeId)99, new_mac, PEER, 10));
+    EXPECT_EQ(MAX_PEERS, manager->get_all().size());
+}
+
 // =========================================================================
 // PeerManager::remove
 // =========================================================================
@@ -311,7 +345,7 @@ TEST_F(PeerManagerTest, GetOfflineDoesNotReturnPeerWhenNotExpired)
     EXPECT_TRUE(manager->get_offline(now).empty());
 }
 
-TEST_F(PeerManagerTest, GetOfflineReturnsEmptyWhenNopeersAdded)
+TEST_F(PeerManagerTest, GetOfflineReturnsEmptyWhenNoPeersAdded)
 {
     EXPECT_TRUE(manager->get_offline(9999).empty());
 }
@@ -423,4 +457,114 @@ TEST_F(PeerManagerTest, PersistCallsSaveToStorage)
 
     EXPECT_CALL(storage, save(_, _, _)).Times(1);
     manager->persist();
+}
+
+// =========================================================================
+// PeerManager::save_to_storage (via persist, add, remove)
+// =========================================================================
+
+TEST_F(PeerManagerTest, SaveToStorageLogsOnError)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+
+    // First add succeeds in storage (called by add internally)
+    EXPECT_CALL(storage, save(_, _, _)).WillOnce(Return(ESP_FAIL)); // save_to_storage inside add() returns error
+
+    // add() itself must still return ESP_OK — storage failure is non-fatal
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));
+
+    // Peer must still be in the list (storage error doesn't roll back)
+    EXPECT_EQ(1, manager->get_all().size());
+}
+
+// =========================================================================
+// PeerManager::persist
+// =========================================================================
+
+TEST_F(PeerManagerTest, PersistLogsOnStorageError)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 10);
+
+    // persist() calls save_to_storage() which only logs on failure
+    EXPECT_CALL(storage, save(_, _, _)).WillOnce(Return(ESP_FAIL));
+    manager->persist(); // Must not crash or propagate error
+}
+
+// =========================================================================
+// Mutex Guard
+// =========================================================================
+
+TEST_F(PeerManagerTest, GetAllDontTakeMutexReturnsEmptyVector)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE)); // semaphore_take fails
+    EXPECT_CALL(freertos_hal, semaphore_give(_)).Times(0);                     // semaphore_give should not be called
+
+    EXPECT_EQ(0, manager->get_all().size());
+}
+
+TEST_F(PeerManagerTest, UpdateLastSeenDontTakeMutex)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE)); // semaphore_take fails
+    EXPECT_CALL(freertos_hal, semaphore_give(_)).Times(0);                     // semaphore_give should not be called
+
+    manager->update_last_seen(ID_2, 10);
+}
+
+TEST_F(PeerManagerTest, SetChannelDontTakeMutex)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE)); // semaphore_take fails
+    EXPECT_CALL(freertos_hal, semaphore_give(_)).Times(0);                     // semaphore_give should not be called
+
+    manager->set_channel(10);
+}
+
+TEST_F(PeerManagerTest, PersistDontTakeMutex)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE)); // semaphore_take fails
+    EXPECT_CALL(freertos_hal, semaphore_give(_)).Times(0);                     // semaphore_give should not be called
+
+    manager->persist();
+}
+TEST_F(PeerManagerTest, LoadFromStorageDontTakeMutexReturnsError)
+{
+    EXPECT_CALL(storage, load(_, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE)); // semaphore_take fails
+    EXPECT_CALL(freertos_hal, semaphore_give(_)).Times(0);                     // semaphore_give should not be called
+    uint8_t channel = 0;
+    EXPECT_EQ(ESP_ERR_TIMEOUT, manager->load_from_storage(channel));
+}
+
+TEST_F(PeerManagerTest, AddPeersDontTakeMutexReturnsError)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE));
+
+    EXPECT_EQ(ESP_ERR_TIMEOUT, manager->add(ID_2, mac, PEER, 10));
+}
+
+TEST_F(PeerManagerTest, RemoveDontTakeMutexReturnsError)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE));
+    EXPECT_EQ(ESP_ERR_TIMEOUT, manager->remove(ID_2));
+}
+
+TEST_F(PeerManagerTest, FindMacDontTakeMutexReturnsFalse)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE));
+    uint8_t found_mac[6];
+    EXPECT_FALSE(manager->find_mac(ID_2, found_mac));
+}
+
+TEST_F(PeerManagerTest, GetOfflineDontTakeMutexReturnsEmptyVector)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE)); // semaphore_take fails
+    EXPECT_CALL(freertos_hal, semaphore_give(_)).Times(0);                     // semaphore_give should not be called
+
+    auto offline = manager->get_offline(0);
+    EXPECT_EQ(0, offline.size());
 }

@@ -40,7 +40,7 @@ EspNowManager &EspNowManager::instance()
     static auto timer_hal = std::make_unique<TimerHAL>();
     static auto freertos_hal = std::make_unique<FreeRTOSHAL>();
     static auto bootstraper = std::make_unique<Bootstrapper>(*driver_hal, *freertos_hal);
-    static auto peer_manager = std::make_unique<PeerManager>(storage, *driver_hal);
+    static auto peer_manager = std::make_unique<PeerManager>(storage, *driver_hal, *freertos_hal);
     static auto message_codec = std::make_unique<MessageCodec>();
     static auto scanner = std::make_unique<ChannelScanner>(
         *driver_hal, *message_codec, *freertos_hal, ReservedIds::HUB, ReservedTypes::HUB);

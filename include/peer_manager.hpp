@@ -8,11 +8,12 @@
 #include "i_peer_manager.hpp"
 #include "i_hal_wifi.hpp"
 #include "i_storage_manager.hpp"
+#include "i_hal_freertos.hpp"
 
 class PeerManager : public IPeerManager
 {
 public:
-    PeerManager(IStorageManager &storage, IWiFiHAL &driver_hal);
+    PeerManager(IStorageManager &storage, IWiFiHAL &driver_hal, IFreeRTOSHAL &freertos_hal);
 
     ~PeerManager();
 
@@ -36,6 +37,7 @@ public:
 private:
     IStorageManager &storage_;
     IWiFiHAL &driver_hal_;
+    IFreeRTOSHAL &freertos_hal_;
 
     std::vector<PeerInfo> peers_;
     SemaphoreHandle_t mutex_;

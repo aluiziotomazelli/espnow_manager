@@ -60,7 +60,7 @@ public:
         void *id,
         TimerCallbackFunction_t callback) override
     {
-        return xTimerCreate(name, period_ms, auto_reload, id, nullptr);
+        return xTimerCreate(name, pdMS_TO_TICKS(period_ms), auto_reload, id, nullptr);
     }
     BaseType_t timer_start(TimerHandle_t timer_handle, uint32_t timeout_ms) override
     {
