@@ -49,7 +49,7 @@ protected:
         ON_CALL(freertos_hal, queue_delete(_)).WillByDefault(Return());
         ON_CALL(freertos_hal, timer_delete(_, _)).WillByDefault(Return());
 
-        manager = std::make_unique<TxManager>(fsm, scanner, hal, freertos_hal, codec);
+        manager = std::make_unique<TxManager>(fsm, scanner, hal, freertos_hal, codec, 10);
     }
 
     void deinit_after_init()

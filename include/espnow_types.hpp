@@ -77,7 +77,8 @@ enum class TxState
     IDLE,            /**< No active transmission */
     WAITING_FOR_ACK, /**< Physical send success, waiting for logical AckMessage */
     RETRYING,        /**< Waiting before attempting a retransmission */
-    SCANNING         /**< Performing a channel scan to locate the destination */
+    SCANNING,        /**< Performing a channel scan to locate the destination */
+    COUNT            /**< Number of states */
 };
 
 /**

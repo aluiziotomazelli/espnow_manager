@@ -23,7 +23,9 @@ public:
         IChannelScanner &scanner,
         IWiFiHAL &hal,
         IFreeRTOSHAL &freertos_hal,
-        IMessageCodec &codec);
+        IMessageCodec &codec,
+        uint32_t ack_timeout_ms);
+
     ~TxManager();
 
     esp_err_t init(uint32_t stack_size, UBaseType_t priority) override;
@@ -50,6 +52,7 @@ private:
     QueueHandle_t tx_queue_ = nullptr;
     TaskHandle_t task_handle_ = nullptr;
     TimerHandle_t ack_timeout_timer_ = nullptr;
+    uint32_t ack_timeout_ms_;
 
     static void tx_task_func(void *arg);
     void run();

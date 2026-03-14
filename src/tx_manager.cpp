@@ -15,7 +15,8 @@ TxManager::TxManager(
     IChannelScanner &scanner,
     IWiFiHAL &hal,
     IFreeRTOSHAL &freertos_hal,
-    IMessageCodec &codec)
+    IMessageCodec &codec,
+    uint32_t ack_timeout_ms = 500)
     : fsm_(fsm)
     , scanner_(scanner)
     , hal_(hal)
@@ -26,6 +27,7 @@ TxManager::TxManager(
     , tx_queue_(nullptr)
     , task_handle_(nullptr)
     , ack_timeout_timer_(nullptr)
+    , ack_timeout_ms_(ack_timeout_ms)
 {
 }
 
@@ -53,7 +55,8 @@ esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
         return ESP_ERR_NO_MEM;
     }
 
-    ack_timeout_timer_ = freertos_hal_.timer_create("ack_timeout", 500, pdFALSE, this, ack_timeout_callback);
+    ack_timeout_timer_ =
+        freertos_hal_.timer_create("ack_timeout", ack_timeout_ms_, pdFALSE, this, ack_timeout_callback);
     if (!ack_timeout_timer_) {
         deinit();
         return ESP_ERR_NO_MEM;
@@ -131,11 +134,13 @@ void TxManager::notify_physical_fail()
     if (task_handle_)
         freertos_hal_.task_notify(task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits);
 }
+
 void TxManager::notify_link_alive()
 {
     if (task_handle_)
         freertos_hal_.task_notify(task_handle_, NOTIFY_LINK_ALIVE, eSetBits);
 }
+
 void TxManager::notify_logical_ack()
 {
     if (task_handle_)
@@ -289,6 +294,11 @@ void TxManager::run()
 
             break;
         }
+
+        default:
+            ESP_LOGE(TAG, "Unknown TxState: %d", static_cast<int>(current_state));
+            fsm_.reset();
+            break;
         }
     }
 }

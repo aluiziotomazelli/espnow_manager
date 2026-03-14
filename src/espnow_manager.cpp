@@ -45,7 +45,8 @@ EspNowManager &EspNowManager::instance()
     static auto scanner = std::make_unique<ChannelScanner>(
         *driver_hal, *message_codec, *freertos_hal, ReservedIds::HUB, ReservedTypes::HUB);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
-    static auto tx_manager = std::make_unique<TxManager>(*tx_fsm, *scanner, *driver_hal, *freertos_hal, *message_codec);
+    static auto tx_manager =
+        std::make_unique<TxManager>(*tx_fsm, *scanner, *driver_hal, *freertos_hal, *message_codec, 500);
     static auto heartbeat_mgr =
         std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *message_codec, ReservedIds::HUB);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec);
