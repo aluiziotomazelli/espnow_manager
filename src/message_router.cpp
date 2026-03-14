@@ -62,8 +62,8 @@ void MessageRouter::handle_packet(const RxPacket &packet)
             ESP_LOGW(TAG, "Malformed HEARTBEAT_RESPONSE: len %d < %d", (int)packet.len, (int)sizeof(HeartbeatResponse));
             return;
         }
-        auto resp = reinterpret_cast<const HeartbeatResponse *>(packet.data);
-        heartbeat_manager_.handle_response(header.sender_node_id, resp->wifi_channel);
+        // MessageRouter just passes header.sender_node_id, resp->wifi_channel is ignored
+        heartbeat_manager_.handle_response(header.sender_node_id);
         break;
     }
     case MessageType::ACK:

@@ -39,12 +39,12 @@ public:
     /** @internal */
     virtual esp_err_t deinit() = 0;
     /** @internal */
-    virtual void handle_response(NodeId hub_id, uint8_t channel) = 0;
+    virtual void handle_response(NodeId hub_id) = 0;
     /** @internal */
     template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
-    void handle_response(T hub_id, uint8_t channel)
+    void handle_response(T hub_id)
     {
-        handle_response(static_cast<NodeId>(hub_id), channel);
+        handle_response(static_cast<NodeId>(hub_id));
     }
 
     /** @internal */
