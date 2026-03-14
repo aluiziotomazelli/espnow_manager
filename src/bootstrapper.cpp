@@ -6,6 +6,9 @@
 
 const char *TAG = "Bootstrapper";
 
+static constexpr uint8_t RX_QUEUE_SIZE = 30;
+static constexpr uint8_t WORKER_QUEUE_SIZE = 20;
+
 Bootstrapper::Bootstrapper(IWiFiHAL &wifi_hal, IFreeRTOSHAL &freertos_hal)
     : wifi_hal_(wifi_hal)
     , freertos_hal_(freertos_hal)
@@ -73,14 +76,14 @@ esp_err_t Bootstrapper::init(
         }
     }
 
-    ack_mutex = xSemaphoreCreateMutex();
+    ack_mutex = freertos_hal_.mutex_create();
     if (ack_mutex == nullptr) {
         ESP_LOGE(TAG, "Failed to create ack mutex");
         return ESP_ERR_NO_MEM;
     }
 
-    rx_queue = xQueueCreate(30, sizeof(RxPacket));
-    worker_queue = xQueueCreate(20, sizeof(RxPacket));
+    rx_queue = freertos_hal_.queue_create(RX_QUEUE_SIZE, sizeof(RxPacket));
+    worker_queue = freertos_hal_.queue_create(WORKER_QUEUE_SIZE, sizeof(RxPacket));
     if (rx_queue == nullptr || worker_queue == nullptr) {
         ESP_LOGE(TAG, "Failed to create queues");
         return ESP_ERR_NO_MEM;
@@ -146,7 +149,7 @@ esp_err_t Bootstrapper::deinit(
 
     // Delete mutex
     if (ack_mutex != nullptr) {
-        vSemaphoreDelete(ack_mutex);
+        freertos_hal_.semaphore_delete(ack_mutex);
         ack_mutex = nullptr;
     }
 
