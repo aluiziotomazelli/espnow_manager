@@ -21,11 +21,11 @@ set(COMPONENTS
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-project(test_channel_scanner)
+project(test_discovery_manager)
 
 
 # Set the patterns to extract from the binary
-set(EXTRACT_PATTERNS_test_channel_scanner "*/espnow_manager/src/channel_scanner.cpp")
+set(EXTRACT_PATTERNS_test_discovery_manager "*/espnow_manager/src/discovery_manager.cpp")
 
 # Set the patterns to remove from the binary
 # set(REMOVE_PATTERNS_test_channel_scanner 
@@ -34,4 +34,4 @@ set(EXTRACT_PATTERNS_test_channel_scanner "*/espnow_manager/src/channel_scanner.
 
 # Include common coverage logic
 include("../coverage_common.cmake")
-setup_gtest_coverage(test_channel_scanner test_channel_scanner.elf)
+setup_gtest_coverage(test_discovery_manager test_discovery_manager.elf)

@@ -6,7 +6,7 @@
 #include "mock_tx_state_machine.hpp"
 #include "mock_hal_wifi.hpp"
 #include "mock_message_codec.hpp"
-#include "mock_channel_scanner.hpp"
+#include "mock_discovery_manager.hpp"
 #include "hal_real_freertos.hpp"
 #include "tx_manager.hpp"
 
@@ -30,13 +30,13 @@ protected:
     std::unique_ptr<NiceMock<MockTxStateMachine>> fsm_owned;
     std::unique_ptr<NiceMock<MockWiFiHAL>> hal_owned;
     std::unique_ptr<NiceMock<MockMessageCodec>> codec_owned;
-    std::unique_ptr<NiceMock<MockChannelScanner>> scanner_owned;
+    std::unique_ptr<NiceMock<MockDiscoveryManager>> scanner_owned;
 
     // Raw pointers to use in tests
     NiceMock<MockTxStateMachine> *fsm;
     NiceMock<MockWiFiHAL> *hal;
     NiceMock<MockMessageCodec> *codec;
-    NiceMock<MockChannelScanner> *scanner;
+    NiceMock<MockDiscoveryManager> *scanner;
 
     RealFreeRTOSHAL freertos_hal;
     std::unique_ptr<TxManager> manager;
@@ -52,7 +52,7 @@ protected:
         fsm_owned = std::make_unique<NiceMock<MockTxStateMachine>>();
         hal_owned = std::make_unique<NiceMock<MockWiFiHAL>>();
         codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
-        scanner_owned = std::make_unique<NiceMock<MockChannelScanner>>();
+        scanner_owned = std::make_unique<NiceMock<MockDiscoveryManager>>();
 
         fsm = fsm_owned.get();
         hal = hal_owned.get();
@@ -100,7 +100,7 @@ protected:
         ON_CALL(*codec, calculate_crc(_, _)).WillByDefault(Return(0xAB));
 
         // Scanner defaults — hub not found
-        ON_CALL(*scanner, scan(_)).WillByDefault(Return(IChannelScanner::ScanResult{1, false}));
+        ON_CALL(*scanner, scan(_)).WillByDefault(Return(IDiscoveryManager::ScanResult{1, false}));
 
         manager = std::make_unique<TxManager>(
             *fsm_owned, *scanner_owned, *hal_owned, freertos_hal, *codec_owned, ack_timeout_ms);
@@ -321,7 +321,7 @@ TEST_F(TxManagerTaskTest, ScanningStateCallsScannerAndResetsOnHubNotFound)
 
     current_state = TxState::SCANNING;
 
-    EXPECT_CALL(*scanner, scan(_)).Times(1).WillOnce(Return(IChannelScanner::ScanResult{6, false}));
+    EXPECT_CALL(*scanner, scan(_)).Times(1).WillOnce(Return(IDiscoveryManager::ScanResult{6, false}));
     EXPECT_CALL(*fsm, reset()).Times(1);
 
     manager->notify_physical_fail(); // trigger loop
@@ -334,7 +334,7 @@ TEST_F(TxManagerTaskTest, ScanningStateWithHubFoundSetsChannelAndCallsOnLinkAliv
 
     current_state = TxState::SCANNING;
 
-    ON_CALL(*scanner, scan(_)).WillByDefault(Return(IChannelScanner::ScanResult{9, true}));
+    ON_CALL(*scanner, scan(_)).WillByDefault(Return(IDiscoveryManager::ScanResult{9, true}));
 
     EXPECT_CALL(*hal, wifi_set_channel(9)).Times(1);
     EXPECT_CALL(*fsm, on_link_alive()).Times(1);

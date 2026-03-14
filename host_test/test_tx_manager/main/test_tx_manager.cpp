@@ -4,7 +4,7 @@
 #include "mock_tx_state_machine.hpp"
 #include "mock_hal_wifi.hpp"
 #include "mock_message_codec.hpp"
-#include "mock_channel_scanner.hpp"
+#include "mock_discovery_manager.hpp"
 #include "mock_hal_freertos.hpp"
 #include "tx_manager.hpp"
 
@@ -19,7 +19,7 @@ class TxManagerTest : public ::testing::Test
 {
 protected:
     NiceMock<MockTxStateMachine> fsm;
-    NiceMock<MockChannelScanner> scanner;
+    NiceMock<MockDiscoveryManager> scanner;
     NiceMock<MockWiFiHAL> hal;
     NiceMock<MockFreeRTOSHAL> freertos_hal;
     NiceMock<MockMessageCodec> codec;

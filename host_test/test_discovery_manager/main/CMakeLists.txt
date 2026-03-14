@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS
         "main.cpp"
-        "test_channel_scanner.cpp"
+        "test_discovery_manager.cpp"
     INCLUDE_DIRS
         "."
         "../../common"

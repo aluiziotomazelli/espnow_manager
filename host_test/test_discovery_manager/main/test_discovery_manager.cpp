@@ -1,10 +1,12 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "channel_scanner.hpp"
+#include "discovery_manager.hpp"
 #include "mock_hal_wifi.hpp"
 #include "mock_hal_freertos.hpp"
 #include "mock_message_codec.hpp"
+#include "mock_tx_manager.hpp"
+#include "i_channel_observer.hpp"
 
 using ::testing::_;
 using ::testing::DoAll;
@@ -13,13 +15,21 @@ using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::SetArgPointee;
 
-class ChannelScannerTest : public ::testing::Test
+class MockChannelObserver : public IChannelObserver
+{
+public:
+    MOCK_METHOD(void, on_channel_found, (uint8_t channel), (override));
+};
+
+class DiscoveryManagerTest : public ::testing::Test
 {
 protected:
     NiceMock<MockWiFiHAL> wifi_hal;
     NiceMock<MockMessageCodec> codec;
     NiceMock<MockFreeRTOSHAL> freertos_hal;
-    std::unique_ptr<ChannelScanner> scanner;
+    NiceMock<MockTxManager> tx_manager;
+    MockChannelObserver observer;
+    std::unique_ptr<DiscoveryManager> scanner;
 
     static constexpr NodeId MY_ID = 2;
     static constexpr NodeType MY_TYPE = 0x02;
@@ -35,11 +45,12 @@ protected:
         // default: notify_wait timeout, hub not found
         ON_CALL(freertos_hal, task_notify_wait(_, _, _, _)).WillByDefault(Return(pdFAIL));
 
-        scanner = std::make_unique<ChannelScanner>(wifi_hal, codec, freertos_hal, MY_ID, MY_TYPE);
+        scanner = std::make_unique<DiscoveryManager>(wifi_hal, codec, freertos_hal);
+        scanner->init(MY_ID, MY_TYPE, tx_manager, &observer);
     }
 };
 
-TEST_F(ChannelScannerTest, FindHubOnFirstChannel)
+TEST_F(DiscoveryManagerTest, FindHubOnFirstChannel)
 {
     // Verify that when hub is found on the first channel and first attempt,
     // each function is called exactly once
@@ -50,13 +61,15 @@ TEST_F(ChannelScannerTest, FindHubOnFirstChannel)
         .WillOnce(DoAll(
             SetArgPointee<2>(NOTIFY_LINK_ALIVE), // received bits
             Return(pdPASS)));                    // return pdPASS
+    
+    EXPECT_CALL(observer, on_channel_found(VALID_CHANNEL)).Times(1);
 
-    IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL);
+    IDiscoveryManager::ScanResult res = scanner->scan(VALID_CHANNEL);
     ASSERT_TRUE(res.hub_found);
     ASSERT_EQ(VALID_CHANNEL, res.channel);
 }
 
-TEST_F(ChannelScannerTest, InvalidStartChannelShiftsToFirstChannel)
+TEST_F(DiscoveryManagerTest, InvalidStartChannelShiftsToFirstChannel)
 {
     // With an invalid start channel, the scanner should shift to first channel
     uint8_t first_channel = 1;
@@ -67,13 +80,15 @@ TEST_F(ChannelScannerTest, InvalidStartChannelShiftsToFirstChannel)
         .WillOnce(DoAll(                         // we assume that
             SetArgPointee<2>(NOTIFY_LINK_ALIVE), // hub is found
             Return(pdPASS)));                    // return pdPASS
+    
+    EXPECT_CALL(observer, on_channel_found(first_channel)).Times(1);
 
-    IChannelScanner::ScanResult res = scanner->scan(invalid_channel); // invalid channel as argument
+    IDiscoveryManager::ScanResult res = scanner->scan(invalid_channel); // invalid channel as argument
     ASSERT_TRUE(res.hub_found);                                       // hub found on first channel
     ASSERT_EQ(first_channel, res.channel);                            // must be the channel where hub was found
 }
 
-TEST_F(ChannelScannerTest, HubNotFoundOnAnyChannel)
+TEST_F(DiscoveryManagerTest, HubNotFoundOnAnyChannel)
 {
     // If HUB is not found on any channel, in the total loop around we will
     // make SCAN_CHANNEL_ATTEMPTS on each of 13 wifi channels
@@ -87,13 +102,14 @@ TEST_F(ChannelScannerTest, HubNotFoundOnAnyChannel)
     // In each channel, the probe is sent SCAN_CHANNEL_ATTEMPTS times
     EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(call_times).WillRepeatedly(Return(ESP_OK));
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _)).Times(call_times).WillRepeatedly(Return(pdFAIL));
+    EXPECT_CALL(observer, on_channel_found(_)).Times(0);
 
-    IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL); // start channel
+    IDiscoveryManager::ScanResult res = scanner->scan(VALID_CHANNEL); // start channel
     ASSERT_FALSE(res.hub_found);                                    // hub not found
     ASSERT_EQ(VALID_CHANNEL, res.channel);                          // must stay on start channel
 }
 
-TEST_F(ChannelScannerTest, EmptyEncodedMessageDontCallSend)
+TEST_F(DiscoveryManagerTest, EmptyEncodedMessageDontCallSend)
 {
     // If the encoded message is empty, don't call esp_now_send
     ON_CALL(codec, encode(_, _, _)).WillByDefault(Return(std::vector<uint8_t>{}));
@@ -101,12 +117,12 @@ TEST_F(ChannelScannerTest, EmptyEncodedMessageDontCallSend)
     // esp_now_send is not called
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _)).Times(0);
 
-    IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL); // start channel
+    IDiscoveryManager::ScanResult res = scanner->scan(VALID_CHANNEL); // start channel
     ASSERT_FALSE(res.hub_found);                                    // hub not found
     ASSERT_EQ(VALID_CHANNEL, res.channel);                          // must stay on start channel
 }
 
-TEST_F(ChannelScannerTest, NotificationBitIncorrectReturnsHubNotFound)
+TEST_F(DiscoveryManagerTest, NotificationBitIncorrectReturnsHubNotFound)
 {
     // If the notification bit is incorrect, hub is not found
     ON_CALL(freertos_hal, task_notify_wait(_, _, _, _))
@@ -114,20 +130,20 @@ TEST_F(ChannelScannerTest, NotificationBitIncorrectReturnsHubNotFound)
             SetArgPointee<2>(NOTIFY_LOGICAL_ACK), // incorrect bit
             Return(pdPASS)));                     // return pdPASS
 
-    IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL); // start channel
+    IDiscoveryManager::ScanResult res = scanner->scan(VALID_CHANNEL); // start channel
     ASSERT_FALSE(res.hub_found);                                    // hub not found
     ASSERT_EQ(VALID_CHANNEL, res.channel);                          // must stay on start channel
 }
 
-TEST_F(ChannelScannerTest, ProbeMessageHasCorrectHeader)
+TEST_F(DiscoveryManagerTest, ProbeMessageHasCorrectHeader)
 {
     // Not initialized header
     MessageHeader captured_header;
 
     // Update node_id and node_type
-    NodeId NEW_ID = 03;
+    NodeId NEW_ID = 3;
     NodeType NEW_TYPE = 0x04;
-    scanner->update_node_info(NEW_ID, NEW_TYPE);
+    scanner->init(NEW_ID, NEW_TYPE, tx_manager, &observer);
 
     EXPECT_CALL(codec, encode(_, _, _))
         .Times(1)
@@ -136,6 +152,8 @@ TEST_F(ChannelScannerTest, ProbeMessageHasCorrectHeader)
     // We assume that hub is found
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
         .WillOnce(DoAll(SetArgPointee<2>(NOTIFY_LINK_ALIVE), Return(pdPASS)));
+    
+    EXPECT_CALL(observer, on_channel_found(_)).Times(1);
 
     scanner->scan(VALID_CHANNEL);
 
@@ -150,7 +168,7 @@ TEST_F(ChannelScannerTest, ProbeMessageHasCorrectHeader)
     EXPECT_EQ(captured_header.timestamp_ms, 0);
 }
 
-TEST_F(ChannelScannerTest, ChannelScanOrderStartsFromGivenChannel)
+TEST_F(DiscoveryManagerTest, ChannelScanOrderStartsFromGivenChannel)
 {
     testing::Sequence s;
 
@@ -163,7 +181,7 @@ TEST_F(ChannelScannerTest, ChannelScanOrderStartsFromGivenChannel)
     scanner->scan(VALID_CHANNEL);
 }
 
-TEST_F(ChannelScannerTest, HubFoundOnSecondAttemptOfSameChannel)
+TEST_F(DiscoveryManagerTest, HubFoundOnSecondAttemptOfSameChannel)
 {
     InSequence s;
 
@@ -179,8 +197,41 @@ TEST_F(ChannelScannerTest, HubFoundOnSecondAttemptOfSameChannel)
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
         .Times(1)
         .WillOnce(DoAll(SetArgPointee<2>(NOTIFY_LINK_ALIVE), Return(pdPASS)));
+    
+    EXPECT_CALL(observer, on_channel_found(VALID_CHANNEL)).Times(1);
 
-    IChannelScanner::ScanResult res = scanner->scan(VALID_CHANNEL);
+    IDiscoveryManager::ScanResult res = scanner->scan(VALID_CHANNEL);
     ASSERT_TRUE(res.hub_found);
     ASSERT_EQ(VALID_CHANNEL, res.channel);
+}
+
+TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfNotHub)
+{
+    // Setup scanner as Node
+    scanner->init(MY_ID, 0x02, tx_manager, &observer);
+
+    RxPacket packet;
+    EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
+    scanner->handle_probe(packet);
+}
+
+TEST_F(DiscoveryManagerTest, HandleProbeSendsResponseIfHub)
+{
+    // Setup scanner as Hub
+    scanner->init(MY_ID, ReservedTypes::HUB, tx_manager, &observer);
+
+    RxPacket packet;
+    packet.len = 10;
+    memset(packet.src_mac, 0xAA, 6);
+
+    MessageHeader captured_header;
+    ON_CALL(codec, decode_header(_, _)).WillByDefault(Return(MessageHeader{MessageType::CHANNEL_SCAN_PROBE, 0, 0x02, 5, 0x00, false, 0, 0}));
+    
+    EXPECT_CALL(codec, encode(_, _, _)).WillOnce(DoAll(testing::SaveArg<0>(&captured_header), Return(std::vector<uint8_t>{0x01, 0x02})));
+    EXPECT_CALL(tx_manager, queue_packet(_)).Times(1);
+
+    scanner->handle_probe(packet);
+
+    EXPECT_EQ(captured_header.msg_type, MessageType::CHANNEL_SCAN_RESPONSE);
+    EXPECT_EQ(captured_header.dest_node_id, 5);
 }
