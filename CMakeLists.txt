@@ -7,7 +7,7 @@ idf_component_register(
         "src/peer_manager.cpp"
         "src/message_codec.cpp"
         "src/tx_state_machine.cpp"
-        "src/channel_scanner.cpp"
+        "src/discovery_manager.cpp"
         "src/tx_manager.cpp"
         "src/heartbeat_manager.cpp"
         "src/pairing_manager.cpp"

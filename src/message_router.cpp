@@ -8,12 +8,12 @@
 static const char *TAG = "MessageRouter";
 
 MessageRouter::MessageRouter(
-    IPeerManager &peer_manager,
+    IDiscoveryManager &discovery_manager,
     ITxManager &tx_manager,
     IHeartbeatManager &heartbeat_manager,
     IPairingManager &pairing_manager,
     IMessageCodec &message_codec)
-    : peer_manager_(peer_manager)
+    : discovery_manager_(discovery_manager)
     , tx_manager_(tx_manager)
     , heartbeat_manager_(heartbeat_manager)
     , pairing_manager_(pairing_manager)
@@ -30,7 +30,6 @@ void MessageRouter::handle_packet(const RxPacket &packet)
 
     tx_manager_.notify_link_alive();
     // TODO: update last seen here or on manager rx_dispatch_task
-    // peer_manager_.update_last_seen(header.sender_node_id, esp_timer_get_time());
 
     switch (header.msg_type) {
     case MessageType::PAIR_REQUEST:
@@ -65,21 +64,17 @@ void MessageRouter::handle_packet(const RxPacket &packet)
         }
         auto resp = reinterpret_cast<const HeartbeatResponse *>(packet.data);
         heartbeat_manager_.handle_response(header.sender_node_id, resp->wifi_channel);
-        // Note: Channel update should be handled by the observer/facade if needed
         break;
     }
     case MessageType::ACK:
         tx_manager_.notify_logical_ack();
         break;
     case MessageType::CHANNEL_SCAN_PROBE:
-        handle_scan_probe(packet);
+        discovery_manager_.handle_probe(packet);
         break;
     case MessageType::CHANNEL_SCAN_RESPONSE:
     {
-        uint8_t ch;
-        esp_wifi_get_channel(&ch, nullptr);
-        peer_manager_.add(header.sender_node_id, packet.src_mac, header.sender_type); // TODO: Verify channel
-        // tx_manager_.notify_hub_found(); // By now, link alive is enough
+        // Hub found response, notify link alive to resume TX
         tx_manager_.notify_link_alive();
         break;
     }
@@ -110,31 +105,4 @@ bool MessageRouter::should_dispatch_to_worker(MessageType type)
     default:
         return false;
     }
-}
-
-void MessageRouter::handle_scan_probe(const RxPacket &packet)
-{
-    if (my_type_ != ReservedTypes::HUB)
-        return;
-    auto header_opt = message_codec_.decode_header(packet.data, packet.len);
-    if (!header_opt)
-        return;
-
-    TxPacket tx_packet;
-    memcpy(tx_packet.dest_mac, packet.src_mac, 6);
-    MessageHeader resp;
-    resp.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
-    resp.sender_node_id = my_id_;
-    resp.sender_type = my_type_;
-    resp.dest_node_id = header_opt->sender_node_id;
-    resp.sequence_number = 0;
-
-    auto encoded = message_codec_.encode(resp, nullptr, 0);
-    if (encoded.empty())
-        return;
-
-    tx_packet.len = encoded.size();
-    memcpy(tx_packet.data, encoded.data(), tx_packet.len);
-    tx_packet.requires_ack = false;
-    tx_manager_.queue_packet(tx_packet);
 }

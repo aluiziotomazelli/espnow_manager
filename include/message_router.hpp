@@ -2,18 +2,18 @@
 
 #include <queue>
 
+#include "i_discovery_manager.hpp"
 #include "i_heartbeat_manager.hpp"
 #include "i_message_codec.hpp"
 #include "i_message_router.hpp"
 #include "i_pairing_manager.hpp"
-#include "i_peer_manager.hpp"
 #include "i_tx_manager.hpp"
 
 class MessageRouter : public IMessageRouter
 {
 public:
     MessageRouter(
-        IPeerManager &peer_manager,
+        IDiscoveryManager &discovery_manager,
         ITxManager &tx_manager,
         IHeartbeatManager &heartbeat_manager,
         IPairingManager &pairing_manager,
@@ -35,9 +35,7 @@ public:
     bool should_dispatch_to_worker(MessageType type) override;
 
 private:
-    void handle_scan_probe(const RxPacket &packet);
-
-    IPeerManager &peer_manager_;
+    IDiscoveryManager &discovery_manager_;
     ITxManager &tx_manager_;
     IHeartbeatManager &heartbeat_manager_;
     IPairingManager &pairing_manager_;

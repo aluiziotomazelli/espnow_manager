@@ -8,7 +8,7 @@
 #include "freertos/task.h"
 #include "freertos/timers.h"
 
-#include "i_channel_scanner.hpp"
+#include "i_discovery_manager.hpp"
 #include "i_hal_wifi.hpp"
 #include "i_hal_freertos.hpp"
 #include "i_message_codec.hpp"
@@ -20,7 +20,7 @@ class TxManager : public ITxManager
 public:
     TxManager(
         ITxStateMachine &fsm,
-        IChannelScanner &scanner,
+        IDiscoveryManager &scanner,
         IWiFiHAL &hal,
         IFreeRTOSHAL &freertos_hal,
         IMessageCodec &codec,
@@ -42,7 +42,7 @@ public:
 
 private:
     ITxStateMachine &fsm_;
-    IChannelScanner &scanner_;
+    IDiscoveryManager &scanner_;
     IWiFiHAL &hal_;
     IMessageCodec &codec_;
     IFreeRTOSHAL &freertos_hal_;

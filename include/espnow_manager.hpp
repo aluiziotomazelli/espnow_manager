@@ -8,7 +8,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#include "i_channel_scanner.hpp"
+#include "i_discovery_manager.hpp"
 #include "i_espnow_manager.hpp"
 #include "i_heartbeat_manager.hpp"
 #include "i_message_codec.hpp"
@@ -33,11 +33,14 @@
  *
  * @see IEspNowManager for full API documentation.
  */
-class EspNowManager : public IEspNowManager
+class EspNowManager : public IEspNowManager, public IChannelObserver // Modified inheritance
 {
 public:
     /** @brief Get the singleton instance of EspNowManager */
     static EspNowManager &instance();
+
+    /** @brief IChannelObserver implementation */
+    void on_channel_found(uint8_t channel) override; // Added
 
     /**
      * @brief Dependency injection constructor for testing
@@ -50,7 +53,7 @@ public:
         std::unique_ptr<IBootstrapper> bootstrapper,
         std::unique_ptr<IPeerManager> peer_manager,
         std::unique_ptr<IMessageCodec> message_codec,
-        std::unique_ptr<IChannelScanner> scanner,
+        std::unique_ptr<IDiscoveryManager> scanner,
         std::unique_ptr<ITxStateMachine> tx_fsm,
         std::unique_ptr<ITxManager> tx_manager,
         std::unique_ptr<IHeartbeatManager> heartbeat_manager,
@@ -139,7 +142,7 @@ protected:
     std::unique_ptr<IBootstrapper> bootstrapper_;          ///< Pointer to bootstrapper
     std::unique_ptr<IPeerManager> peer_manager_;           ///< Pointer to peer manager
     std::unique_ptr<IMessageCodec> message_codec_;         ///< Pointer to message codec
-    std::unique_ptr<IChannelScanner> scanner_;             ///< Pointer to channel scanner
+    std::unique_ptr<IDiscoveryManager> scanner_;             ///< Pointer to discovery manager
     std::unique_ptr<ITxStateMachine> tx_fsm_;              ///< Pointer to tx state machine
     std::unique_ptr<ITxManager> tx_manager_;               ///< Pointer to tx manager
     std::unique_ptr<IHeartbeatManager> heartbeat_manager_; ///< Pointer to heartbeat manager

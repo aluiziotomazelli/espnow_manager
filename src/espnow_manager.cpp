@@ -14,7 +14,7 @@
 #include "freertos/task.h"
 
 #include "bootstrapper.hpp"
-#include "channel_scanner.hpp"
+#include "discovery_manager.hpp"
 #include "heartbeat_manager.hpp"
 #include "message_codec.hpp"
 #include "message_router.hpp"
@@ -42,8 +42,7 @@ EspNowManager &EspNowManager::instance()
     static auto bootstraper = std::make_unique<Bootstrapper>(*driver_hal, *freertos_hal);
     static auto peer_manager = std::make_unique<PeerManager>(storage, *driver_hal, *freertos_hal);
     static auto message_codec = std::make_unique<MessageCodec>();
-    static auto scanner = std::make_unique<ChannelScanner>(
-        *driver_hal, *message_codec, *freertos_hal, ReservedIds::HUB, ReservedTypes::HUB);
+    static auto scanner = std::make_unique<DiscoveryManager>(*driver_hal, *message_codec, *freertos_hal);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
     static auto tx_manager =
         std::make_unique<TxManager>(*tx_fsm, *scanner, *driver_hal, *freertos_hal, *message_codec, 500);
@@ -51,7 +50,7 @@ EspNowManager &EspNowManager::instance()
         ReservedIds::HUB, *tx_manager, *peer_manager, *message_codec, *freertos_hal, *timer_hal);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec);
     static auto message_router =
-        std::make_unique<MessageRouter>(*peer_manager, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
+        std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
 
     static EspNowManager instance(
         std::move(driver_hal),
@@ -76,7 +75,7 @@ EspNowManager::EspNowManager(
     std::unique_ptr<IBootstrapper> bootstraper,
     std::unique_ptr<IPeerManager> peer_manager,
     std::unique_ptr<IMessageCodec> message_codec,
-    std::unique_ptr<IChannelScanner> scanner,
+    std::unique_ptr<IDiscoveryManager> scanner,
     std::unique_ptr<ITxStateMachine> tx_fsm,
     std::unique_ptr<ITxManager> tx_manager,
     std::unique_ptr<IHeartbeatManager> heartbeat_manager,
@@ -173,6 +172,11 @@ esp_err_t EspNowManager::deinit()
     return ESP_OK;
 }
 
+void EspNowManager::on_channel_found(uint8_t channel)
+{
+    update_wifi_channel(channel);
+}
+
 esp_err_t EspNowManager::init(const EspNowConfig &config)
 {
     if (is_initialized_)
@@ -219,7 +223,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
 
     heartbeat_manager_->update_node_id(config_.node_id);
     if (scanner_)
-        scanner_->update_node_info(config_.node_id, config_.node_type);
+        scanner_->init(config_.node_id, config_.node_type, *tx_manager_, this);
     if (message_router_) {
         message_router_->set_app_queue(config_.app_rx_queue);
         message_router_->set_node_info(config_.node_id, config_.node_type);

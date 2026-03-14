@@ -12,7 +12,7 @@ static const char *TAG = "TxManager";
 
 TxManager::TxManager(
     ITxStateMachine &fsm,
-    IChannelScanner &scanner,
+    IDiscoveryManager &scanner,
     IWiFiHAL &hal,
     IFreeRTOSHAL &freertos_hal,
     IMessageCodec &codec,
