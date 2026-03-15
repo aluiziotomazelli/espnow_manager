@@ -44,7 +44,7 @@ protected:
     NiceMock<MockTimerHAL> hal_timer_;
 
     // Default encoded payload — non-empty so queue_packet is reached
-    std::vector<uint8_t> dummy_encoded_{0x01, 0x02, 0x03};
+    static constexpr size_t DUMMY_ENCODED_SIZE = 3;
 
     // Helper: build a minimal valid RxPacket for handle_request
     RxPacket make_heartbeat_packet(NodeId sender_id, uint8_t len_override = 0)
@@ -63,11 +63,11 @@ protected:
         return pkt;
     }
 
-    // Convenience: make codec_.encode() return a non-empty vector
-    void stub_encode_ok() { ON_CALL(codec_, encode(_, _, _)).WillByDefault(Return(dummy_encoded_)); }
+    // Convenience: make codec_.encode() return a non-zero size
+    void stub_encode_ok() { ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault(Return(DUMMY_ENCODED_SIZE)); }
 
-    // Convenience: make codec_.encode() return empty (failure)
-    void stub_encode_fail() { ON_CALL(codec_, encode(_, _, _)).WillByDefault(Return(std::vector<uint8_t>{})); }
+    // Convenience: make codec_.encode() return 0 (failure)
+    void stub_encode_fail() { ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault(Return(0)); }
 
     // Convenience: set up hal_freertos_ so init() succeeds for a PEER node
     void stub_timer_init_ok()
@@ -237,9 +237,9 @@ TEST_F(HeartbeatManagerTest, HandleRequest_Valid_ResponseHeaderIsCorrect)
     RxPacket pkt = make_heartbeat_packet(MY_ID);
 
     MessageHeader captured_hdr{};
-    ON_CALL(codec_, encode(_, _, _)).WillByDefault([&](const MessageHeader &hdr, const void *, size_t) {
+    ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault([&](const MessageHeader &hdr, const void *, size_t, uint8_t *, size_t) {
         captured_hdr = hdr;
-        return dummy_encoded_;
+        return DUMMY_ENCODED_SIZE;
     });
 
     hub.handle_request(pkt);
@@ -339,9 +339,9 @@ TEST_F(HeartbeatManagerTest, SendHeartbeat_HeaderIsCorrect)
     node.init(0, PEER);
 
     MessageHeader captured_hdr{};
-    ON_CALL(codec_, encode(_, _, _)).WillByDefault([&](const MessageHeader &hdr, const void *, size_t) {
+    ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault([&](const MessageHeader &hdr, const void *, size_t, uint8_t *, size_t) {
         captured_hdr = hdr;
-        return dummy_encoded_;
+        return DUMMY_ENCODED_SIZE;
     });
 
     node.force_send_heartbeat();
@@ -379,9 +379,9 @@ TEST_F(HeartbeatManagerTest, UpdateNodeId_SubsequentHeartbeatUsesNewId)
     node.update_node_id(99);
 
     MessageHeader captured_hdr{};
-    ON_CALL(codec_, encode(_, _, _)).WillByDefault([&](const MessageHeader &hdr, const void *, size_t) {
+    ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault([&](const MessageHeader &hdr, const void *, size_t, uint8_t *, size_t) {
         captured_hdr = hdr;
-        return dummy_encoded_;
+        return DUMMY_ENCODED_SIZE;
     });
 
     node.force_send_heartbeat();
@@ -400,13 +400,13 @@ TEST_F(HeartbeatManagerTest, HandleRequest_ResponseContainsCurrentChannel)
     RxPacket pkt = make_heartbeat_packet(MY_ID);
 
     uint8_t captured_channel = 0;
-    ON_CALL(codec_, encode(_, _, _))
-        .WillByDefault([&](const MessageHeader &, const void *payload, size_t len) -> std::vector<uint8_t> {
+    ON_CALL(codec_, encode(_, _, _, _, _))
+        .WillByDefault([&](const MessageHeader &, const void *payload, size_t len, uint8_t *, size_t) -> size_t {
             // Reconstruction of the payload into the HeartbeatResponse struct
             HeartbeatResponse response{};
             memcpy(&response.server_time_ms, payload, len);
             captured_channel = response.wifi_channel;
-            return dummy_encoded_;
+            return DUMMY_ENCODED_SIZE;
         });
 
     hub.handle_request(pkt);
