@@ -37,3 +37,7 @@ Thumbs.db
 **/__pycache__/
 *.pyc
 **/coverage/**
+
+#cli
+GEMINI.*
+.gemini/
