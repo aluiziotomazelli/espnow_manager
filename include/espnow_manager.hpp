@@ -136,13 +136,13 @@ protected:
     EspNowConfig config_{};
 
     // --- Sub-components (Interfaces) ---
-    std::unique_ptr<IWiFiHAL> driver_hal_;                 ///< Pointer to WiFi HAL
-    std::unique_ptr<ITimerHAL> timer_hal_;                 ///< Pointer to timer HAL
-    std::unique_ptr<IFreeRTOSHAL> freertos_hal_;           ///< Pointer to FreeRTOS HAL
+    std::unique_ptr<IWiFiHAL> hal_driver_;                 ///< Pointer to WiFi HAL
+    std::unique_ptr<ITimerHAL> hal_timer_;                 ///< Pointer to timer HAL
+    std::unique_ptr<IFreeRTOSHAL> hal_freertos_;           ///< Pointer to FreeRTOS HAL
     std::unique_ptr<IBootstrapper> bootstrapper_;          ///< Pointer to bootstrapper
     std::unique_ptr<IPeerManager> peer_manager_;           ///< Pointer to peer manager
     std::unique_ptr<IMessageCodec> message_codec_;         ///< Pointer to message codec
-    std::unique_ptr<IDiscoveryManager> scanner_;             ///< Pointer to discovery manager
+    std::unique_ptr<IDiscoveryManager> scanner_;           ///< Pointer to discovery manager
     std::unique_ptr<ITxStateMachine> tx_fsm_;              ///< Pointer to tx state machine
     std::unique_ptr<ITxManager> tx_manager_;               ///< Pointer to tx manager
     std::unique_ptr<IHeartbeatManager> heartbeat_manager_; ///< Pointer to heartbeat manager

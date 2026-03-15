@@ -35,26 +35,26 @@ static const char *TAG = "EspNow";
 EspNowManager &EspNowManager::instance()
 {
     static StorageManager storage;
-    static auto driver_hal = std::make_unique<WiFiHAL>();
-    static auto timer_hal = std::make_unique<TimerHAL>();
-    static auto freertos_hal = std::make_unique<FreeRTOSHAL>();
-    static auto bootstraper = std::make_unique<Bootstrapper>(*driver_hal, *freertos_hal);
-    static auto peer_manager = std::make_unique<PeerManager>(storage, *driver_hal, *freertos_hal);
+    static auto hal_wifi = std::make_unique<WiFiHAL>();
+    static auto hal_timer = std::make_unique<TimerHAL>();
+    static auto hal_freertos = std::make_unique<FreeRTOSHAL>();
+    static auto bootstraper = std::make_unique<Bootstrapper>(*hal_wifi, *hal_freertos);
+    static auto peer_manager = std::make_unique<PeerManager>(storage, *hal_wifi, *hal_freertos);
     static auto message_codec = std::make_unique<MessageCodec>();
-    static auto scanner = std::make_unique<DiscoveryManager>(*driver_hal, *message_codec, *freertos_hal);
+    static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *message_codec, *hal_freertos);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
     static auto tx_manager =
-        std::make_unique<TxManager>(*tx_fsm, *scanner, *driver_hal, *freertos_hal, *message_codec, 500);
+        std::make_unique<TxManager>(*tx_fsm, *scanner, *hal_wifi, *hal_freertos, *message_codec, 500);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(
-        ReservedIds::HUB, *tx_manager, *peer_manager, *message_codec, *freertos_hal, *timer_hal);
+        ReservedIds::HUB, *tx_manager, *peer_manager, *message_codec, *hal_freertos, *hal_timer);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec);
     static auto message_router =
         std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
 
     static EspNowManager instance(
-        std::move(driver_hal),
-        std::move(timer_hal),
-        std::move(freertos_hal),
+        std::move(hal_wifi),
+        std::move(hal_timer),
+        std::move(hal_freertos),
         std::move(bootstraper),
         std::move(peer_manager),
         std::move(message_codec),
@@ -80,9 +80,9 @@ EspNowManager::EspNowManager(
     std::unique_ptr<IHeartbeatManager> heartbeat_manager,
     std::unique_ptr<IPairingManager> pairing_manager,
     std::unique_ptr<IMessageRouter> message_router)
-    : driver_hal_(std::move(driver_hal))
-    , timer_hal_(std::move(timer_hal))
-    , freertos_hal_(std::move(freertos_hal))
+    : hal_driver_(std::move(driver_hal))
+    , hal_timer_(std::move(timer_hal))
+    , hal_freertos_(std::move(freertos_hal))
     , bootstrapper_(std::move(bootstraper))
     , peer_manager_(std::move(peer_manager))
     , message_codec_(std::move(message_codec))
@@ -119,24 +119,23 @@ esp_err_t EspNowManager::deinit()
 
     // Signal tasks to stop
     if (rx_dispatch_task_handle_ != nullptr) {
-        // freertos_hal_.task_notify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
-        xTaskNotify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
+        hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
     }
     if (transport_worker_task_handle_ != nullptr) {
-        xTaskNotify(transport_worker_task_handle_, NOTIFY_STOP, eSetBits);
+        hal_freertos_->task_notify(transport_worker_task_handle_, NOTIFY_STOP, eSetBits);
     }
 
     // Send packets to weakup tasks
     RxPacket stop_packet = {};
     if (rx_dispatch_queue_ != nullptr)
-        xQueueSend(rx_dispatch_queue_, &stop_packet, 0);
+        hal_freertos_->queue_send(rx_dispatch_queue_, &stop_packet, 0);
     if (transport_worker_queue_ != nullptr)
-        xQueueSend(transport_worker_queue_, &stop_packet, 0);
+        hal_freertos_->queue_send(transport_worker_queue_, &stop_packet, 0);
 
     // Wait for tasks to exit (up to 1s).
     int timeout = 1000;
     while ((rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) && timeout-- > 0) {
-        vTaskDelay(pdMS_TO_TICKS(10));
+        hal_freertos_->task_delay(pdMS_TO_TICKS(10));
     }
 
     if (timeout <= 0 && (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr)) {
@@ -147,7 +146,7 @@ esp_err_t EspNowManager::deinit()
     if (esp_now_initialized_ && peer_manager_) {
         std::vector<PeerInfo> peers = peer_manager_->get_all();
         for (const auto &peer : peers) {
-            driver_hal_->hal_esp_now_del_peer(peer.mac);
+            hal_driver_->hal_esp_now_del_peer(peer.mac);
         }
     }
 
@@ -236,7 +235,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
             info.channel = peer.channel;
             info.ifidx = WIFI_IF_STA;
             info.encrypt = false;
-            driver_hal_->hal_esp_now_add_peer(&info);
+            hal_driver_->hal_esp_now_add_peer(&info);
         }
     }
 
@@ -326,10 +325,10 @@ esp_err_t EspNowManager::send_command(
 
 esp_err_t EspNowManager::confirm_reception(AckStatus status)
 {
-    if (xSemaphoreTake(ack_mutex_, pdMS_TO_TICKS(100)) != pdTRUE)
+    if (hal_freertos_->semaphore_take(ack_mutex_, pdMS_TO_TICKS(100)) != pdTRUE)
         return ESP_ERR_TIMEOUT;
     if (!last_header_requiring_ack_.has_value()) {
-        xSemaphoreGive(ack_mutex_);
+        hal_freertos_->semaphore_give(ack_mutex_);
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -346,14 +345,14 @@ esp_err_t EspNowManager::confirm_reception(AckStatus status)
     TxPacket tx_packet;
     if (!peer_manager_->find_mac(header_to_ack.sender_node_id, tx_packet.dest_mac)) {
         last_header_requiring_ack_.reset();
-        xSemaphoreGive(ack_mutex_);
+        hal_freertos_->semaphore_give(ack_mutex_);
         return ESP_ERR_NOT_FOUND;
     }
 
     auto encoded = message_codec_->encode(ack.header, &ack.ack_sequence, sizeof(AckMessage) - sizeof(MessageHeader));
     if (encoded.empty()) {
         last_header_requiring_ack_.reset();
-        xSemaphoreGive(ack_mutex_);
+        hal_freertos_->semaphore_give(ack_mutex_);
         return ESP_FAIL;
     }
 
@@ -363,7 +362,7 @@ esp_err_t EspNowManager::confirm_reception(AckStatus status)
 
     esp_err_t err = tx_manager_->queue_packet(tx_packet);
     last_header_requiring_ack_.reset();
-    xSemaphoreGive(ack_mutex_);
+    hal_freertos_->semaphore_give(ack_mutex_);
     return err;
 }
 
@@ -398,7 +397,7 @@ void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8
     packet.len = len;
     packet.rssi = info->rx_ctrl->rssi;
     packet.timestamp_us = esp_timer_get_time();
-    xQueueSendFromISR(instance().rx_dispatch_queue_, &packet, 0);
+    instance().hal_freertos_->queue_send_fromISR(instance().rx_dispatch_queue_, &packet, 0);
 }
 
 void EspNowManager::esp_now_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status)
@@ -413,13 +412,14 @@ void EspNowManager::rx_dispatch_task(void *arg)
     RxPacket packet;
     while (true) {
         uint32_t notifications = 0;
-        if (xTaskNotifyWait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE && (notifications & NOTIFY_STOP))
+        if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE &&
+            (notifications & NOTIFY_STOP))
             break;
-        if (xQueueReceive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (self->hal_freertos_->queue_receive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
             // Check for stop packet (empty packet or specific flag)
             if (packet.len == 0) {
                 uint32_t notif = 0;
-                if (xTaskNotifyWait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif & NOTIFY_STOP))
+                if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif & NOTIFY_STOP))
                     break;
             }
 
@@ -431,13 +431,13 @@ void EspNowManager::rx_dispatch_task(void *arg)
             const MessageHeader &header = header_opt.value();
 
             if (self->message_router_->should_dispatch_to_worker(header.msg_type)) {
-                xQueueSend(self->transport_worker_queue_, &packet, 0);
+                self->hal_freertos_->queue_send(self->transport_worker_queue_, &packet, 0);
             }
             else {
                 if (header.requires_ack) {
-                    if (xSemaphoreTake(self->ack_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
+                    if (self->hal_freertos_->semaphore_take(self->ack_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
                         self->last_header_requiring_ack_ = header;
-                        xSemaphoreGive(self->ack_mutex_);
+                        self->hal_freertos_->semaphore_give(self->ack_mutex_);
                     }
                 }
                 self->message_router_->handle_packet(packet);
@@ -454,12 +454,13 @@ void EspNowManager::transport_worker_task(void *arg)
     RxPacket packet;
     while (true) {
         uint32_t notifications = 0;
-        if (xTaskNotifyWait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE && (notifications & NOTIFY_STOP))
+        if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE &&
+            (notifications & NOTIFY_STOP))
             break;
-        if (xQueueReceive(self->transport_worker_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (self->hal_freertos_->queue_receive(self->transport_worker_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
             if (packet.len == 0) {
                 uint32_t notif = 0;
-                if (xTaskNotifyWait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif & NOTIFY_STOP))
+                if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif & NOTIFY_STOP))
                     break;
             }
 
