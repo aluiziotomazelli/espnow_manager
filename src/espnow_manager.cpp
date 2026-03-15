@@ -27,14 +27,25 @@
 #include "bootstrapper.hpp"
 #include "hal_freertos.hpp"
 
+#include "esp_attr.h"
+#include "hal_nvs.hpp"
+#include "persistence_backend.hpp"
+#include "storage_manager.hpp"
 #include "espnow_manager.hpp"
 
 static const char *TAG = "EspNow";
 
+// RTC storage
+static RTC_DATA_ATTR PersistentData g_rtc_storage;
+
 // --- Singleton ---
 EspNowManager &EspNowManager::instance()
 {
-    static StorageManager storage;
+    static NvsHAL nvs_hal;
+    static auto rtc_backend = std::make_unique<RtcBackend>(g_rtc_storage);
+    static auto nvs_backend = std::make_unique<NvsBackend>(nvs_hal);
+    static StorageManager storage(std::move(rtc_backend), std::move(nvs_backend));
+
     static auto hal_wifi = std::make_unique<WiFiHAL>();
     static auto hal_timer = std::make_unique<TimerHAL>();
     static auto hal_freertos = std::make_unique<FreeRTOSHAL>();
@@ -47,7 +58,8 @@ EspNowManager &EspNowManager::instance()
         std::make_unique<TxManager>(*tx_fsm, *scanner, *hal_wifi, *hal_freertos, *message_codec, 500);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(
         ReservedIds::HUB, *tx_manager, *peer_manager, *message_codec, *hal_freertos, *hal_timer);
-    static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec, *hal_freertos);
+    static auto pairing_mgr =
+        std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec, *hal_freertos);
     static auto message_router =
         std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
 

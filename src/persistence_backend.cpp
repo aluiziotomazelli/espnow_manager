@@ -11,10 +11,9 @@ static const char *NVS_NAMESPACE = "espnow_store";
 static const char *NVS_KEY = "persist_data";
 
 // --- RTC Backend ---
-static RTC_DATA_ATTR PersistentData g_rtc_storage;
 
-RtcBackend::RtcBackend(PersistentData *storage_ptr)
-    : storage_(storage_ptr)
+RtcBackend::RtcBackend(PersistentData &storage)
+    : storage_(storage)
 {
 }
 
@@ -22,7 +21,7 @@ esp_err_t RtcBackend::load(void *data, size_t size)
 {
     if (size > sizeof(PersistentData))
         return ESP_ERR_INVALID_SIZE;
-    memcpy(data, storage_, size);
+    memcpy(data, &storage_, size);
     return ESP_OK;
 }
 
@@ -30,7 +29,7 @@ esp_err_t RtcBackend::save(const void *data, size_t size)
 {
     if (size > sizeof(PersistentData))
         return ESP_ERR_INVALID_SIZE;
-    memcpy(storage_, data, size);
+    memcpy(&storage_, data, size);
     return ESP_OK;
 }
 

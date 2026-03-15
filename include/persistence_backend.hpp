@@ -12,13 +12,13 @@
 class RtcBackend : public IPersistenceBackend
 {
 public:
-    RtcBackend(PersistentData *storage_ptr = nullptr);
+    explicit RtcBackend(PersistentData &storage);
 
     esp_err_t load(void *data, size_t size) override;
     esp_err_t save(const void *data, size_t size) override;
 
 private:
-    PersistentData *storage_;
+    PersistentData &storage_;
 };
 
 /**
