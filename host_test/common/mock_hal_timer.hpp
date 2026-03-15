@@ -5,7 +5,8 @@
 #include "gtest/gtest.h"
 
 #include "i_hal_timer.hpp"
-class MockNvsHAL : public INvsHAL
+
+class MockTimerHAL : public ITimerHAL
 {
 public:
     MOCK_METHOD(uint64_t, get_time_us, ());

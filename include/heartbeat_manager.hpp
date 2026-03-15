@@ -28,7 +28,7 @@ public:
     void update_node_id(NodeId id) override;
     esp_err_t deinit() override;
     void handle_response(NodeId hub_id) override;
-    void handle_request(NodeId sender_id, const uint8_t *mac, uint64_t uptime_ms) override;
+    void handle_request(const RxPacket &packet) override;
 
 private:
     NodeId my_id_;

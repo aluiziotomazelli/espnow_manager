@@ -73,23 +73,36 @@ void HeartbeatManager::handle_response(NodeId hub_id)
     tx_mgr_.notify_link_alive();
 }
 
-void HeartbeatManager::handle_request(NodeId sender_id, const uint8_t *mac, uint64_t uptime_ms)
+void HeartbeatManager::handle_request(const RxPacket &packet)
 {
+    auto header_opt = codec_.decode_header(packet.data, packet.len);
+    if (!header_opt) {
+        return;
+    }
+    const MessageHeader &header = header_opt.value();
+
+    if (packet.len < sizeof(HeartbeatMessage)) {
+        ESP_LOGW(TAG, "Malformed HEARTBEAT: len %d < %d", (int)packet.len, (int)sizeof(HeartbeatMessage));
+        return;
+    }
+
+    // We only need the header for now
     uint64_t now_ms = hal_timer_.get_time_us() / 1000;
-    peer_mgr_.update_last_seen(sender_id, now_ms);
-    ESP_LOGI(TAG, "Heartbeat received from Node ID %d.", (int)sender_id);
+    
+    peer_mgr_.update_last_seen(header.sender_node_id, now_ms);
+    ESP_LOGI(TAG, "Heartbeat received from Node ID %d.", (int)header.sender_node_id);
 
     HeartbeatResponse response;
     response.header.msg_type = MessageType::HEARTBEAT_RESPONSE;
     response.header.sender_node_id = my_id_;
     response.header.sender_type = my_type_;
-    response.header.dest_node_id = sender_id;
+    response.header.dest_node_id = header.sender_node_id;
     response.header.sequence_number = 0;
     response.server_time_ms = now_ms;
     response.wifi_channel = 1; // Needs real channel, but for now fixed
 
     TxPacket tx_packet;
-    memcpy(tx_packet.dest_mac, mac, 6);
+    memcpy(tx_packet.dest_mac, packet.src_mac, 6);
     auto encoded =
         codec_.encode(response.header, &response.server_time_ms, sizeof(HeartbeatResponse) - sizeof(MessageHeader));
     if (!encoded.empty()) {

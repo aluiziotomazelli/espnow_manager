@@ -47,15 +47,8 @@ void MessageRouter::handle_packet(const RxPacket &packet)
         pairing_manager_.handle_response(packet);
         break;
     case MessageType::HEARTBEAT:
-    {
-        if (packet.len < sizeof(HeartbeatMessage)) {
-            ESP_LOGW(TAG, "Malformed HEARTBEAT: len %d < %d", (int)packet.len, (int)sizeof(HeartbeatMessage));
-            return;
-        }
-        auto msg = reinterpret_cast<const HeartbeatMessage *>(packet.data);
-        heartbeat_manager_.handle_request(header.sender_node_id, packet.src_mac, msg->uptime_ms);
+        heartbeat_manager_.handle_request(packet);
         break;
-    }
     case MessageType::HEARTBEAT_RESPONSE:
     {
         if (packet.len < sizeof(HeartbeatResponse)) {

@@ -281,11 +281,11 @@ void TxManager::run()
 
         case TxState::SCANNING:
         {
-            uint8_t current_channel = 1;
-            hal_.wifi_get_channel(&current_channel);
-            auto result = scanner_.scan(current_channel);
+            // Start scan from channel 1 (DiscoveryManager will loop through all 13)
+            auto result = scanner_.scan(1);
             if (result.hub_found) {
-                hal_.wifi_set_channel(result.channel);
+                // Link is restored. The actual WiFi channel update was handled
+                // by EspNowManager via the DiscoveryManager observer callback.
                 fsm_.on_link_alive();
             }
             else {

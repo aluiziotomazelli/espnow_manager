@@ -48,11 +48,5 @@ public:
     }
 
     /** @internal */
-    virtual void handle_request(NodeId sender_id, const uint8_t *mac, uint64_t uptime_ms) = 0;
-    /** @internal */
-    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
-    void handle_request(T sender_id, const uint8_t *mac, uint64_t uptime_ms)
-    {
-        handle_request(static_cast<NodeId>(sender_id), mac, uptime_ms);
-    }
+    virtual void handle_request(const RxPacket &packet) = 0;
 };
