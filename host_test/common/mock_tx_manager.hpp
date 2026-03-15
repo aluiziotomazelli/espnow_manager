@@ -1,17 +1,15 @@
-// host_test/common/mock_tx_manager.hpp
+// mock_tx_manager.hpp
 #pragma once
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
-
+#include <gmock/gmock.h>
 #include "i_tx_manager.hpp"
 
 class MockTxManager : public ITxManager
 {
 public:
-    MOCK_METHOD(esp_err_t, init, (uint32_t, UBaseType_t), (override));
+    MOCK_METHOD(esp_err_t, init, (uint32_t stack_size, UBaseType_t priority), (override));
     MOCK_METHOD(esp_err_t, deinit, (), (override));
-    MOCK_METHOD(esp_err_t, queue_packet, (const TxPacket &), (override));
+    MOCK_METHOD(esp_err_t, queue_packet, (const TxPacket &packet), (override));
     MOCK_METHOD(void, notify_physical_fail, (), (override));
     MOCK_METHOD(void, notify_link_alive, (), (override));
     MOCK_METHOD(void, notify_logical_ack, (), (override));

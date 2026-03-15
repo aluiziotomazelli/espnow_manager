@@ -50,6 +50,7 @@ protected:
         manager = std::make_unique<PeerManager>(storage, wifi_hal, freertos_hal);
     }
 
+    
     static constexpr NodeId ID_2 = 2;
     static constexpr NodeId ID_3 = 3;
     static constexpr NodeId ID_4 = 4;

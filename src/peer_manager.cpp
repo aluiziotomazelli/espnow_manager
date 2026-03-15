@@ -20,6 +20,7 @@ PeerManager::PeerManager(IStorageManager &storage, IWiFiHAL &driver_hal, IFreeRT
     , freertos_hal_(freertos_hal)
 {
     mutex_ = freertos_hal_.mutex_create();
+    peers_.reserve(MAX_PEERS);
 }
 
 PeerManager::~PeerManager()

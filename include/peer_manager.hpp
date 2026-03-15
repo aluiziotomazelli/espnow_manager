@@ -39,6 +39,7 @@ private:
     IWiFiHAL &driver_hal_;
     IFreeRTOSHAL &freertos_hal_;
 
+    // TODO: replace std::vector<Peer> with etl::vector<Peer, MAX_PEERS> to avoid heap allocation?
     std::vector<PeerInfo> peers_;
     SemaphoreHandle_t mutex_;
     uint8_t current_channel_ = 0;

@@ -4,6 +4,7 @@
 
 #include "esp_rom_crc.h"
 
+// TODO: replace std::vector return with encode_into(uint8_t* out, size_t out_ma
 std::vector<uint8_t> MessageCodec::encode(const MessageHeader &header, const void *payload, size_t len)
 {
     size_t total_len = sizeof(MessageHeader) + len + CRC_SIZE;
@@ -17,7 +18,7 @@ std::vector<uint8_t> MessageCodec::encode(const MessageHeader &header, const voi
         memcpy(buffer.data() + sizeof(MessageHeader), payload, len);
     }
 
-    uint8_t crc   = esp_rom_crc8_le(0, buffer.data(), total_len - CRC_SIZE);
+    uint8_t crc = esp_rom_crc8_le(0, buffer.data(), total_len - CRC_SIZE);
     buffer.back() = crc;
 
     return buffer;
@@ -40,7 +41,7 @@ bool MessageCodec::validate_crc(const uint8_t *data, size_t len)
         return false;
     }
 
-    uint8_t received_crc   = data[len - 1];
+    uint8_t received_crc = data[len - 1];
     uint8_t calculated_crc = calculate_crc(data, len - CRC_SIZE);
 
     return received_crc == calculated_crc;
@@ -50,3 +51,31 @@ uint8_t MessageCodec::calculate_crc(const uint8_t *data, size_t len)
 {
     return esp_rom_crc8_le(0, data, len);
 }
+
+// TODO: change TxPacket dest_mac/src_mac to std::array<uint8_t, 6> to allow direct assignment
+// TODO: replace encode() vector return with encode_into() writing directly to TxPacket::data
+
+// Na interface IMessageCodec
+//
+// virtual size_t encode(const MessageHeader &header, const void *payload,
+//                       size_t payload_len, uint8_t *out, size_t out_max) = 0;
+
+// // Template que esconde o sizeof e o cast
+// template <typename T>
+// size_t encode(const MessageHeader &header, const T &payload, uint8_t *out, size_t out_max)
+// {
+//     return encode(header, &payload, sizeof(T), out, out_max);
+// }
+
+// HeartbeatManager::handle_request(const RxPacket &packet)
+
+// TxPacket tx_packet;
+// memcpy(tx_packet.dest_mac, packet.src_mac, 6);
+
+// size_t len = codec_.encode(response.header, response.server_time_ms,
+//                            tx_packet.data, sizeof(tx_packet.data));
+// if (len > 0) {
+//     tx_packet.len = len;
+//     tx_packet.requires_ack = false;
+//     tx_mgr_.queue_packet(tx_packet);
+// }

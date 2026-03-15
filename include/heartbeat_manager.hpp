@@ -31,6 +31,9 @@ public:
     void handle_request(const RxPacket &packet) override;
     esp_err_t deinit() override;
 
+protected:
+    void send_heartbeat();
+
 private:
     NodeId my_id_;
 
@@ -45,9 +48,5 @@ private:
     uint8_t current_channel_ = 1;
     TimerHandle_t timer_ = nullptr;
 
-protected:
-    void send_heartbeat();
-
-private:
     static void timer_cb(TimerHandle_t xTimer);
 };

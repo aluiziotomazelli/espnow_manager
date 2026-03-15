@@ -6,16 +6,23 @@
 
 #include "i_peer_manager.hpp"
 
+// Note: Template methods (add, remove, find_mac, update_last_seen with enum)
+// are implemented in the base interface and redirect to the mocked methods
+
 class MockPeerManager : public IPeerManager
 {
 public:
-    MOCK_METHOD(esp_err_t, add, (NodeId, const uint8_t *, NodeType, uint32_t), (override));
-    MOCK_METHOD(esp_err_t, remove, (NodeId), (override));
-    MOCK_METHOD(bool, find_mac, (NodeId, uint8_t *), (override));
+    MOCK_METHOD(
+        esp_err_t,
+        add,
+        (NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms),
+        (override));
+    MOCK_METHOD(esp_err_t, remove, (NodeId id), (override));
+    MOCK_METHOD(bool, find_mac, (NodeId id, uint8_t *mac), (override));
     MOCK_METHOD(std::vector<PeerInfo>, get_all, (), (override));
-    MOCK_METHOD(std::vector<NodeId>, get_offline, (uint64_t), (override));
-    MOCK_METHOD(void, update_last_seen, (NodeId, uint64_t), (override));
-    MOCK_METHOD(esp_err_t, load_from_storage, (uint8_t &), (override));
+    MOCK_METHOD(std::vector<NodeId>, get_offline, (uint64_t now_ms), (override));
+    MOCK_METHOD(void, update_last_seen, (NodeId id, uint64_t now_ms), (override));
+    MOCK_METHOD(esp_err_t, load_from_storage, (uint8_t &wifi_channel), (override));
     MOCK_METHOD(void, persist, (), (override));
-    MOCK_METHOD(void, set_channel, (uint8_t), (override));
+    MOCK_METHOD(void, set_channel, (uint8_t channel), (override));
 };
