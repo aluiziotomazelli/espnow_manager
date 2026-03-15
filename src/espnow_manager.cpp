@@ -292,12 +292,10 @@ esp_err_t EspNowManager::send_data(
     header.dest_node_id = dest_node_id;
     header.timestamp_ms = get_time_ms();
 
-    auto encoded = message_codec_->encode(header, payload, len);
-    if (encoded.empty())
+    tx_packet.len = message_codec_->encode(header, payload, len, tx_packet.data, sizeof(tx_packet.data));
+    if (tx_packet.len == 0)
         return ESP_ERR_INVALID_ARG;
 
-    tx_packet.len = encoded.size();
-    memcpy(tx_packet.data, encoded.data(), tx_packet.len);
     tx_packet.requires_ack = require_ack;
 
     return tx_manager_->queue_packet(tx_packet);
@@ -324,12 +322,10 @@ esp_err_t EspNowManager::send_command(
     header.dest_node_id = dest_node_id;
     header.timestamp_ms = get_time_ms();
 
-    auto encoded = message_codec_->encode(header, payload, len);
-    if (encoded.empty())
+    tx_packet.len = message_codec_->encode(header, payload, len, tx_packet.data, sizeof(tx_packet.data));
+    if (tx_packet.len == 0)
         return ESP_ERR_INVALID_ARG;
 
-    tx_packet.len = encoded.size();
-    memcpy(tx_packet.data, encoded.data(), tx_packet.len);
     tx_packet.requires_ack = require_ack;
 
     return tx_manager_->queue_packet(tx_packet);
@@ -361,15 +357,13 @@ esp_err_t EspNowManager::confirm_reception(AckStatus status)
         return ESP_ERR_NOT_FOUND;
     }
 
-    auto encoded = message_codec_->encode(ack.header, &ack.ack_sequence, sizeof(AckMessage) - sizeof(MessageHeader));
-    if (encoded.empty()) {
+    tx_packet.len = message_codec_->encode(ack.header, &ack.ack_sequence, sizeof(AckMessage) - sizeof(MessageHeader), tx_packet.data, sizeof(tx_packet.data));
+    if (tx_packet.len == 0) {
         last_header_requiring_ack_.reset();
         hal_freertos_->semaphore_give(ack_mutex_);
         return ESP_FAIL;
     }
 
-    tx_packet.len = encoded.size();
-    memcpy(tx_packet.data, encoded.data(), tx_packet.len);
     tx_packet.requires_ack = false;
 
     esp_err_t err = tx_manager_->queue_packet(tx_packet);

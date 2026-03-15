@@ -51,13 +51,14 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan(uint8_t start_channel)
         probe_header.sender_type = my_node_type_;
         probe_header.dest_node_id = ReservedIds::HUB; // Destination is always hub
 
-        auto encoded = message_codec_.encode(probe_header, nullptr, 0);
-        if (encoded.empty())
+        uint8_t buffer[ESP_NOW_MAX_DATA_LEN];
+        size_t encoded_len = message_codec_.encode(probe_header, nullptr, 0, buffer, sizeof(buffer));
+        if (encoded_len == 0)
             continue;
 
         // Loop to send probe * SCAN_CHANNEL_ATTEMPTS until the hub is not found
         for (uint8_t attempt = 0; attempt < SCAN_CHANNEL_ATTEMPTS && !result.hub_found; attempt++) {
-            hal_wifi_.hal_esp_now_send(BROADCAST_MAC, encoded.data(), encoded.size());
+            hal_wifi_.hal_esp_now_send(BROADCAST_MAC, buffer, encoded_len);
 
             // Wait for hub to respond
             uint32_t notifications = 0;
@@ -100,12 +101,10 @@ void DiscoveryManager::handle_probe(const RxPacket &packet)
     resp.requires_ack = false;
     resp.timestamp_ms = 0; // Fixed timestamp for control messages if not used
 
-    auto encoded = message_codec_.encode(resp, nullptr, 0);
-    if (encoded.empty())
+    tx_packet.len = message_codec_.encode(resp, nullptr, 0, tx_packet.data, sizeof(tx_packet.data));
+    if (tx_packet.len == 0)
         return;
 
-    tx_packet.len = encoded.size();
-    memcpy(tx_packet.data, encoded.data(), tx_packet.len);
     tx_packet.requires_ack = false;
     tx_mgr_->queue_packet(tx_packet);
 }

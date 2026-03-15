@@ -121,10 +121,8 @@ void PairingManager::handle_request(const RxPacket &packet)
 
     TxPacket tx_packet;
     memcpy(tx_packet.dest_mac, packet.src_mac, 6);
-    auto encoded = codec_.encode(resp.header, &resp.status, sizeof(PairResponse) - sizeof(MessageHeader));
-    if (!encoded.empty()) {
-        tx_packet.len = encoded.size();
-        memcpy(tx_packet.data, encoded.data(), tx_packet.len);
+    tx_packet.len = codec_.encode(resp.header, &resp.status, sizeof(PairResponse) - sizeof(MessageHeader), tx_packet.data, sizeof(tx_packet.data));
+    if (tx_packet.len > 0) {
         tx_packet.requires_ack = false;
         tx_mgr_.queue_packet(tx_packet);
     }
@@ -173,10 +171,8 @@ void PairingManager::send_pair_request()
     TxPacket tx_packet;
     memcpy(tx_packet.dest_mac, BROADCAST_MAC, 6);
 
-    auto encoded = codec_.encode(req.header, &req.firmware_version, sizeof(PairRequest) - sizeof(MessageHeader));
-    if (!encoded.empty()) {
-        tx_packet.len = encoded.size();
-        memcpy(tx_packet.data, encoded.data(), tx_packet.len);
+    tx_packet.len = codec_.encode(req.header, &req.firmware_version, sizeof(PairRequest) - sizeof(MessageHeader), tx_packet.data, sizeof(tx_packet.data));
+    if (tx_packet.len > 0) {
         tx_packet.requires_ack = false;
         tx_mgr_.queue_packet(tx_packet);
     }
