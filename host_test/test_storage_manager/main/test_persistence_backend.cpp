@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include "esp_attr.h"
 #include "mock_hal_nvs.hpp"
 
 #include "persistence_backend.hpp"
@@ -178,11 +179,17 @@ TEST_F(NvsBackendTest, LoadReturnsErrorWhenSizeMismatch)
 // RTC Backend
 // ==============================================================================
 
+// Although RTC_DATA_ATTR is not critical in test environment, it is used for consistency with production code
+static RTC_DATA_ATTR PersistentData g_rtc_storage;
+
 class RtcBackendTest : public ::testing::Test
 {
 protected:
-    PersistentData storage = {};  // local storage for RTC
-    RtcBackend backend{&storage}; // storage injection
+    // For testing purposes, we can use local storage instead of RTC
+    // PersistentData storage = {};  // local storage for RTC
+    // RtcBackend backend{&storage}; // storage injection
+
+    RtcBackend backend{g_rtc_storage}; // storage injection
 };
 
 TEST_F(RtcBackendTest, SaveAndLoadRoundtrip)
