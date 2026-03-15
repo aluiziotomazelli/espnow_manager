@@ -6,9 +6,9 @@
 #include "i_bootstrapper.hpp"
 #include "i_hal_wifi.hpp"
 #include "i_hal_freertos.hpp"
-#include "i_peer_manager.hpp"
-#include "i_tx_manager.hpp"
-#include "i_heartbeat_manager.hpp"
+// #include "i_peer_manager.hpp"
+// #include "i_tx_manager.hpp"
+// #include "i_heartbeat_manager.hpp"
 
 /**
  * @class Bootstrapper

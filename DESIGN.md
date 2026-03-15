@@ -124,4 +124,4 @@ This prevents the "Big Manager" anti-pattern and makes the codebase easier to ma
 Direct calls to FreeRTOS (`xTaskCreate`, `xSemaphoreTake`) and ESP-IDF (`esp_now_send`, `esp_wifi_set_channel`) are forbidden inside business logic managers. They must go through the respective HAL interfaces. This is the cornerstone of the project's portability and testability.
 
 ### RTC Memory Persistence
-The use of `RTC_DATA_ATTR` via `RtcBackend` is a strategic decision for IoT devices. It allows the `EspNowManager` to enter Deep Sleep and wake up with its peer list ready in microseconds, without the power cost or latency of reading from flash (NVS).
+The use of `RTC_DATA_ATTR` via `RtcBackend` is a strategic decision for IoT devices. It allows the `EspNowManager` to enter Deep Sleep and wake up with its peer list ready in microseconds, without the power cost or latency of reading from flash (NVS). It relies on CRC validation to ensure data integrity.

@@ -1,12 +1,11 @@
 #include <cstring>
 
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
-#include "freertos/task.h"
-#include "freertos/timers.h"
+// #include "freertos/queue.h"
+// #include "freertos/semphr.h"
+// #include "freertos/task.h"
+// #include "freertos/timers.h"
 
 #include "i_message_codec.hpp"
 #include "i_peer_manager.hpp"
@@ -17,7 +16,11 @@
 
 static const char *TAG = "PairingMgr";
 
-PairingManager::PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec, IFreeRTOSHAL &hal_freertos)
+PairingManager::PairingManager(
+    ITxManager &tx_mgr,
+    IPeerManager &peer_mgr,
+    IMessageCodec &codec,
+    IFreeRTOSHAL &hal_freertos)
     : tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
     , codec_(codec)
@@ -111,11 +114,7 @@ void PairingManager::handle_request(const RxPacket &packet)
         resp.status = PairStatus::REJECTED_NOT_ALLOWED;
     }
     else {
-        peer_mgr_.add(
-            header.sender_node_id,
-            packet.src_mac,
-            header.sender_type,
-            req->heartbeat_interval_ms);
+        peer_mgr_.add(header.sender_node_id, packet.src_mac, header.sender_type, req->heartbeat_interval_ms);
         resp.status = PairStatus::ACCEPTED;
         resp.wifi_channel = current_channel_;
     }

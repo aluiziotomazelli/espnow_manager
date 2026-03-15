@@ -3,10 +3,10 @@
 
 #include <memory>
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
-#include "freertos/task.h"
+// #include "freertos/FreeRTOS.h"
+// #include "freertos/queue.h"
+// #include "freertos/semphr.h"
+// #include "freertos/task.h"
 
 #include "i_discovery_manager.hpp"
 #include "i_espnow_manager.hpp"
@@ -18,10 +18,11 @@
 #include "i_hal_timer.hpp"
 #include "i_tx_manager.hpp"
 #include "i_tx_state_machine.hpp"
-#include "i_hal_nvs.hpp"
+// #include "i_hal_nvs.hpp"
+#include "i_hal_wifi.hpp"
 #include "i_bootstrapper.hpp"
 #include "i_hal_freertos.hpp"
-#include "storage_manager.hpp"
+// #include "storage_manager.hpp"
 
 // ========================================
 // ESP-NOW Manager Implementation

@@ -1,10 +1,11 @@
 // src/persistence_backends.cpp
 
 #include "esp_log.h"
-#include "nvs.h"
-#include "nvs_flash.h"
+// #include "nvs.h"
+// #include "nvs_flash.h"
 
 #include "persistence_backend.hpp"
+#include "i_hal_nvs.hpp"
 
 static const char *TAG = "PersistenceBackend";
 static const char *NVS_NAMESPACE = "espnow_store";

@@ -2,12 +2,12 @@
 #include <cstring>
 
 #include "esp_log.h"
-#include "esp_now.h"
-#include "esp_wifi.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
-#include "freertos/task.h"
+// #include "esp_now.h"
+// #include "esp_wifi.h"
+// #include "freertos/FreeRTOS.h"
+// #include "freertos/queue.h"
+// #include "freertos/semphr.h"
+// #include "freertos/task.h"
 
 #include "i_storage_manager.hpp"
 #include "peer_manager.hpp"

@@ -1,16 +1,17 @@
 // src/espnow_manager.cpp
-#include <algorithm>
+// #include <algorithm>
 #include <cstring>
-#include <inttypes.h>
+// #include <inttypes.h>
 
 #include "esp_log.h"
-#include "esp_mac.h"
-#include "esp_rom_crc.h"
+// #include "esp_mac.h"
+// #include "esp_rom_crc.h"
 #include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
-#include "freertos/task.h"
+#include "esp_attr.h"
+// #include "freertos/FreeRTOS.h"
+// #include "freertos/queue.h"
+// #include "freertos/semphr.h"
+// #include "freertos/task.h"
 
 #include "bootstrapper.hpp"
 #include "discovery_manager.hpp"
@@ -26,16 +27,15 @@
 #include "hal_wifi.hpp"
 #include "bootstrapper.hpp"
 #include "hal_freertos.hpp"
-
-#include "esp_attr.h"
 #include "hal_nvs.hpp"
 #include "persistence_backend.hpp"
 #include "storage_manager.hpp"
+
 #include "espnow_manager.hpp"
 
 static const char *TAG = "EspNow";
 
-// RTC storage
+// RTC storage for peer list persistence must stay in global scope
 static RTC_DATA_ATTR PersistentData g_rtc_storage;
 
 // --- Singleton ---

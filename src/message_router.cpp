@@ -1,7 +1,6 @@
 #include <cstring>
 
 #include "esp_log.h"
-#include "esp_wifi.h"
 
 #include "message_router.hpp"
 

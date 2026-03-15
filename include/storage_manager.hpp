@@ -9,8 +9,8 @@
 
 #include "i_persistence_backend.hpp"
 #include "i_storage_manager.hpp"
-#include "protocol_types.hpp"
-#include "hal_wifi.hpp"
+// #include "protocol_types.hpp"
+// #include "hal_wifi.hpp"
 
 /**
  * @brief Internal structure for persistent data.
