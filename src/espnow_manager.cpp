@@ -47,7 +47,7 @@ EspNowManager &EspNowManager::instance()
         std::make_unique<TxManager>(*tx_fsm, *scanner, *hal_wifi, *hal_freertos, *message_codec, 500);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(
         ReservedIds::HUB, *tx_manager, *peer_manager, *message_codec, *hal_freertos, *hal_timer);
-    static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec);
+    static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec, *hal_freertos);
     static auto message_router =
         std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
 
@@ -445,7 +445,8 @@ void EspNowManager::rx_dispatch_task(void *arg)
         }
     }
     self->rx_dispatch_task_handle_ = nullptr;
-    vTaskDelete(NULL);
+    self->hal_freertos_->task_suspend(NULL);
+    self->hal_freertos_->task_delete(NULL);
 }
 
 void EspNowManager::transport_worker_task(void *arg)
@@ -470,7 +471,8 @@ void EspNowManager::transport_worker_task(void *arg)
         }
     }
     self->transport_worker_task_handle_ = nullptr;
-    vTaskDelete(NULL);
+    self->hal_freertos_->task_suspend(NULL);
+    self->hal_freertos_->task_delete(NULL);
 }
 
 uint64_t EspNowManager::get_time_ms() const
@@ -491,6 +493,7 @@ void EspNowManager::update_wifi_channel(uint8_t channel)
         esp_now_mod_peer(&broadcast);
         peer_manager_->set_channel(channel);
         heartbeat_manager_->set_channel(channel);
+        pairing_manager_->set_channel(channel);
         peer_manager_->persist();
     }
 }

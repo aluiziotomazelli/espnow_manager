@@ -11,23 +11,26 @@
 #include "i_message_codec.hpp"
 #include "i_peer_manager.hpp"
 #include "i_tx_manager.hpp"
+#include "i_hal_freertos.hpp"
 #include "pairing_manager.hpp"
+#include "protocol_types.hpp"
 
 static const char *TAG = "PairingMgr";
 
-PairingManager::PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec)
+PairingManager::PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec, IFreeRTOSHAL &hal_freertos)
     : tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
     , codec_(codec)
+    , hal_freertos_(hal_freertos)
 {
-    mutex_ = xSemaphoreCreateMutex();
+    mutex_ = hal_freertos_.mutex_create();
 }
 
 PairingManager::~PairingManager()
 {
     deinit();
     if (mutex_)
-        vSemaphoreDelete(mutex_);
+        hal_freertos_.semaphore_delete(mutex_);
 }
 
 esp_err_t PairingManager::init(NodeType type, NodeId id)
@@ -37,52 +40,57 @@ esp_err_t PairingManager::init(NodeType type, NodeId id)
     return ESP_OK;
 }
 
+void PairingManager::set_channel(uint8_t channel)
+{
+    current_channel_ = channel;
+}
+
 esp_err_t PairingManager::deinit()
 {
-    xSemaphoreTake(mutex_, portMAX_DELAY);
+    hal_freertos_.semaphore_take(mutex_, PORT_MAX_DELAY);
     if (timeout_timer_) {
-        xTimerDelete(timeout_timer_, portMAX_DELAY);
+        hal_freertos_.timer_delete(timeout_timer_, PORT_MAX_DELAY);
         timeout_timer_ = nullptr;
     }
     if (periodic_timer_) {
-        xTimerDelete(periodic_timer_, portMAX_DELAY);
+        hal_freertos_.timer_delete(periodic_timer_, PORT_MAX_DELAY);
         periodic_timer_ = nullptr;
     }
     is_active_ = false;
-    xSemaphoreGive(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
     return ESP_OK;
 }
 
 esp_err_t PairingManager::start(uint32_t timeout_ms)
 {
-    xSemaphoreTake(mutex_, portMAX_DELAY);
+    hal_freertos_.semaphore_take(mutex_, PORT_MAX_DELAY);
     if (is_active_) {
-        xSemaphoreGive(mutex_);
+        hal_freertos_.semaphore_give(mutex_);
         return ESP_ERR_INVALID_STATE;
     }
 
     ESP_LOGI(TAG, "Pairing started for %u ms.", (unsigned int)timeout_ms);
 
-    timeout_timer_ = xTimerCreate("pair_timeout", pdMS_TO_TICKS(timeout_ms), pdFALSE, this, timeout_cb);
+    timeout_timer_ = hal_freertos_.timer_create("pair_timeout", pdMS_TO_TICKS(timeout_ms), pdFALSE, this, timeout_cb);
     if (my_type_ != ReservedTypes::HUB) {
-        periodic_timer_ = xTimerCreate("pair_periodic", pdMS_TO_TICKS(5000), pdTRUE, this, periodic_cb);
-        xTimerStart(periodic_timer_, 0);
+        periodic_timer_ = hal_freertos_.timer_create("pair_periodic", pdMS_TO_TICKS(5000), pdTRUE, this, periodic_cb);
+        hal_freertos_.timer_start(periodic_timer_, 0);
         send_pair_request();
     }
-    xTimerStart(timeout_timer_, 0);
+    hal_freertos_.timer_start(timeout_timer_, 0);
     is_active_ = true;
-    xSemaphoreGive(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
     return ESP_OK;
 }
 
 void PairingManager::handle_request(const RxPacket &packet)
 {
-    xSemaphoreTake(mutex_, portMAX_DELAY);
+    hal_freertos_.semaphore_take(mutex_, PORT_MAX_DELAY);
     if (!is_active_ || my_type_ != ReservedTypes::HUB) {
-        xSemaphoreGive(mutex_);
+        hal_freertos_.semaphore_give(mutex_);
         return;
     }
-    xSemaphoreGive(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
 
     auto header_opt = codec_.decode_header(packet.data, packet.len);
     if (!header_opt)
@@ -103,14 +111,13 @@ void PairingManager::handle_request(const RxPacket &packet)
         resp.status = PairStatus::REJECTED_NOT_ALLOWED;
     }
     else {
-        // TODO: Verify why channel 1 is hardcoded used bellow
         peer_mgr_.add(
             header.sender_node_id,
             packet.src_mac,
             header.sender_type,
-            req->heartbeat_interval_ms); // TODO: review channel
+            req->heartbeat_interval_ms);
         resp.status = PairStatus::ACCEPTED;
-        resp.wifi_channel = 1; // Needs real channel
+        resp.wifi_channel = current_channel_;
     }
 
     TxPacket tx_packet;
@@ -126,9 +133,9 @@ void PairingManager::handle_request(const RxPacket &packet)
 
 void PairingManager::handle_response(const RxPacket &packet)
 {
-    xSemaphoreTake(mutex_, portMAX_DELAY);
+    hal_freertos_.semaphore_take(mutex_, PORT_MAX_DELAY);
     if (!is_active_ || my_type_ == ReservedTypes::HUB) {
-        xSemaphoreGive(mutex_);
+        hal_freertos_.semaphore_give(mutex_);
         return;
     }
 
@@ -140,17 +147,18 @@ void PairingManager::handle_response(const RxPacket &packet)
 
     const PairResponse *resp = reinterpret_cast<const PairResponse *>(packet.data);
     if (resp->status == PairStatus::ACCEPTED) {
-        ESP_LOGI(TAG, "Pairing accepted by Hub.");
-        peer_mgr_.add(header_opt->sender_node_id, packet.src_mac, header_opt->sender_type); // TODO: review channel
+        ESP_LOGI(TAG, "Pairing accepted by Hub on channel %d.", (int)resp->wifi_channel);
+        peer_mgr_.set_channel(resp->wifi_channel);
+        peer_mgr_.add(header_opt->sender_node_id, packet.src_mac, header_opt->sender_type);
         is_active_ = false;
         if (periodic_timer_) {
-            xTimerStop(periodic_timer_, 0);
+            hal_freertos_.timer_stop(periodic_timer_, 0);
         }
         if (timeout_timer_) {
-            xTimerStop(timeout_timer_, 0);
+            hal_freertos_.timer_stop(timeout_timer_, 0);
         }
     }
-    xSemaphoreGive(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
 }
 
 void PairingManager::send_pair_request()
@@ -164,8 +172,7 @@ void PairingManager::send_pair_request()
     req.heartbeat_interval_ms = 60000;
 
     TxPacket tx_packet;
-    const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    memcpy(tx_packet.dest_mac, broadcast_mac, 6);
+    memcpy(tx_packet.dest_mac, BROADCAST_MAC, 6);
 
     auto encoded = codec_.encode(req.header, &req.firmware_version, sizeof(PairRequest) - sizeof(MessageHeader));
     if (!encoded.empty()) {
@@ -188,10 +195,10 @@ void PairingManager::periodic_cb(TimerHandle_t xTimer)
 
 void PairingManager::on_timeout()
 {
-    xSemaphoreTake(mutex_, portMAX_DELAY);
+    hal_freertos_.semaphore_take(mutex_, PORT_MAX_DELAY);
     is_active_ = false;
     if (periodic_timer_)
-        xTimerStop(periodic_timer_, 0);
+        hal_freertos_.timer_stop(periodic_timer_, 0);
     ESP_LOGI(TAG, "Pairing timed out.");
-    xSemaphoreGive(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
 }
