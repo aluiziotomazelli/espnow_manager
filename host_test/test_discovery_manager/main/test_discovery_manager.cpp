@@ -39,7 +39,7 @@ protected:
     {
         // default happy path
         ON_CALL(wifi_hal, wifi_set_channel(_)).WillByDefault(Return(ESP_OK));
-        ON_CALL(codec, encode(_, _, _)).WillByDefault(Return(std::vector<uint8_t>{0x01, 0x02, 0x03}));
+        ON_CALL(codec, encode(_, _, _, _, _)).WillByDefault(Return(3));
         ON_CALL(wifi_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
 
         // default: notify_wait timeout, hub not found
@@ -63,6 +63,24 @@ TEST_F(DiscoveryManagerTest, FindHubOnFirstChannel)
             Return(pdPASS)));                    // return pdPASS
     
     EXPECT_CALL(observer, on_channel_found(VALID_CHANNEL)).Times(1);
+
+    IDiscoveryManager::ScanResult res = scanner->scan(VALID_CHANNEL);
+    ASSERT_TRUE(res.hub_found);
+    ASSERT_EQ(VALID_CHANNEL, res.channel);
+}
+
+TEST_F(DiscoveryManagerTest, ScanSucceedsWithoutObserver)
+{
+    // Re-initialize without observer
+    scanner->init(MY_ID, MY_TYPE, tx_manager, nullptr);
+
+    EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
+        .WillOnce(DoAll(
+            SetArgPointee<2>(NOTIFY_LINK_ALIVE),
+            Return(pdPASS)));
+    
+    // Observer should not be called
+    EXPECT_CALL(observer, on_channel_found(_)).Times(0);
 
     IDiscoveryManager::ScanResult res = scanner->scan(VALID_CHANNEL);
     ASSERT_TRUE(res.hub_found);
@@ -112,7 +130,7 @@ TEST_F(DiscoveryManagerTest, HubNotFoundOnAnyChannel)
 TEST_F(DiscoveryManagerTest, EmptyEncodedMessageDontCallSend)
 {
     // If the encoded message is empty, don't call esp_now_send
-    ON_CALL(codec, encode(_, _, _)).WillByDefault(Return(std::vector<uint8_t>{}));
+    ON_CALL(codec, encode(_, _, _, _, _)).WillByDefault(Return(0));
 
     // esp_now_send is not called
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _)).Times(0);
@@ -145,9 +163,9 @@ TEST_F(DiscoveryManagerTest, ProbeMessageHasCorrectHeader)
     NodeType NEW_TYPE = 0x04;
     scanner->init(NEW_ID, NEW_TYPE, tx_manager, &observer);
 
-    EXPECT_CALL(codec, encode(_, _, _))
+    EXPECT_CALL(codec, encode(_, _, _, _, _))
         .Times(1)
-        .WillOnce(DoAll(testing::SaveArg<0>(&captured_header), Return(std::vector<uint8_t>{0x01}))); // non-empty
+        .WillOnce(DoAll(testing::SaveArg<0>(&captured_header), Return(1))); // non-empty
 
     // We assume that hub is found
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
@@ -205,6 +223,18 @@ TEST_F(DiscoveryManagerTest, HubFoundOnSecondAttemptOfSameChannel)
     ASSERT_EQ(VALID_CHANNEL, res.channel);
 }
 
+TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfTxMgrNull)
+{
+    // Re-initialize but manually ensure tx_mgr_ would be null if we could, 
+    // but DiscoveryManager has no deinit or way to set tx_mgr_ to null after init.
+    // However, we can create a new scanner and NOT call init().
+    DiscoveryManager raw_scanner(wifi_hal, codec, freertos_hal);
+    
+    RxPacket packet;
+    EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
+    raw_scanner.handle_probe(packet);
+}
+
 TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfNotHub)
 {
     // Setup scanner as Node
@@ -212,6 +242,35 @@ TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfNotHub)
 
     RxPacket packet;
     EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
+    scanner->handle_probe(packet);
+}
+
+TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfHeaderDecodeFails)
+{
+    // Setup scanner as Hub
+    scanner->init(MY_ID, ReservedTypes::HUB, tx_manager, &observer);
+
+    RxPacket packet;
+    ON_CALL(codec, decode_header(_, _)).WillByDefault(Return(std::nullopt));
+    
+    EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
+
+    scanner->handle_probe(packet);
+}
+
+TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfEncodeFails)
+{
+    // Setup scanner as Hub
+    scanner->init(MY_ID, ReservedTypes::HUB, tx_manager, &observer);
+
+    RxPacket packet;
+    packet.len = 10;
+    ON_CALL(codec, decode_header(_, _)).WillByDefault(Return(MessageHeader{MessageType::CHANNEL_SCAN_PROBE, 0, 0x02, 5, 0x00, false, 0, 0}));
+    
+    // Encode returns 0 (failure)
+    EXPECT_CALL(codec, encode(_, _, _, _, _)).WillOnce(Return(0));
+    EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
+
     scanner->handle_probe(packet);
 }
 
@@ -227,7 +286,7 @@ TEST_F(DiscoveryManagerTest, HandleProbeSendsResponseIfHub)
     MessageHeader captured_header;
     ON_CALL(codec, decode_header(_, _)).WillByDefault(Return(MessageHeader{MessageType::CHANNEL_SCAN_PROBE, 0, 0x02, 5, 0x00, false, 0, 0}));
     
-    EXPECT_CALL(codec, encode(_, _, _)).WillOnce(DoAll(testing::SaveArg<0>(&captured_header), Return(std::vector<uint8_t>{0x01, 0x02})));
+    EXPECT_CALL(codec, encode(_, _, _, _, _)).WillOnce(DoAll(testing::SaveArg<0>(&captured_header), Return(2)));
     EXPECT_CALL(tx_manager, queue_packet(_)).Times(1);
 
     scanner->handle_probe(packet);
