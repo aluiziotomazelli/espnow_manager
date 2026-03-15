@@ -7,7 +7,6 @@
 #include "esp_mac.h"
 #include "esp_rom_crc.h"
 #include "esp_timer.h"
-#include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -429,15 +428,15 @@ void EspNowManager::rx_dispatch_task(void *arg)
             auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
             if (!header_opt)
                 continue;
-            const MessageHeader *header = &header_opt.value();
+            const MessageHeader &header = header_opt.value();
 
-            if (self->message_router_->should_dispatch_to_worker(header->msg_type)) {
+            if (self->message_router_->should_dispatch_to_worker(header.msg_type)) {
                 xQueueSend(self->transport_worker_queue_, &packet, 0);
             }
             else {
-                if (header->requires_ack) {
+                if (header.requires_ack) {
                     if (xSemaphoreTake(self->ack_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-                        self->last_header_requiring_ack_ = *header;
+                        self->last_header_requiring_ack_ = header;
                         xSemaphoreGive(self->ack_mutex_);
                     }
                 }
@@ -464,23 +463,9 @@ void EspNowManager::transport_worker_task(void *arg)
                     break;
             }
 
-            auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
-            if (!header_opt)
-                continue;
-            const MessageHeader &header = header_opt.value();
-
+            // Delegate directly to router. Channel updates are now handled
+            // via DiscoveryManager callbacks, avoiding redundant decoding here.
             self->message_router_->handle_packet(packet);
-
-            // Special handling for channel updates that affect the global config
-            if (header.msg_type == MessageType::HEARTBEAT_RESPONSE) {
-                auto resp = reinterpret_cast<const HeartbeatResponse *>(packet.data);
-                self->update_wifi_channel(resp->wifi_channel);
-            }
-            else if (header.msg_type == MessageType::CHANNEL_SCAN_RESPONSE) {
-                uint8_t ch;
-                esp_wifi_get_channel(&ch, nullptr);
-                self->update_wifi_channel(ch);
-            }
         }
     }
     self->transport_worker_task_handle_ = nullptr;
