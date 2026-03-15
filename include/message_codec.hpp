@@ -5,7 +5,7 @@
 class MessageCodec : public IMessageCodec
 {
 public:
-    std::vector<uint8_t> encode(const MessageHeader &header, const void *payload, size_t len) override;
+    size_t encode(const MessageHeader &header, const void *payload, size_t len, uint8_t *out, size_t out_max) override;
 
     std::optional<MessageHeader> decode_header(const uint8_t *data, size_t len) override;
 
