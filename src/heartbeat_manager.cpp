@@ -32,6 +32,11 @@ void HeartbeatManager::update_node_id(NodeId id)
     my_id_ = id;
 }
 
+void HeartbeatManager::set_channel(uint8_t channel)
+{
+    current_channel_ = channel;
+}
+
 esp_err_t HeartbeatManager::init(uint32_t interval_ms, NodeType type)
 {
     interval_ms_ = interval_ms;
@@ -99,7 +104,7 @@ void HeartbeatManager::handle_request(const RxPacket &packet)
     response.header.dest_node_id = header.sender_node_id;
     response.header.sequence_number = 0;
     response.server_time_ms = now_ms;
-    response.wifi_channel = 1; // Needs real channel, but for now fixed
+    response.wifi_channel = current_channel_;
 
     TxPacket tx_packet;
     memcpy(tx_packet.dest_mac, packet.src_mac, 6);

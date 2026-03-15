@@ -504,6 +504,7 @@ void EspNowManager::update_wifi_channel(uint8_t channel)
         broadcast.encrypt = false;
         esp_now_mod_peer(&broadcast);
         peer_manager_->set_channel(channel);
+        heartbeat_manager_->set_channel(channel);
         peer_manager_->persist();
     }
 }

@@ -26,9 +26,10 @@ public:
 
     esp_err_t init(uint32_t interval_ms, NodeType type) override;
     void update_node_id(NodeId id) override;
-    esp_err_t deinit() override;
+    void set_channel(uint8_t channel) override;
     void handle_response(NodeId hub_id) override;
     void handle_request(const RxPacket &packet) override;
+    esp_err_t deinit() override;
 
 private:
     NodeId my_id_;
@@ -41,6 +42,7 @@ private:
 
     NodeType my_type_;
     uint32_t interval_ms_;
+    uint8_t current_channel_ = 1;
     TimerHandle_t timer_ = nullptr;
 
 protected:
