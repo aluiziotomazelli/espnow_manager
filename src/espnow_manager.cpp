@@ -182,11 +182,6 @@ esp_err_t EspNowManager::deinit()
     return ESP_OK;
 }
 
-void EspNowManager::on_channel_found(uint8_t channel)
-{
-    update_wifi_channel(channel);
-}
-
 esp_err_t EspNowManager::init(const EspNowConfig &config)
 {
     if (is_initialized_)
@@ -197,48 +192,92 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     config_ = config;
     esp_err_t ret = ESP_OK;
 
-    uint8_t stored_channel;
-    if (peer_manager_->load_from_storage(stored_channel) == ESP_OK) {
-        config_.wifi_channel = stored_channel;
-    }
-    peer_manager_->set_channel(config_.wifi_channel);
-
-    EspNowBootstrapConfig bootstrap_cfg = {};
-    bootstrap_cfg.recv_cb = esp_now_recv_cb;
-    bootstrap_cfg.send_cb = esp_now_send_cb;
-    bootstrap_cfg.rx_dispatch_fn = EspNowManager::rx_dispatch_task;
-    bootstrap_cfg.transport_worker_fn = EspNowManager::transport_worker_task;
-    bootstrap_cfg.task_params = this;
-
-    ret = bootstrapper_->init(
-        config_,
-        bootstrap_cfg,
-        rx_dispatch_queue_,
-        transport_worker_queue_,
-        ack_mutex_,
-        rx_dispatch_task_handle_,
-        transport_worker_task_handle_);
-
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize bootstraper: %s", esp_err_to_name(ret));
-        goto fail;
-    }
-    esp_now_initialized_ = true;
-
-    ret = tx_manager_->init(config_.stack_size_tx_manager, 9);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "tx_manager init failed: %s", esp_err_to_name(ret));
-        goto fail;
+    // PeerManager needs to be initialized to load channel from storage before bootstraper
+    if (peer_manager_) {
+        uint8_t stored_channel;
+        if (peer_manager_->load_from_storage(stored_channel) == ESP_OK) {
+            config_.wifi_channel = stored_channel;
+        }
     }
 
-    heartbeat_manager_->update_node_id(config_.node_id);
-    if (scanner_)
-        scanner_->init(config_.node_id, config_.node_type, *tx_manager_, this);
+    // BootStrapper initializes ESPNOW, creates tasks, queues and mutexes
+    if (bootstrapper_) {
+        EspNowBootstrapConfig bootstrap_cfg = {};
+        bootstrap_cfg.recv_cb = esp_now_recv_cb;
+        bootstrap_cfg.send_cb = esp_now_send_cb;
+        bootstrap_cfg.rx_dispatch_fn = EspNowManager::rx_dispatch_task;
+        bootstrap_cfg.transport_worker_fn = EspNowManager::transport_worker_task;
+        bootstrap_cfg.task_params = this;
+
+        ret = bootstrapper_->init(
+            config_,
+            bootstrap_cfg,
+            rx_dispatch_queue_,
+            transport_worker_queue_,
+            ack_mutex_,
+            rx_dispatch_task_handle_,
+            transport_worker_task_handle_);
+
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to initialize bootstraper: %s", esp_err_to_name(ret));
+            goto fail;
+        }
+        esp_now_initialized_ = true;
+    }
+
+    // TxManager
+    if (tx_manager_) {
+        ret = tx_manager_->init(config_.stack_size_tx_manager, 9);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "tx_manager init failed: %s", esp_err_to_name(ret));
+            goto fail;
+        }
+    }
+
+    // DiscoveryManager
+    if (scanner_) {
+        if (config_.node_type == ReservedTypes::HUB) {
+            ret = scanner_->init(config_.node_id, config_.node_type, tx_manager_.get(), nullptr);
+        }
+        else {
+            ret = scanner_->init(config_.node_id, config_.node_type, nullptr, this);
+        }
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to initialize discovery manager: %s", esp_err_to_name(ret));
+            goto fail;
+        }
+    }
+
+    // HeartbeatManager
+    if (heartbeat_manager_) {
+        ret = heartbeat_manager_->init(config_.heartbeat_interval_ms, config_.node_type);
+        if (ret == ESP_OK) {
+            heartbeat_manager_->update_node_id(config_.node_id);
+        }
+        else {
+            ESP_LOGE(TAG, "heartbeat_manager init failed: %s", esp_err_to_name(ret));
+            goto fail;
+        }
+    }
+
+    // PairingManager
+    if (pairing_manager_) {
+        ret = pairing_manager_->init(config_.node_type, config_.node_id);
+        if (ret == ESP_OK) {
+        }
+        else {
+            ESP_LOGE(TAG, "pairing_manager init failed: %s", esp_err_to_name(ret));
+            goto fail;
+        }
+    }
+
+    // MessageRouter
     if (message_router_) {
         message_router_->set_app_queue(config_.app_rx_queue);
         message_router_->set_node_info(config_.node_id, config_.node_type);
     }
 
+    // Add peers to ESPNOW
     {
         std::vector<PeerInfo> peers = peer_manager_->get_all();
         for (auto &peer : peers) {
@@ -251,16 +290,8 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
         }
     }
 
-    ret = heartbeat_manager_->init(config_.heartbeat_interval_ms, config_.node_type);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "heartbeat_manager init failed: %s", esp_err_to_name(ret));
-        goto fail;
-    }
-    ret = pairing_manager_->init(config_.node_type, config_.node_id);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "pairing_manager init failed: %s", esp_err_to_name(ret));
-        goto fail;
-    }
+    // Update sub componentes with current channel from loaded NVS or Config default
+    propagate_channel();
 
     is_initialized_ = true;
     ESP_LOGI(TAG, "EspNow component initialized successfully.");
@@ -491,23 +522,27 @@ uint64_t EspNowManager::get_time_ms() const
     return esp_timer_get_time() / 1000;
 }
 
-// TODO: config_.wifi_channel is not be passed to subclasses in initi(),
-// We can use the update_wifi_channel for it or call set_channel on each
-// of them on init()?
-void EspNowManager::update_wifi_channel(uint8_t channel)
+// IChannelObserver implementation for DiscoveryManager callbacks
+void EspNowManager::on_channel_found_cb(uint8_t channel)
 {
-    if (config_.wifi_channel != channel) {
-        config_.wifi_channel = channel;
-        esp_now_peer_info_t broadcast = {};
-        const uint8_t b_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-        memcpy(broadcast.peer_addr, b_mac, 6);
-        broadcast.channel = channel;
-        broadcast.ifidx = WIFI_IF_STA;
-        broadcast.encrypt = false;
-        esp_now_mod_peer(&broadcast);
-        peer_manager_->set_channel(channel);
-        heartbeat_manager_->set_channel(channel);
-        pairing_manager_->set_channel(channel);
-        peer_manager_->persist();
-    }
+    config_.wifi_channel = channel;
+
+    // Update broadcast peer channel
+    esp_now_peer_info_t broadcast = {};
+    memcpy(broadcast.peer_addr, BROADCAST_MAC, 6);
+    broadcast.channel = channel;
+    broadcast.ifidx = WIFI_IF_STA;
+    broadcast.encrypt = false;
+    hal_driver_->hal_esp_now_mod_peer(&broadcast);
+
+    propagate_channel();
+    peer_manager_->persist();
+}
+
+void EspNowManager::propagate_channel()
+{
+    heartbeat_manager_->set_channel(config_.wifi_channel);
+    pairing_manager_->set_channel(config_.wifi_channel);
+    scanner_->set_channel(config_.wifi_channel);
+    peer_manager_->set_channel(config_.wifi_channel);
 }

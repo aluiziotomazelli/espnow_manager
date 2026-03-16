@@ -41,7 +41,7 @@ public:
     static EspNowManager &instance();
 
     /** @brief IChannelObserver implementation */
-    void on_channel_found(uint8_t channel) override; // Added
+    void on_channel_found_cb(uint8_t channel) override; // Added
 
     /**
      * @brief Dependency injection constructor for testing
@@ -166,6 +166,7 @@ protected:
 
     // Persistence helpers
     void update_wifi_channel(uint8_t channel);
+    void propagate_channel();
 
     // Task functions
     static void rx_dispatch_task(void *arg);
