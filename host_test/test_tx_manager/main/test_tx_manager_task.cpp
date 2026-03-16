@@ -100,7 +100,7 @@ protected:
         ON_CALL(*codec, calculate_crc(_, _)).WillByDefault(Return(0xAB));
 
         // Scanner defaults — hub not found
-        ON_CALL(*scanner, scan(_)).WillByDefault(Return(IDiscoveryManager::ScanResult{1, false}));
+        ON_CALL(*scanner, scan()).WillByDefault(Return(IDiscoveryManager::ScanResult{1, false}));
 
         manager = std::make_unique<TxManager>(
             *fsm_owned, *scanner_owned, *hal_owned, freertos_hal, *codec_owned, ack_timeout_ms);
@@ -321,22 +321,20 @@ TEST_F(TxManagerTaskTest, ScanningStateCallsScannerAndResetsOnHubNotFound)
 
     current_state = TxState::SCANNING;
 
-    EXPECT_CALL(*scanner, scan(_)).Times(1).WillOnce(Return(IDiscoveryManager::ScanResult{6, false}));
+    EXPECT_CALL(*scanner, scan()).Times(1).WillOnce(Return(IDiscoveryManager::ScanResult{6, false}));
     EXPECT_CALL(*fsm, reset()).Times(1);
 
     manager->notify_physical_fail(); // trigger loop
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-TEST_F(TxManagerTaskTest, ScanningStateWithHubFoundSetsChannelAndCallsOnLinkAlive)
+TEST_F(TxManagerTaskTest, ScanningStateWithHubFoundCallsOnLinkAlive)
 {
     init_and_wait();
-
     current_state = TxState::SCANNING;
 
-    ON_CALL(*scanner, scan(_)).WillByDefault(Return(IDiscoveryManager::ScanResult{9, true}));
+    ON_CALL(*scanner, scan()).WillByDefault(Return(IDiscoveryManager::ScanResult{1, true}));
 
-    EXPECT_CALL(*hal, wifi_set_channel(9)).Times(1);
     EXPECT_CALL(*fsm, on_link_alive()).Times(1);
 
     manager->notify_physical_fail();
