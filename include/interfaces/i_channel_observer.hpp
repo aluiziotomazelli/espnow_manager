@@ -16,5 +16,5 @@ public:
      * @brief Called when a Hub is discovered on a specific channel.
      * @param channel The WiFi channel where the Hub was found.
      */
-    virtual void on_channel_found(uint8_t channel) = 0;
+    virtual void on_channel_found_cb(uint8_t channel) = 0;
 };
