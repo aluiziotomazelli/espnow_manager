@@ -277,8 +277,8 @@ void TxManager::run()
 
         case TxState::SCANNING:
         {
-            // Start scan from channel 1 (DiscoveryManager will loop through all 13)
-            auto result = scanner_.scan(1);
+            // Start channel is managed internally by DiscoveryManager
+            auto result = scanner_.scan();
             if (result.hub_found) {
                 // Link is restored. The actual WiFi channel update was handled
                 // by EspNowManager via the DiscoveryManager observer callback.
