@@ -12,9 +12,10 @@ class DiscoveryManager : public IDiscoveryManager
 public:
     DiscoveryManager(IWiFiHAL &wifi_hal, IMessageCodec &message_codec, IFreeRTOSHAL &freertos_hal);
 
-    esp_err_t init(NodeId id, NodeType type, ITxManager &tx_mgr, IChannelObserver *observer = nullptr) override;
-    ScanResult scan(uint8_t start_channel) override;
+    esp_err_t init(NodeId id, NodeType type, ITxManager *tx_mgr, IChannelObserver *observer = nullptr) override;
+    ScanResult scan() override;
     void handle_probe(const RxPacket &packet) override;
+    void set_channel(uint8_t channel) override;
 
 private:
     IWiFiHAL &hal_wifi_;
@@ -22,6 +23,10 @@ private:
     IFreeRTOSHAL &hal_freertos_;
     ITxManager *tx_mgr_ = nullptr;
     IChannelObserver *observer_ = nullptr;
+
+    bool hub_ready_ = false;
+    bool node_ready_ = false;
+    uint8_t current_channel_ = 1;
 
     NodeId my_node_id_ = ReservedIds::BROADCAST;
     NodeType my_node_type_ = ReservedTypes::UNKNOWN;

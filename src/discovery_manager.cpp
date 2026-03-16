@@ -15,33 +15,48 @@ DiscoveryManager::DiscoveryManager(IWiFiHAL &wifi_hal, IMessageCodec &message_co
 {
 }
 
-esp_err_t DiscoveryManager::init(NodeId id, NodeType type, ITxManager &tx_mgr, IChannelObserver *observer)
+esp_err_t DiscoveryManager::init(NodeId id, NodeType type, ITxManager *tx_mgr, IChannelObserver *observer)
 {
     my_node_id_ = id;
     my_node_type_ = type;
-    tx_mgr_ = &tx_mgr;
-    observer_ = observer;
+
+    if (type == ReservedTypes::HUB) {
+        if (tx_mgr == nullptr) {
+            ESP_LOGE(TAG, "TxManager is required for Hub type.");
+            return ESP_ERR_INVALID_ARG;
+        }
+        tx_mgr_ = tx_mgr;
+        node_ready_ = true;
+    }
+    else {
+        if (observer == nullptr) {
+            ESP_LOGE(TAG, "ChannelObserver is required for non-Hub type.");
+            return ESP_ERR_INVALID_ARG;
+        }
+        observer_ = observer;
+        node_ready_ = true;
+    }
+
     return ESP_OK;
 }
 
-IDiscoveryManager::ScanResult DiscoveryManager::scan(uint8_t start_channel)
+IDiscoveryManager::ScanResult DiscoveryManager::scan()
 {
-    ESP_LOGI(TAG, "Starting channel scan to find Hub.");
-
-    IDiscoveryManager::ScanResult result = {start_channel, false};
-    uint8_t current_channel = start_channel;
-
-    if (current_channel < 1 || current_channel > 13) {
-        current_channel = 1;
+    if (!node_ready_) {
+        ESP_LOGE(TAG, "DiscoveryManager not initialized properly. Call init() before scan().");
+        return {current_channel_, false};
     }
+
+    ESP_LOGI(TAG, "Starting channel scan to find Hub.");
+    IDiscoveryManager::ScanResult result = {current_channel_, false};
 
     // In total loop for scan, we will start from actual channel (most likely to be the correct one)
     // and make SCAN_CHANNEL_ATTEMPTS on each of 13 wifi channels
     for (uint8_t offset = 0; offset < 13 && !result.hub_found; ++offset) {
-        uint8_t channel = ((current_channel - 1 + offset) % 13) + 1;
+        uint8_t channel = ((current_channel_ - 1 + offset) % 13) + 1;
 
         // Temporarily set channel to send probe; final channel update
-        // is handled by EspNowManager via on_channel_found() callback
+        // is handled by EspNowManager via on_channel_found_cb() callback
         hal_wifi_.wifi_set_channel(channel);
 
         // empty initializer to avoid memory garbage on unused fields
@@ -66,9 +81,8 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan(uint8_t start_channel)
                     0, NOTIFY_LINK_ALIVE, &notifications, pdMS_TO_TICKS(SCAN_CHANNEL_TIMEOUT_MS)) == pdPASS) {
                 if (notifications & NOTIFY_LINK_ALIVE) {
                     ESP_LOGI(TAG, "Hub found on channel %d.", channel);
-                    if (observer_) { // programmatic error if init() wasn't called
-                        observer_->on_channel_found(channel);
-                    }
+                    current_channel_ = channel; // Update current channel to the one where hub is found
+                    observer_->on_channel_found_cb(channel);
                     result.channel = channel;
                     result.hub_found = true;
                     break;
@@ -82,7 +96,7 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan(uint8_t start_channel)
 
 void DiscoveryManager::handle_probe(const RxPacket &packet)
 {
-    if (tx_mgr_ == nullptr || my_node_type_ != ReservedTypes::HUB) {
+    if (!hub_ready_) {
         return;
     }
 
@@ -107,4 +121,9 @@ void DiscoveryManager::handle_probe(const RxPacket &packet)
 
     tx_packet.requires_ack = false;
     tx_mgr_->queue_packet(tx_packet);
+}
+
+void DiscoveryManager::set_channel(uint8_t channel)
+{
+    current_channel_ = channel;
 }
