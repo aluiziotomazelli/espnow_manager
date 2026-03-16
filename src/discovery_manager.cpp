@@ -26,7 +26,7 @@ esp_err_t DiscoveryManager::init(NodeId id, NodeType type, ITxManager *tx_mgr, I
             return ESP_ERR_INVALID_ARG;
         }
         tx_mgr_ = tx_mgr;
-        node_ready_ = true;
+        hub_ready_ = true;
     }
     else {
         if (observer == nullptr) {
@@ -111,6 +111,7 @@ void DiscoveryManager::handle_probe(const RxPacket &packet)
     resp.sender_node_id = my_node_id_;
     resp.sender_type = my_node_type_;
     resp.dest_node_id = header_opt->sender_node_id;
+    resp.payload_type = 0;
     resp.sequence_number = 0;
     resp.requires_ack = false;
     resp.timestamp_ms = 0; // Fixed timestamp for control messages if not used
