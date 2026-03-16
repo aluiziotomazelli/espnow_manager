@@ -357,7 +357,12 @@ esp_err_t EspNowManager::confirm_reception(AckStatus status)
         return ESP_ERR_NOT_FOUND;
     }
 
-    tx_packet.len = message_codec_->encode(ack.header, &ack.ack_sequence, sizeof(AckMessage) - sizeof(MessageHeader), tx_packet.data, sizeof(tx_packet.data));
+    tx_packet.len = message_codec_->encode(
+        ack.header,
+        &ack.ack_sequence,
+        sizeof(AckMessage) - sizeof(MessageHeader),
+        tx_packet.data,
+        sizeof(tx_packet.data));
     if (tx_packet.len == 0) {
         last_header_requiring_ack_.reset();
         hal_freertos_->semaphore_give(ack_mutex_);
@@ -486,6 +491,9 @@ uint64_t EspNowManager::get_time_ms() const
     return esp_timer_get_time() / 1000;
 }
 
+// TODO: config_.wifi_channel is not be passed to subclasses in initi(),
+// We can use the update_wifi_channel for it or call set_channel on each
+// of them on init()?
 void EspNowManager::update_wifi_channel(uint8_t channel)
 {
     if (config_.wifi_channel != channel) {
