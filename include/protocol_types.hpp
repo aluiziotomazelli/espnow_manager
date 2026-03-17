@@ -21,6 +21,8 @@ static constexpr uint32_t NOTIFY_DATA = 0x20;
 static constexpr uint32_t NOTIFY_ACK_TIMEOUT = 0x40;
 static constexpr uint32_t NOTIFY_STOP = 0x100;
 static constexpr uint32_t NOTIFY_LINK_ALIVE = 0x200;
+static constexpr uint32_t NOTIFY_CHANNEL_FOUND = 0x800;
+static constexpr uint32_t NOTIFY_SCAN_FAILED = 0x1000;
 
 static constexpr uint8_t BROADCAST_MAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 

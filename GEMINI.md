@@ -66,6 +66,7 @@ Standard ESP-IDF build process:
 
 ```bash
 cd cd test_apps/build_test
+. $HOME/dev/esp/esp-idf/export.sh
 idf.py build
 ```
 

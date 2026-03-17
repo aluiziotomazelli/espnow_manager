@@ -17,4 +17,9 @@ public:
      * @param channel The WiFi channel where the Hub was found.
      */
     virtual void on_channel_found_cb(uint8_t channel) = 0;
+
+    /**
+     * @brief Called when a channel scan fails to find any Hub.
+     */
+    virtual void on_scan_failed_cb() = 0;
 };

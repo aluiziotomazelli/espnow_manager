@@ -113,7 +113,7 @@ EspNowManager::~EspNowManager()
 
 esp_err_t EspNowManager::deinit()
 {
-    if (!is_initialized_ && !esp_now_initialized_ && rx_dispatch_queue_ == nullptr &&
+    if (node_state_.load() == NodeState::UNINITIALIZED && !esp_now_initialized_ && rx_dispatch_queue_ == nullptr &&
         transport_worker_queue_ == nullptr && ack_mutex_ == nullptr && rx_dispatch_task_handle_ == nullptr &&
         transport_worker_task_handle_ == nullptr) {
         return ESP_OK;
@@ -173,7 +173,7 @@ esp_err_t EspNowManager::deinit()
     esp_now_initialized_ = false;
     last_header_requiring_ack_.reset();
     config_ = EspNowConfig();
-    is_initialized_ = false;
+    node_state_.store(NodeState::UNINITIALIZED);
 
     ESP_LOGI(TAG, "EspNow component deinitialized.");
     return ESP_OK;
@@ -181,7 +181,7 @@ esp_err_t EspNowManager::deinit()
 
 esp_err_t EspNowManager::init(const EspNowConfig &config)
 {
-    if (is_initialized_)
+    if (node_state_.load() != NodeState::UNINITIALIZED)
         return ESP_ERR_INVALID_STATE;
     if (config.app_rx_queue == nullptr)
         return ESP_ERR_INVALID_ARG;
@@ -297,7 +297,6 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     // Update sub componentes with current channel from loaded NVS or Config default
     propagate_channel();
 
-    is_initialized_ = true;
     ESP_LOGI(TAG, "EspNow component initialized successfully.");
     return ESP_OK;
 
@@ -430,6 +429,10 @@ esp_err_t EspNowManager::remove_peer(NodeId node_id)
 }
 esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 {
+    if (node_state_ == NodeState::UNINITIALIZED) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     transition_to_state(NodeState::PAIRING);
     return pairing_manager_->start(timeout_ms, get_time_ms());
 }
@@ -443,7 +446,7 @@ void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8
     memcpy(packet.data, data, len);
     packet.len = len;
     packet.rssi = info->rx_ctrl->rssi;
-    packet.timestamp_us = esp_timer_get_time();
+    packet.timestamp_us = instance().hal_timer_->get_time_us();
     instance().hal_freertos_->queue_send_fromISR(instance().rx_dispatch_queue_, &packet, 0);
 }
 
@@ -459,16 +462,48 @@ void EspNowManager::rx_dispatch_task(void *arg)
     RxPacket packet;
     while (true) {
         uint32_t notifications = 0;
-        if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE &&
-            (notifications & NOTIFY_STOP))
-            break;
-        if (self->hal_freertos_->queue_receive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
-            // Check for stop packet (empty packet or specific flag)
-            if (packet.len == 0) {
-                uint32_t notif = 0;
-                if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif & NOTIFY_STOP))
-                    break;
+
+        // Check for pending notifications without blocking (timeout = 0). We prioritize packet reception below
+        // notifications are checked every ~100 ms as a side effect of the queue_receive timeout.
+        // Clear all bits on exit (0xFFFFFFFF) so processed bits don't retrigger on the next iteration.
+        // No bits are cleared on entry since we want to read whatever accumulated since last check.
+        if (self->hal_freertos_->task_notify_wait(0, 0xFFFFFFFF, &notifications, 0) == pdTRUE) {
+            // If NOTIFY_STOP is set, we break the loop and exit the task.
+            if (notifications & NOTIFY_STOP) {
+                break;
             }
+            // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb(), which runs in the TxManager task
+            // context. All work that touches EspNowManager state (config_, peer_manager_, node_state_)
+            // is done here in the rx_dispatch_task to avoid cross-task data races.
+            if (notifications & NOTIFY_CHANNEL_FOUND) {
+                uint8_t channel = self->last_found_channel_.load();
+                self->config_.wifi_channel = channel;
+                self->propagate_channel();
+                self->peer_manager_->persist();
+                self->transition_to_state(NodeState::OPERATIONAL);
+            }
+            // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb() when the
+            // DiscoveryManager exhausts all channels without finding the HUB.
+            // Transition to PAIRING so the node can attempt re-association.
+            if (notifications & NOTIFY_SCAN_FAILED) {
+                self->transition_to_state(NodeState::PAIRING);
+            }
+        }
+
+        // Wait for incoming packets with a timeout to periodically check for notifications.
+        if (self->hal_freertos_->queue_receive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
+            // TODO: check for bootstrapper sending empty packet to stop the task,
+            // since we are no longer blocking the task on queue receive, we dont need
+            // more packets to weakup the task to check for notifications. The code bellow is for
+            // documentation during the refactoring process
+
+            // // Check for stop packet (empty packet or specific flag)
+            // if (packet.len == 0) {
+            //     uint32_t notif = 0;
+            //     if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif &
+            //     NOTIFY_STOP))
+            //         break;
+            // }
 
             if (!self->message_codec_->validate_crc(packet.data, packet.len))
                 continue;
@@ -506,16 +541,19 @@ void EspNowManager::transport_worker_task(void *arg)
             (notifications & NOTIFY_STOP))
             break;
         if (self->hal_freertos_->queue_receive(self->transport_worker_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
-            if (packet.len == 0) {
-                uint32_t notif = 0;
-                if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif & NOTIFY_STOP))
-                    break;
-            }
-
+            // if (packet.len == 0) {
+            //     uint32_t notif = 0;
+            //     if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif &
+            //     NOTIFY_STOP))
+            //         break;
+            // }
             // Delegate directly to router. Channel updates are now handled
             // via DiscoveryManager callbacks, avoiding redundant decoding here.
             self->message_router_->handle_packet(packet);
         }
+        // Tick pairing manager to handle timeouts, has internaly safe guards to avoid
+        // unnecessary processing when not in pairing mode
+        self->pairing_manager_->tick(self->get_time_ms());
     }
     self->transport_worker_task_handle_ = nullptr;
     self->hal_freertos_->task_suspend(NULL);
@@ -530,18 +568,24 @@ uint64_t EspNowManager::get_time_ms() const
 // IChannelObserver implementation for DiscoveryManager callbacks
 void EspNowManager::on_channel_found_cb(uint8_t channel)
 {
-    config_.wifi_channel = channel;
+    last_found_channel_.store(channel);
+    hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_CHANNEL_FOUND, eSetBits);
 
-    // Update broadcast peer channel
-    esp_now_peer_info_t broadcast = {};
-    memcpy(broadcast.peer_addr, BROADCAST_MAC, 6);
-    broadcast.channel = channel;
-    broadcast.ifidx = WIFI_IF_STA;
-    broadcast.encrypt = false;
-    hal_driver_->hal_esp_now_mod_peer(&broadcast);
+    // config_.wifi_channel = channel;
+    // // Update broadcast peer channel
+    // esp_now_peer_info_t broadcast = {};
+    // memcpy(broadcast.peer_addr, BROADCAST_MAC, 6);
+    // broadcast.channel = channel;
+    // broadcast.ifidx = WIFI_IF_STA;
+    // broadcast.encrypt = false;
+    // hal_driver_->hal_esp_now_mod_peer(&broadcast);
+    // propagate_channel();
+    // peer_manager_->persist();
+}
 
-    propagate_channel();
-    peer_manager_->persist();
+void EspNowManager::on_scan_failed_cb()
+{
+    hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_SCAN_FAILED, eSetBits);
 }
 
 void EspNowManager::propagate_channel()
@@ -554,6 +598,11 @@ void EspNowManager::propagate_channel()
 
 void EspNowManager::transition_to_state(NodeState new_state)
 {
-    ESP_LOGI(TAG, "NodeState: %d -> %d", (int)node_state_, (int)new_state);
-    node_state_ = new_state;
+    ESP_LOGI(TAG, "NodeState: %d -> %d", static_cast<int>(node_state_.load()), static_cast<int>(new_state));
+    node_state_.store(new_state);
+}
+
+bool EspNowManager::is_initialized() const
+{
+    return node_state_.load() != NodeState::UNINITIALIZED;
 }

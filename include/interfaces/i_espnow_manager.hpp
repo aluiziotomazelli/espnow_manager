@@ -289,7 +289,7 @@ public:
     // ========================================
 
     /**
-     * @brief Check if the manager is initialized
+     * @brief Check if EspNowManager is initialized
      *
      * @return true if initialized, false otherwise.
      */

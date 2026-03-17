@@ -2,6 +2,7 @@
 #pragma once
 
 #include <memory>
+#include <atomic>
 
 // #include "freertos/FreeRTOS.h"
 // #include "freertos/queue.h"
@@ -39,9 +40,6 @@ class EspNowManager : public IEspNowManager, public IChannelObserver // Modified
 public:
     /** @brief Get the singleton instance of EspNowManager */
     static EspNowManager &instance();
-
-    /** @brief IChannelObserver implementation */
-    void on_channel_found_cb(uint8_t channel) override; // Added
 
     /**
      * @brief Dependency injection constructor for testing
@@ -127,7 +125,7 @@ public:
     // ========================================
 
     /** @copydoc IEspNowManager::is_initialized */
-    bool is_initialized() const override { return is_initialized_; }
+    bool is_initialized() const override;
 
 protected:
     // --- Notification Bits ---
@@ -151,7 +149,6 @@ protected:
     std::unique_ptr<IMessageRouter> message_router_;       ///< Pointer to message router
 
     SemaphoreHandle_t ack_mutex_ = nullptr;
-    bool is_initialized_ = false;
     bool esp_now_initialized_ = false;
     std::optional<MessageHeader> last_header_requiring_ack_{};
 
@@ -160,7 +157,10 @@ protected:
     TaskHandle_t rx_dispatch_task_handle_ = nullptr;
     TaskHandle_t transport_worker_task_handle_ = nullptr;
 
-protected:
+    /** @brief IChannelObserver implementation */
+    void on_channel_found_cb(uint8_t channel) override;
+    void on_scan_failed_cb() override;
+
     // --- Private Methods ---
     uint64_t get_time_ms() const;
 
@@ -197,7 +197,8 @@ protected:
         COUNT          ///< Number of states (for validation)
     };
 
-    NodeState node_state_ = NodeState::UNINITIALIZED;
+    std::atomic<uint8_t> last_found_channel_{0};
+    std::atomic<NodeState> node_state_{NodeState::UNINITIALIZED};
 
     void transition_to_state(NodeState new_state);
 };
