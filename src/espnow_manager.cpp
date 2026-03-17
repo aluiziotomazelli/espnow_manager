@@ -554,14 +554,6 @@ void EspNowManager::transport_worker_task(void *arg)
             (notifications & NOTIFY_STOP))
             break;
         if (self->hal_freertos_->queue_receive(self->transport_worker_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
-            // if (packet.len == 0) {
-            //     uint32_t notif = 0;
-            //     if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif &
-            //     NOTIFY_STOP))
-            //         break;
-            // }
-            // Delegate directly to router. Channel updates are now handled
-            // via DiscoveryManager callbacks, avoiding redundant decoding here.
             self->message_router_->handle_packet(packet);
         }
         // Tick pairing manager to handle timeouts, has internaly safe guards to avoid
