@@ -211,6 +211,16 @@ TEST_F(TxManagerTaskTest, IdleStateNotifyPhysicalFailCallsFsmOnPhysicalFail)
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
+TEST_F(TxManagerTaskTest, IdleStateNotifyScanningCallsFsmOnScanning)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*fsm, on_scan_requested()).Times(1);
+
+    manager->notify_scanning();
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
 // =============================================================================
 // WAITING_FOR_ACK
 // =============================================================================

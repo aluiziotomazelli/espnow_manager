@@ -159,18 +159,18 @@ TEST_F(PairingManagerTest, StartFailsIfNotInitialized)
 {
     PairingManager pm(tx_mgr_, peer_mgr_, codec_);
     // init() not called — is_initialized_ is false
-    EXPECT_EQ(pm.start(PairingManager::PAIRING_TIMEOUT_MS, kT0), ESP_ERR_INVALID_STATE);
+    EXPECT_EQ(pm.start(PAIRING_TIMEOUT_MS, kT0), ESP_ERR_INVALID_STATE);
 }
 
 TEST_F(PairingManagerTest, StartFailsIfAlreadyActive)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
-    EXPECT_EQ(sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0), ESP_ERR_INVALID_STATE);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
+    EXPECT_EQ(sut_->start(PAIRING_TIMEOUT_MS, kT0), ESP_ERR_INVALID_STATE);
 }
 
 TEST_F(PairingManagerTest, StartActivatesPairing)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
     EXPECT_TRUE(sut_->is_active());
 }
 
@@ -180,7 +180,7 @@ TEST_F(PairingManagerTest, StartSendsInitialPairRequest)
     EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
 
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 }
 
 TEST_F(PairingManagerTest, StartDoesNotSendIfEncodeReturnsZero)
@@ -189,7 +189,7 @@ TEST_F(PairingManagerTest, StartDoesNotSendIfEncodeReturnsZero)
     EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(0));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
 
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 }
 
 TEST_F(PairingManagerHubTest, StartDoesNotSendPairRequest)
@@ -197,7 +197,7 @@ TEST_F(PairingManagerHubTest, StartDoesNotSendPairRequest)
     // HUB never sends pair requests — it only responds to them
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
 
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
     EXPECT_TRUE(sut_->is_active());
 }
 
@@ -209,7 +209,7 @@ TEST_F(PairingManagerTest, TickDoesNothingIfNotActive)
 {
     // No start() called — tick() should be a no-op
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
-    sut_->tick(kT0 + PairingManager::PAIRING_TIMEOUT_MS + 1);
+    sut_->tick(kT0 + PAIRING_TIMEOUT_MS + 1);
     EXPECT_FALSE(sut_->is_active());
 }
 
@@ -217,43 +217,43 @@ TEST_F(PairingManagerTest, TickDoesNothingIfNotInitialized)
 {
     PairingManager pm(tx_mgr_, peer_mgr_, codec_);
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
-    pm.tick(kT0 + PairingManager::PAIRING_TIMEOUT_MS + 1);
+    pm.tick(kT0 + PAIRING_TIMEOUT_MS + 1);
 }
 
 TEST_F(PairingManagerTest, TickTimesOutWhenTimeoutExceeded)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
     EXPECT_TRUE(sut_->is_active());
 
-    sut_->tick(kT0 + PairingManager::PAIRING_TIMEOUT_MS);
+    sut_->tick(kT0 + PAIRING_TIMEOUT_MS);
     EXPECT_FALSE(sut_->is_active());
 }
 
 TEST_F(PairingManagerTest, TickDoesNotTimeOutBeforeTimeout)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    sut_->tick(kT0 + PairingManager::PAIRING_TIMEOUT_MS - 1);
+    sut_->tick(kT0 + PAIRING_TIMEOUT_MS - 1);
     EXPECT_TRUE(sut_->is_active());
 }
 
 TEST_F(PairingManagerTest, TickSendsPeriodicRequestAfterInterval)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     // Expect one periodic send after interval elapses
     EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
 
-    sut_->tick(kT0 + PairingManager::PAIRING_PERIODIC_INTERVAL_MS);
+    sut_->tick(kT0 + PAIRING_PERIODIC_INTERVAL_MS);
 }
 
 TEST_F(PairingManagerTest, TickDoesNotSendBeforeInterval)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
-    sut_->tick(kT0 + PairingManager::PAIRING_PERIODIC_INTERVAL_MS - 1);
+    sut_->tick(kT0 + PAIRING_PERIODIC_INTERVAL_MS - 1);
 }
 
 TEST_F(PairingManagerTest, TickUpdatesLastRequestTimeAfterPeriodicSend)
@@ -261,20 +261,20 @@ TEST_F(PairingManagerTest, TickUpdatesLastRequestTimeAfterPeriodicSend)
     // After a periodic send, the next tick just below 2x interval should NOT send again
     ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault(Return(10));
 
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
-    sut_->tick(kT0 + PairingManager::PAIRING_PERIODIC_INTERVAL_MS); // first periodic send
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
+    sut_->tick(kT0 + PAIRING_PERIODIC_INTERVAL_MS); // first periodic send
 
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
-    sut_->tick(kT0 + PairingManager::PAIRING_PERIODIC_INTERVAL_MS * 2 - 1); // not yet time for second send
+    sut_->tick(kT0 + PAIRING_PERIODIC_INTERVAL_MS * 2 - 1); // not yet time for second send
 }
 
 TEST_F(PairingManagerHubTest, TickDoesNotSendPeriodicRequest)
 {
     // HUB never sends pair requests periodically
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
-    sut_->tick(kT0 + PairingManager::PAIRING_PERIODIC_INTERVAL_MS);
+    sut_->tick(kT0 + PAIRING_PERIODIC_INTERVAL_MS);
 }
 
 // ===========================================================================
@@ -301,7 +301,7 @@ TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotInitialized)
 
 TEST_F(PairingManagerTest, HandleResponseIgnoredIfDecodeFailes)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(std::nullopt));
     EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
@@ -313,7 +313,7 @@ TEST_F(PairingManagerTest, HandleResponseIgnoredIfDecodeFailes)
 
 TEST_F(PairingManagerTest, HandleResponseAcceptedDeactivatesPairing)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     MessageHeader header{};
     header.sender_node_id = kHubId;
@@ -328,7 +328,7 @@ TEST_F(PairingManagerTest, HandleResponseAcceptedDeactivatesPairing)
 
 TEST_F(PairingManagerTest, HandleResponseAcceptedAddsPeer)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     MessageHeader header{};
     header.sender_node_id = kHubId;
@@ -342,7 +342,7 @@ TEST_F(PairingManagerTest, HandleResponseAcceptedAddsPeer)
 
 TEST_F(PairingManagerTest, HandleResponseRejectedKeepsPairingActive)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     MessageHeader header{};
     header.sender_node_id = kHubId;
@@ -358,7 +358,7 @@ TEST_F(PairingManagerTest, HandleResponseRejectedKeepsPairingActive)
 TEST_F(PairingManagerHubTest, HandleResponseIgnoredByHub)
 {
     // HUB never processes pair responses
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
     EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
@@ -391,7 +391,7 @@ TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotInitialized)
 
 TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfDecodeFailes)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(std::nullopt));
     EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
@@ -402,7 +402,7 @@ TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfDecodeFailes)
 
 TEST_F(PairingManagerHubTest, HandleRequestFromNodeAddsPeerAndResponds)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     MessageHeader header{};
     header.sender_node_id = kNodeId;
@@ -418,7 +418,7 @@ TEST_F(PairingManagerHubTest, HandleRequestFromNodeAddsPeerAndResponds)
 
 TEST_F(PairingManagerHubTest, HandleRequestFromHubIsRejected)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     MessageHeader header{};
     header.sender_node_id = kHubId;
@@ -438,7 +438,7 @@ TEST_F(PairingManagerHubTest, HandleRequestFromHubIsRejected)
 
 TEST_F(PairingManagerHubTest, HandleRequestEncodeFailureDoesNotQueue)
 {
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     MessageHeader header{};
     header.sender_node_id = kNodeId;
@@ -454,7 +454,7 @@ TEST_F(PairingManagerHubTest, HandleRequestEncodeFailureDoesNotQueue)
 TEST_F(PairingManagerTest, HandleRequestIgnoredByNonHub)
 {
     // Non-HUB nodes must never process pair requests
-    sut_->start(PairingManager::PAIRING_TIMEOUT_MS, kT0);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
 

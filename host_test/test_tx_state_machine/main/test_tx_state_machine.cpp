@@ -158,3 +158,37 @@ TEST_F(TxStateMachineTest, OnLinkAliveClearFailCount)
     }
     EXPECT_EQ(TxState::SCANNING, fsm.get_state()); // Should send to SCANNING
 }
+
+TEST_F(TxStateMachineTest, OnScanRequestedSendsToScanning)
+{
+    fsm.on_scan_requested();
+    EXPECT_EQ(TxState::SCANNING, fsm.get_state());
+}
+
+TEST_F(TxStateMachineTest, OnScanRequestedCallsReset)
+{
+    // Set a pending ack
+    fsm.set_pending_ack(make_pending_ack());
+    EXPECT_TRUE(fsm.get_pending_ack().has_value());
+
+    fsm.on_scan_requested();
+    EXPECT_FALSE(fsm.get_pending_ack().has_value());
+}
+
+TEST_F(TxStateMachineTest, OnScanRequestedClearFailCount)
+{
+    // Call on_physical_fail MAX_FAILURES - 1 times
+    for (int i = 0; i < MAX_FAILURES - 1; i++) {
+        fsm.on_physical_fail();
+    }
+
+    fsm.on_scan_requested(); // Call on_scan_requested to clear the fail count
+    fsm.on_physical_fail();  // If the fail count was cleared, one more physical_fail should not change the state
+    EXPECT_EQ(TxState::SCANNING, fsm.get_state()); // Must remain in SCANNING (state after on_scan_requested)
+
+    // Calling on_physical_fail MAX_FAILURES - 1 times (physical_failure is already 1)
+    for (int i = 0; i < MAX_FAILURES - 1; i++) {
+        fsm.on_physical_fail();
+    }
+    EXPECT_EQ(TxState::SCANNING, fsm.get_state()); // Should remain in SCANNING since it's already in that state
+}

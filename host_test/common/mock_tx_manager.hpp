@@ -13,5 +13,6 @@ public:
     MOCK_METHOD(void, notify_physical_fail, (), (override));
     MOCK_METHOD(void, notify_link_alive, (), (override));
     MOCK_METHOD(void, notify_logical_ack, (), (override));
+    MOCK_METHOD(void, notify_scanning, (), (override));
     MOCK_METHOD(TaskHandle_t, get_task_handle, (), (const, override));
 };

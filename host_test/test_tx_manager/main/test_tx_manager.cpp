@@ -193,6 +193,13 @@ TEST_F(TxManagerTest, NotifyLogicalAckCallsTaskNotify)
     manager->notify_logical_ack();
 }
 
+TEST_F(TxManagerTest, NotifyScanningCallsTaskNotify)
+{
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_SCANNING, _)).Times(1);
+    manager->notify_scanning();
+}
+
 TEST_F(TxManagerTest, NotifyWithoutTaskHandleDoesNotCallTaskNotify)
 {
     ON_CALL(freertos_hal, task_create(_, _, _, _, _, _))
@@ -204,6 +211,7 @@ TEST_F(TxManagerTest, NotifyWithoutTaskHandleDoesNotCallTaskNotify)
     manager->notify_physical_fail();
     manager->notify_logical_ack();
     manager->notify_link_alive();
+    manager->notify_scanning();
 }
 
 // ===================================================
