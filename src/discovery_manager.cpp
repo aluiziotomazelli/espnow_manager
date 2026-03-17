@@ -91,6 +91,11 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan()
         }
     }
 
+    if (!result.hub_found) {
+        ESP_LOGW(TAG, "Hub not found after scanning all channels.");
+        observer_->on_scan_failed_cb();
+    }
+
     return result;
 }
 

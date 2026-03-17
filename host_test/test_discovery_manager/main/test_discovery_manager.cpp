@@ -19,6 +19,7 @@ class MockChannelObserver : public IChannelObserver
 {
 public:
     MOCK_METHOD(void, on_channel_found_cb, (uint8_t channel), (override));
+    MOCK_METHOD(void, on_scan_failed_cb, (), (override));
 };
 
 class DiscoveryManagerTest : public ::testing::Test
@@ -85,7 +86,7 @@ TEST_F(DiscoveryManagerTest, ScanSucceedsWithObserver)
     ASSERT_EQ(VALID_CHANNEL, res.channel);
 }
 
-TEST_F(DiscoveryManagerTest, HubNotFoundOnAnyChannel)
+TEST_F(DiscoveryManagerTest, HubNotFoundOnAnyChannelCallsObserverScanFailed)
 {
     scanner->set_channel(VALID_CHANNEL);
 
@@ -98,7 +99,9 @@ TEST_F(DiscoveryManagerTest, HubNotFoundOnAnyChannel)
     // In each channel, the probe is sent SCAN_CHANNEL_ATTEMPTS times
     EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(call_times).WillRepeatedly(Return(ESP_OK));
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _)).Times(call_times).WillRepeatedly(Return(pdFAIL));
+
     EXPECT_CALL(observer, on_channel_found_cb(_)).Times(0);
+    EXPECT_CALL(observer, on_scan_failed_cb()).Times(1);
 
     IDiscoveryManager::ScanResult res = scanner->scan();
     ASSERT_FALSE(res.hub_found);
