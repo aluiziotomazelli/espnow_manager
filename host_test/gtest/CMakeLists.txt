@@ -15,6 +15,12 @@ idf_component_register()
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     include(FetchContent)
 
+    # Set policy CMP0169 to OLD to allow FetchContent_Populate to be called
+    # directly without deprecation warnings in CMake 3.30+.
+    if(POLICY CMP0169)
+        cmake_policy(SET CMP0169 OLD)
+    endif()
+
     # Declare the external dependency: Google Test/Mock.
     FetchContent_Declare(
       googletest
