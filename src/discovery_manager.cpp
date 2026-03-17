@@ -47,6 +47,9 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan()
         return {current_channel_, false};
     }
 
+    // Signal to EspNowManager that scan is starting
+    observer_->on_scan_started_cb();
+
     ESP_LOGI(TAG, "Starting channel scan to find Hub.");
     IDiscoveryManager::ScanResult result = {current_channel_, false};
 
@@ -91,6 +94,7 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan()
         }
     }
 
+    // Notify scan failure to trigger potential fallback actions
     if (!result.hub_found) {
         ESP_LOGW(TAG, "Hub not found after scanning all channels.");
         observer_->on_scan_failed_cb();

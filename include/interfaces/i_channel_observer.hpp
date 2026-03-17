@@ -22,4 +22,11 @@ public:
      * @brief Called when a channel scan fails to find any Hub.
      */
     virtual void on_scan_failed_cb() = 0;
+
+    /**
+     * @brief Called when a channel scan starts.
+     *
+     * This callback can be used to trigger any necessary actions on EspNowManager
+     */
+    virtual void on_scan_started_cb() = 0;
 };

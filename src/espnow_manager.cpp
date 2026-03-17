@@ -468,9 +468,10 @@ void EspNowManager::rx_dispatch_task(void *arg)
         // Clear all bits on exit (0xFFFFFFFF) so processed bits don't retrigger on the next iteration.
         // No bits are cleared on entry since we want to read whatever accumulated since last check.
         if (self->hal_freertos_->task_notify_wait(0, 0xFFFFFFFF, &notifications, 0) == pdTRUE) {
-            // If NOTIFY_STOP is set, we break the loop and exit the task.
-            if (notifications & NOTIFY_STOP) {
-                break;
+            // Entered scanning state — TxManager is actively searching for the HUB. NodeState transitions to
+            // SCANNING so the rest of the system knows normal operation is suspended until the channel is rediscovered.
+            if (notifications & NOTIFY_SCANNING) {
+                self->transition_to_state(NodeState::SCANNING);
             }
             // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb(), which runs in the TxManager task
             // context. All work that touches EspNowManager state (config_, peer_manager_, node_state_)
@@ -487,6 +488,10 @@ void EspNowManager::rx_dispatch_task(void *arg)
             // Transition to PAIRING so the node can attempt re-association.
             if (notifications & NOTIFY_SCAN_FAILED) {
                 self->transition_to_state(NodeState::PAIRING);
+            }
+            // If NOTIFY_STOP is set, we break the loop and exit the task.
+            if (notifications & NOTIFY_STOP) {
+                break;
             }
         }
 
@@ -586,6 +591,11 @@ void EspNowManager::on_channel_found_cb(uint8_t channel)
 void EspNowManager::on_scan_failed_cb()
 {
     hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_SCAN_FAILED, eSetBits);
+}
+
+void EspNowManager::on_scan_started_cb()
+{
+    hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_SCANNING, eSetBits);
 }
 
 void EspNowManager::propagate_channel()

@@ -20,6 +20,7 @@ class MockChannelObserver : public IChannelObserver
 public:
     MOCK_METHOD(void, on_channel_found_cb, (uint8_t channel), (override));
     MOCK_METHOD(void, on_scan_failed_cb, (), (override));
+    MOCK_METHOD(void, on_scan_started_cb, (), (override));
 };
 
 class DiscoveryManagerTest : public ::testing::Test
@@ -50,6 +51,13 @@ protected:
         scanner->init(MY_ID, MY_TYPE, &tx_manager, &observer);
     }
 };
+
+TEST_F(DiscoveryManagerTest, ScanCallOnScanStartedCallback)
+{
+    EXPECT_CALL(observer, on_scan_started_cb()).Times(1);
+
+    scanner->scan();
+}
 
 TEST_F(DiscoveryManagerTest, FindHubOnFirstChannel)
 {

@@ -160,6 +160,7 @@ protected:
     /** @brief IChannelObserver implementation */
     void on_channel_found_cb(uint8_t channel) override;
     void on_scan_failed_cb() override;
+    void on_scan_started_cb() override;
 
     // --- Private Methods ---
     uint64_t get_time_ms() const;
