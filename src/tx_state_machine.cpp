@@ -66,6 +66,14 @@ TxState TxStateMachine::on_physical_fail()
     return current_state_;
 }
 
+TxState TxStateMachine::on_scan_requested()
+{
+    send_fail_count_ = 0;
+    pending_ack_.reset();
+    current_state_ = TxState::SCANNING;
+    return current_state_;
+}
+
 TxState TxStateMachine::on_max_retries()
 {
     pending_ack_.reset();

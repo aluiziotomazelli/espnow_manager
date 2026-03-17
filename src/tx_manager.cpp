@@ -170,9 +170,13 @@ void TxManager::handle_esp_now_send_errors(esp_err_t error)
 
 void TxManager::handle_notifications(uint32_t notifications)
 {
-    // TODO: Verify if chaining is correct or if else f is correct?
+    // Multiple notification bits can arrive simultaneously and must all be
+    // processed. else-if would silently drop bits after the first match.
     if (notifications & NOTIFY_LINK_ALIVE) {
         fsm_.on_link_alive();
+    }
+    if (notifications & NOTIFY_SCANNING) {
+        fsm_.on_scan_requested();
     }
     if (notifications & NOTIFY_PHYSICAL_FAIL) {
         fsm_.on_physical_fail();

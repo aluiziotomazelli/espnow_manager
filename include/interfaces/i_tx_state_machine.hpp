@@ -27,8 +27,13 @@ public:
     virtual TxState on_physical_fail() = 0;
     /** @internal */
     virtual TxState on_max_retries() = 0;
+
+    /** @internal */
+    virtual TxState on_scan_requested() = 0;
+
     /** @internal */
     virtual void on_link_alive() = 0;
+
     /** @internal */
     virtual TxState get_state() const = 0;
     /** @internal */

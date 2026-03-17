@@ -48,6 +48,9 @@ void PairingManager::tick(uint64_t now_ms)
     }
 }
 
+// TODO: verify if channel is realy necessary on PairManager
+// since if the node received the PairRequest or PairResponse
+// it means that the channel is already the correct channel
 void PairingManager::set_channel(uint8_t channel)
 {
     current_channel_ = channel;
@@ -76,7 +79,7 @@ void PairingManager::handle_request(const RxPacket &packet)
     if (!is_initialized_ || !is_active_) {
         return;
     }
-    // Only non-HUB nodes can send pair requests to the HUB
+    // Only HUB handle pair requests; Nodes only expect pair responses from the HUB
     if (my_type_ != ReservedTypes::HUB) {
         return;
     }

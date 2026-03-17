@@ -278,10 +278,10 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     {
         std::vector<PeerInfo> peers = peer_manager_->get_all();
         if (peers.empty()) {
-            node_state_ = NodeState::PAIRING;
+            node_state_.store(NodeState::PAIRING);
         }
         else {
-            node_state_ = NodeState::OPERATIONAL;
+            node_state_.store(NodeState::OPERATIONAL);
 
             for (auto &peer : peers) {
                 esp_now_peer_info_t info = {};
@@ -487,11 +487,13 @@ void EspNowManager::rx_dispatch_task(void *arg)
                 self->config_.wifi_channel = channel;
                 self->propagate_channel();
                 self->peer_manager_->persist();
+                // Channel confirmed now safe to start pairing if NodeState::PAIRING
+                if (self->node_state_.load() == NodeState::PAIRING)
+                    self->pairing_manager_->start(self->pairing_timeout_ms_, self->get_time_ms());
                 self->transition_to_state(NodeState::OPERATIONAL);
             }
-            // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb() when the
-            // DiscoveryManager exhausts all channels without finding the HUB.
-            // Transition to PAIRING so the node can attempt re-association.
+            // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb() when the DiscoveryManager exhausts all channels
+            // without finding the HUB. Transition to PAIRING so the node can attempt re-association.
             if (notifications & NOTIFY_SCAN_FAILED) {
                 self->transition_to_state(NodeState::PAIRING);
             }
@@ -509,12 +511,12 @@ void EspNowManager::rx_dispatch_task(void *arg)
             // documentation during the refactoring process
 
             // // Check for stop packet (empty packet or specific flag)
-            // if (packet.len == 0) {
-            //     uint32_t notif = 0;
-            //     if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif &
-            //     NOTIFY_STOP))
-            //         break;
-            // }
+            // // if (packet.len == 0) {
+            // //     uint32_t notif = 0;
+            // //     if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif &
+            ////     NOTIFY_STOP))
+            ////         break;
+            //// }
 
             if (!self->message_codec_->validate_crc(packet.data, packet.len))
                 continue;
@@ -622,12 +624,20 @@ void EspNowManager::transition_to_state(NodeState new_state)
 
 esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 {
-    if (node_state_ == NodeState::UNINITIALIZED) {
+    if (node_state_.load() == NodeState::UNINITIALIZED) {
         return ESP_ERR_INVALID_STATE;
     }
 
+    // Store timeout for use when scan completes (NOTIFY_CHANNEL_FOUND or NOTIFY_SCAN_FAILED)
+    // pairing_manager_->start()  is called from rx_dispatch_task after the correct channel is confirmed.
+    pairing_timeout_ms_ = timeout_ms;
+
+    // Force TxManager into scanning so the correct channel is discovered
+    // before pair requests are sent. Pairing starts after scan result arrives.
+    hal_freertos_->task_notify(tx_manager_->get_task_handle(), NOTIFY_SCANNING, eSetBits);
+
     transition_to_state(NodeState::PAIRING);
-    return pairing_manager_->start(timeout_ms, get_time_ms());
+    return ESP_OK;
 }
 
 bool EspNowManager::is_initialized() const

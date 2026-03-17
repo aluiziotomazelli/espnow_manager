@@ -201,5 +201,8 @@ protected:
     std::atomic<uint8_t> last_found_channel_{0};
     std::atomic<NodeState> node_state_{NodeState::UNINITIALIZED};
 
+    // Store pairing timeout for use after channel scan completes
+    uint32_t pairing_timeout_ms_ = PAIRING_TIMEOUT_MS;
+
     void transition_to_state(NodeState new_state);
 };

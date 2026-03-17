@@ -43,6 +43,8 @@ constexpr uint32_t DEFAULT_HEARTBEAT_INTERVAL_MS = 60000;
 constexpr uint8_t DEFAULT_WIFI_CHANNEL = 1;
 /** @brief Multiplier applied to heartbeat interval to determine if a node is offline */
 constexpr uint8_t HEARTBEAT_OFFLINE_MULTIPLIER = 3;
+static constexpr uint32_t PAIRING_TIMEOUT_MS = 60000;
+static constexpr uint32_t PAIRING_PERIODIC_INTERVAL_MS = 5000;
 
 // Constants for retry logic
 /** @brief Timeout for logical acknowledgments in milliseconds */

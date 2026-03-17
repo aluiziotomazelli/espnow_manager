@@ -9,9 +9,6 @@
 class PairingManager : public IPairingManager
 {
 public:
-    static constexpr uint32_t DEFAULT_TIMEOUT_MS = 60000;
-    static constexpr uint32_t DEFAULT_PERIODIC_INTERVAL_MS = 5000;
-
     PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec);
 
     ~PairingManager() = default;
@@ -46,6 +43,6 @@ private:
 
     uint64_t started_at_ms_ = 0;
     uint64_t last_request_ms_ = 0;
-    uint32_t timeout_ms_ = DEFAULT_TIMEOUT_MS;
-    static constexpr uint32_t periodic_interval_ms_ = DEFAULT_PERIODIC_INTERVAL_MS;
+    uint32_t timeout_ms_ = PAIRING_TIMEOUT_MS;
+    static constexpr uint32_t periodic_interval_ms_ = PAIRING_PERIODIC_INTERVAL_MS;
 };
