@@ -58,8 +58,7 @@ EspNowManager &EspNowManager::instance()
         std::make_unique<TxManager>(*tx_fsm, *scanner, *hal_wifi, *hal_freertos, *message_codec, 500);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(
         ReservedIds::HUB, *tx_manager, *peer_manager, *message_codec, *hal_freertos, *hal_timer);
-    static auto pairing_mgr =
-        std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec, *hal_freertos);
+    static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec);
     static auto message_router =
         std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
 
@@ -126,8 +125,6 @@ esp_err_t EspNowManager::deinit()
         tx_manager_->deinit();
     if (heartbeat_manager_)
         heartbeat_manager_->deinit();
-    if (pairing_manager_)
-        pairing_manager_->deinit();
 
     // Signal tasks to stop
     if (rx_dispatch_task_handle_ != nullptr) {
@@ -280,13 +277,20 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     // Add peers to ESPNOW
     {
         std::vector<PeerInfo> peers = peer_manager_->get_all();
-        for (auto &peer : peers) {
-            esp_now_peer_info_t info = {};
-            memcpy(info.peer_addr, peer.mac, 6);
-            info.channel = peer.channel;
-            info.ifidx = WIFI_IF_STA;
-            info.encrypt = false;
-            hal_driver_->hal_esp_now_add_peer(&info);
+        if (peers.empty()) {
+            node_state_ = NodeState::PAIRING;
+        }
+        else {
+            node_state_ = NodeState::OPERATIONAL;
+
+            for (auto &peer : peers) {
+                esp_now_peer_info_t info = {};
+                memcpy(info.peer_addr, peer.mac, 6);
+                info.channel = peer.channel;
+                info.ifidx = WIFI_IF_STA;
+                info.encrypt = false;
+                hal_driver_->hal_esp_now_add_peer(&info);
+            }
         }
     }
 
@@ -426,7 +430,8 @@ esp_err_t EspNowManager::remove_peer(NodeId node_id)
 }
 esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 {
-    return pairing_manager_->start(timeout_ms);
+    transition_to_state(NodeState::PAIRING);
+    return pairing_manager_->start(timeout_ms, get_time_ms());
 }
 
 void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len)
@@ -545,4 +550,10 @@ void EspNowManager::propagate_channel()
     pairing_manager_->set_channel(config_.wifi_channel);
     scanner_->set_channel(config_.wifi_channel);
     peer_manager_->set_channel(config_.wifi_channel);
+}
+
+void EspNowManager::transition_to_state(NodeState new_state)
+{
+    ESP_LOGI(TAG, "NodeState: %d -> %d", (int)node_state_, (int)new_state);
+    node_state_ = new_state;
 }

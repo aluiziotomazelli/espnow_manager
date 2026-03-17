@@ -9,19 +9,22 @@
 class PairingManager : public IPairingManager
 {
 public:
-    PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec, IFreeRTOSHAL &hal_freertos);
-    ~PairingManager();
+    static constexpr uint32_t DEFAULT_TIMEOUT_MS = 60000;
+    static constexpr uint32_t DEFAULT_PERIODIC_INTERVAL_MS = 5000;
+
+    PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec);
+
+    ~PairingManager() = default;
 
     using IPairingManager::init;
 
-    esp_err_t init(NodeType type, NodeId id) override;
-    esp_err_t deinit() override;
-    esp_err_t start(uint32_t timeout_ms) override;
+    esp_err_t init(NodeId id, NodeType type) override;
+
+    void tick(uint64_t now_ms) override;
+
+    esp_err_t start(uint32_t timeout_ms, uint64_t now_ms) override;
     void set_channel(uint8_t channel) override;
-    bool is_active() const override
-    {
-        return is_active_;
-    }
+    bool is_active() const override;
     void handle_request(const RxPacket &packet) override;
     void handle_response(const RxPacket &packet) override;
 
@@ -33,16 +36,16 @@ private:
     ITxManager &tx_mgr_;
     IPeerManager &peer_mgr_;
     IMessageCodec &codec_;
-    IFreeRTOSHAL &hal_freertos_;
 
     NodeType my_type_;
     NodeId my_id_;
-    bool is_active_               = false;
-    uint8_t current_channel_      = 1;
-    TimerHandle_t timeout_timer_  = nullptr;
-    TimerHandle_t periodic_timer_ = nullptr;
-    SemaphoreHandle_t mutex_      = nullptr;
 
-    static void timeout_cb(TimerHandle_t xTimer);
-    static void periodic_cb(TimerHandle_t xTimer);
+    bool is_initialized_ = false;
+    bool is_active_ = false;
+    uint8_t current_channel_ = 1;
+
+    uint64_t started_at_ms_ = 0;
+    uint64_t last_request_ms_ = 0;
+    uint32_t timeout_ms_ = DEFAULT_TIMEOUT_MS;
+    static constexpr uint32_t periodic_interval_ms_ = DEFAULT_PERIODIC_INTERVAL_MS;
 };

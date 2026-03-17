@@ -38,6 +38,6 @@ Thumbs.db
 *.pyc
 **/coverage/**
 
-#cli
-GEMINI.*
-.gemini/
+#agents
+**/.gemini/
+**/GEMINI.md

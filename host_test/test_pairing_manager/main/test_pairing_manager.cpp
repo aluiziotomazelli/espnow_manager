@@ -1,0 +1,445 @@
+// host_test/test_pairing_manager/main/test_pairing_manager.cpp
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+#include "mock_message_codec.hpp"
+#include "mock_peer_manager.hpp"
+#include "mock_tx_manager.hpp"
+
+#include "pairing_manager.hpp"
+
+using ::testing::_;
+using ::testing::DoAll;
+using ::testing::InSequence;
+using ::testing::NiceMock;
+using ::testing::Return;
+using ::testing::SaveArg;
+using ::testing::SetArgPointee;
+
+// ---------------------------------------------------------------------------
+// Test constants
+// ---------------------------------------------------------------------------
+static constexpr NodeId kNodeId = 0x02;
+static constexpr NodeType kNodeType = 0x02; // non-HUB
+static constexpr NodeId kHubId = ReservedIds::HUB;
+static constexpr NodeType kHubType = ReservedTypes::HUB;
+static constexpr uint64_t kT0 = 1000; // arbitrary start timestamp
+
+// ---------------------------------------------------------------------------
+// Fixture — non-HUB node
+//
+// NiceMock rationale: codec_.encode() and tx_mgr_.queue_packet() are called
+// inside send_pair_request(), which fires on start() and on every tick()
+// interval. Tests focused on state transitions (is_active_, timeout, channel)
+// should not fail on those incidental transmissions — NiceMock silences them.
+// Tests that explicitly verify transmission behaviour use EXPECT_CALL directly.
+// ---------------------------------------------------------------------------
+class PairingManagerTest : public ::testing::Test
+{
+protected:
+    NiceMock<MockTxManager> tx_mgr_;
+    NiceMock<MockPeerManager> peer_mgr_;
+    NiceMock<MockMessageCodec> codec_;
+
+    std::unique_ptr<PairingManager> sut_;
+
+    void SetUp() override
+    {
+        sut_ = std::make_unique<PairingManager>(tx_mgr_, peer_mgr_, codec_);
+        sut_->init(kNodeId, kNodeType);
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: RxPacket carrying a PairResponse from the HUB.
+    // -----------------------------------------------------------------------
+    static RxPacket make_pair_response(uint8_t channel, PairStatus status = PairStatus::ACCEPTED)
+    {
+        RxPacket packet{};
+        auto *resp = reinterpret_cast<PairResponse *>(packet.data);
+        resp->header.msg_type = MessageType::PAIR_RESPONSE;
+        resp->header.sender_node_id = kHubId;
+        resp->header.sender_type = kHubType;
+        resp->header.dest_node_id = kNodeId;
+        resp->header.sequence_number = 0;
+        resp->status = status;
+        resp->wifi_channel = channel;
+        packet.len = sizeof(PairResponse);
+        return packet;
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: RxPacket carrying a PairRequest from an arbitrary node.
+    // -----------------------------------------------------------------------
+    static RxPacket make_pair_request(NodeId sender_id, NodeType sender_type)
+    {
+        RxPacket packet{};
+        auto *req = reinterpret_cast<PairRequest *>(packet.data);
+        req->header.msg_type = MessageType::PAIR_REQUEST;
+        req->header.sender_node_id = sender_id;
+        req->header.sender_type = sender_type;
+        req->header.dest_node_id = kHubId;
+        req->header.sequence_number = 0;
+        req->heartbeat_interval_ms = 60000;
+        packet.len = sizeof(PairRequest);
+        return packet;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Fixture — HUB role
+// Same mocks, constructed with HUB id/type. Kept separate so test names
+// clearly communicate which role is under test.
+// ---------------------------------------------------------------------------
+class PairingManagerHubTest : public ::testing::Test
+{
+protected:
+    NiceMock<MockTxManager> tx_mgr_;
+    NiceMock<MockPeerManager> peer_mgr_;
+    NiceMock<MockMessageCodec> codec_;
+
+    std::unique_ptr<PairingManager> sut_;
+
+    void SetUp() override
+    {
+        sut_ = std::make_unique<PairingManager>(tx_mgr_, peer_mgr_, codec_);
+        sut_->init(kHubId, kHubType);
+    }
+
+    static RxPacket make_pair_request(NodeId sender_id, NodeType sender_type)
+    {
+        RxPacket packet{};
+        auto *req = reinterpret_cast<PairRequest *>(packet.data);
+        req->header.msg_type = MessageType::PAIR_REQUEST;
+        req->header.sender_node_id = sender_id;
+        req->header.sender_type = sender_type;
+        req->header.dest_node_id = kHubId;
+        req->header.sequence_number = 0;
+        req->heartbeat_interval_ms = 60000;
+        packet.len = sizeof(PairRequest);
+        return packet;
+    }
+
+    static RxPacket make_pair_response(uint8_t channel)
+    {
+        RxPacket packet{};
+        auto *resp = reinterpret_cast<PairResponse *>(packet.data);
+        resp->header.msg_type = MessageType::PAIR_RESPONSE;
+        resp->header.sender_node_id = kHubId;
+        resp->header.sender_type = kHubType;
+        resp->header.dest_node_id = kNodeId;
+        resp->header.sequence_number = 0;
+        resp->wifi_channel = channel;
+        packet.len = sizeof(PairResponse);
+        return packet;
+    }
+};
+
+// ===========================================================================
+// init()
+// ===========================================================================
+
+TEST_F(PairingManagerTest, InitReturnsOk)
+{
+    // A fresh instance — init() already called in SetUp(), construct another
+    // to test the return value explicitly
+    PairingManager pm(tx_mgr_, peer_mgr_, codec_);
+    EXPECT_EQ(pm.init(kNodeId, kNodeType), ESP_OK);
+}
+
+TEST_F(PairingManagerTest, NotActiveAfterInit)
+{
+    EXPECT_FALSE(sut_->is_active());
+}
+
+// ===========================================================================
+// start()
+// ===========================================================================
+
+TEST_F(PairingManagerTest, StartFailsIfNotInitialized)
+{
+    PairingManager pm(tx_mgr_, peer_mgr_, codec_);
+    // init() not called — is_initialized_ is false
+    EXPECT_EQ(pm.start(PairingManager::DEFAULT_TIMEOUT_MS, kT0), ESP_ERR_INVALID_STATE);
+}
+
+TEST_F(PairingManagerTest, StartFailsIfAlreadyActive)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+    EXPECT_EQ(sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0), ESP_ERR_INVALID_STATE);
+}
+
+TEST_F(PairingManagerTest, StartActivatesPairing)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+    EXPECT_TRUE(sut_->is_active());
+}
+
+TEST_F(PairingManagerTest, StartSendsInitialPairRequest)
+{
+    // Non-HUB node must send a pair request immediately on start()
+    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
+
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+}
+
+TEST_F(PairingManagerTest, StartDoesNotSendIfEncodeReturnsZero)
+{
+    // encode() returning 0 means nothing should be queued
+    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(0));
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+}
+
+TEST_F(PairingManagerHubTest, StartDoesNotSendPairRequest)
+{
+    // HUB never sends pair requests — it only responds to them
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+    EXPECT_TRUE(sut_->is_active());
+}
+
+// ===========================================================================
+// tick()
+// ===========================================================================
+
+TEST_F(PairingManagerTest, TickDoesNothingIfNotActive)
+{
+    // No start() called — tick() should be a no-op
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+    sut_->tick(kT0 + PairingManager::DEFAULT_TIMEOUT_MS + 1);
+    EXPECT_FALSE(sut_->is_active());
+}
+
+TEST_F(PairingManagerTest, TickDoesNothingIfNotInitialized)
+{
+    PairingManager pm(tx_mgr_, peer_mgr_, codec_);
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+    pm.tick(kT0 + PairingManager::DEFAULT_TIMEOUT_MS + 1);
+}
+
+TEST_F(PairingManagerTest, TickTimesOutWhenTimeoutExceeded)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+    EXPECT_TRUE(sut_->is_active());
+
+    sut_->tick(kT0 + PairingManager::DEFAULT_TIMEOUT_MS);
+    EXPECT_FALSE(sut_->is_active());
+}
+
+TEST_F(PairingManagerTest, TickDoesNotTimeOutBeforeTimeout)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    sut_->tick(kT0 + PairingManager::DEFAULT_TIMEOUT_MS - 1);
+    EXPECT_TRUE(sut_->is_active());
+}
+
+TEST_F(PairingManagerTest, TickSendsPeriodicRequestAfterInterval)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    // Expect one periodic send after interval elapses
+    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
+
+    sut_->tick(kT0 + PairingManager::DEFAULT_PERIODIC_INTERVAL_MS);
+}
+
+TEST_F(PairingManagerTest, TickDoesNotSendBeforeInterval)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+    sut_->tick(kT0 + PairingManager::DEFAULT_PERIODIC_INTERVAL_MS - 1);
+}
+
+TEST_F(PairingManagerTest, TickUpdatesLastRequestTimeAfterPeriodicSend)
+{
+    // After a periodic send, the next tick just below 2x interval should NOT send again
+    ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault(Return(10));
+
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+    sut_->tick(kT0 + PairingManager::DEFAULT_PERIODIC_INTERVAL_MS); // first periodic send
+
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+    sut_->tick(kT0 + PairingManager::DEFAULT_PERIODIC_INTERVAL_MS * 2 - 1); // not yet time for second send
+}
+
+TEST_F(PairingManagerHubTest, TickDoesNotSendPeriodicRequest)
+{
+    // HUB never sends pair requests periodically
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+    sut_->tick(kT0 + PairingManager::DEFAULT_PERIODIC_INTERVAL_MS);
+}
+
+// ===========================================================================
+// handle_response() — non-HUB node
+// ===========================================================================
+
+TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotActive)
+{
+    // Pairing not started — response must be ignored
+    EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
+
+    auto packet = make_pair_response(6);
+    sut_->handle_response(packet);
+}
+
+TEST_F(PairingManagerTest, HandleResponseIgnoredIfDecodeFailes)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(std::nullopt));
+    EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
+
+    auto packet = make_pair_response(6);
+    sut_->handle_response(packet);
+    EXPECT_TRUE(sut_->is_active()); // still active
+}
+
+TEST_F(PairingManagerTest, HandleResponseAcceptedDeactivatesPairing)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    MessageHeader header{};
+    header.sender_node_id = kHubId;
+    header.sender_type = kHubType;
+    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
+
+    auto packet = make_pair_response(6, PairStatus::ACCEPTED);
+    sut_->handle_response(packet);
+
+    EXPECT_FALSE(sut_->is_active());
+}
+
+TEST_F(PairingManagerTest, HandleResponseAcceptedAddsPeer)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    MessageHeader header{};
+    header.sender_node_id = kHubId;
+    header.sender_type = kHubType;
+    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
+    EXPECT_CALL(peer_mgr_, add(kHubId, _, kHubType, _)).Times(1);
+
+    auto packet = make_pair_response(6, PairStatus::ACCEPTED);
+    sut_->handle_response(packet);
+}
+
+TEST_F(PairingManagerTest, HandleResponseRejectedKeepsPairingActive)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    MessageHeader header{};
+    header.sender_node_id = kHubId;
+    header.sender_type = kHubType;
+    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
+
+    auto packet = make_pair_response(6, PairStatus::REJECTED_NOT_ALLOWED);
+    sut_->handle_response(packet);
+
+    EXPECT_TRUE(sut_->is_active());
+}
+
+TEST_F(PairingManagerHubTest, HandleResponseIgnoredByHub)
+{
+    // HUB never processes pair responses
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
+    EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
+
+    auto packet = make_pair_response(6);
+    sut_->handle_response(packet);
+    EXPECT_TRUE(sut_->is_active());
+}
+
+// ===========================================================================
+// handle_request() — HUB
+// ===========================================================================
+
+TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotActive)
+{
+    EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
+
+    auto packet = make_pair_request(kNodeId, kNodeType);
+    sut_->handle_request(packet);
+}
+
+TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfDecodeFailes)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(std::nullopt));
+    EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
+
+    auto packet = make_pair_request(kNodeId, kNodeType);
+    sut_->handle_request(packet);
+}
+
+TEST_F(PairingManagerHubTest, HandleRequestFromNodeAddsPeerAndResponds)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    MessageHeader header{};
+    header.sender_node_id = kNodeId;
+    header.sender_type = kNodeType;
+    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
+    EXPECT_CALL(peer_mgr_, add(kNodeId, _, kNodeType, _)).Times(1);
+    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
+
+    auto packet = make_pair_request(kNodeId, kNodeType);
+    sut_->handle_request(packet);
+}
+
+TEST_F(PairingManagerHubTest, HandleRequestFromHubIsRejected)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    MessageHeader header{};
+    header.sender_node_id = kHubId;
+    header.sender_type = kHubType;
+    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
+
+    // HUB sender must NOT be added as peer
+    EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
+
+    // Response is still sent (REJECTED_NOT_ALLOWED)
+    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
+
+    auto packet = make_pair_request(kHubId, kHubType);
+    sut_->handle_request(packet);
+}
+
+TEST_F(PairingManagerHubTest, HandleRequestEncodeFailureDoesNotQueue)
+{
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    MessageHeader header{};
+    header.sender_node_id = kNodeId;
+    header.sender_type = kNodeType;
+    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
+    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(0));
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+
+    auto packet = make_pair_request(kNodeId, kNodeType);
+    sut_->handle_request(packet);
+}
+
+TEST_F(PairingManagerTest, HandleRequestIgnoredByNonHub)
+{
+    // Non-HUB nodes must never process pair requests
+    sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
+
+    EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
+
+    auto packet = make_pair_request(kNodeId, kNodeType);
+    sut_->handle_request(packet);
+}
