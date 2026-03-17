@@ -31,6 +31,8 @@ public:
     /** @internal */
     virtual void notify_physical_fail() = 0;
 
+    virtual void notify_scanning() = 0;
+
     /** @internal */
     virtual void notify_link_alive() = 0;
 

@@ -131,6 +131,12 @@ void TxManager::notify_physical_fail()
         freertos_hal_.task_notify(task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits);
 }
 
+void TxManager::notify_scanning()
+{
+    if (task_handle_)
+        freertos_hal_.task_notify(task_handle_, NOTIFY_SCANNING, eSetBits);
+}
+
 void TxManager::notify_link_alive()
 {
     if (task_handle_)

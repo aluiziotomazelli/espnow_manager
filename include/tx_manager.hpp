@@ -35,6 +35,7 @@ public:
 
     // Notifications from outside (ISRs or other tasks)
     void notify_physical_fail() override;
+    void notify_scanning() override;
     void notify_link_alive() override;
     void notify_logical_ack() override;
 
