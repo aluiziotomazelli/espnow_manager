@@ -290,6 +290,15 @@ TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotActive)
     sut_->handle_response(packet);
 }
 
+TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotInitialized)
+{
+    PairingManager pm(tx_mgr_, peer_mgr_, codec_);
+    EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
+
+    auto packet = make_pair_response(6);
+    pm.handle_response(packet);
+}
+
 TEST_F(PairingManagerTest, HandleResponseIgnoredIfDecodeFailes)
 {
     sut_->start(PairingManager::DEFAULT_TIMEOUT_MS, kT0);
@@ -369,6 +378,15 @@ TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotActive)
 
     auto packet = make_pair_request(kNodeId, kNodeType);
     sut_->handle_request(packet);
+}
+
+TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotInitialized)
+{
+    PairingManager pm(tx_mgr_, peer_mgr_, codec_);
+    EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
+
+    auto packet = make_pair_request(kNodeId, kNodeType);
+    pm.handle_request(packet);
 }
 
 TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfDecodeFailes)
