@@ -312,6 +312,9 @@ esp_err_t EspNowManager::send_data(
     size_t len,
     bool require_ack)
 {
+    if (node_state_.load() != NodeState::OPERATIONAL)
+        return ESP_ERR_INVALID_STATE;
+
     TxPacket tx_packet;
     if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac))
         return ESP_ERR_NOT_FOUND;
@@ -342,6 +345,9 @@ esp_err_t EspNowManager::send_command(
     size_t len,
     bool require_ack)
 {
+    if (node_state_.load() != NodeState::OPERATIONAL)
+        return ESP_ERR_INVALID_STATE;
+
     TxPacket tx_packet;
     if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac))
         return ESP_ERR_NOT_FOUND;
@@ -367,8 +373,12 @@ esp_err_t EspNowManager::send_command(
 
 esp_err_t EspNowManager::confirm_reception(AckStatus status)
 {
+    if (node_state_.load() != NodeState::OPERATIONAL)
+        return ESP_ERR_INVALID_STATE;
+
     if (hal_freertos_->semaphore_take(ack_mutex_, pdMS_TO_TICKS(100)) != pdTRUE)
         return ESP_ERR_TIMEOUT;
+
     if (!last_header_requiring_ack_.has_value()) {
         hal_freertos_->semaphore_give(ack_mutex_);
         return ESP_ERR_INVALID_STATE;
@@ -415,26 +425,22 @@ std::vector<PeerInfo> EspNowManager::get_peers()
 {
     return peer_manager_->get_all();
 }
+
 std::vector<NodeId> EspNowManager::get_offline_peers() const
 {
+    if (node_state_.load() != NodeState::OPERATIONAL)
+        return {};
     return peer_manager_->get_offline(get_time_ms());
 }
+
 esp_err_t EspNowManager::add_peer(NodeId node_id, const uint8_t *mac, NodeType type)
 {
     return peer_manager_->add(node_id, mac, type);
 }
+
 esp_err_t EspNowManager::remove_peer(NodeId node_id)
 {
     return peer_manager_->remove(node_id);
-}
-esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
-{
-    if (node_state_ == NodeState::UNINITIALIZED) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    transition_to_state(NodeState::PAIRING);
-    return pairing_manager_->start(timeout_ms, get_time_ms());
 }
 
 void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len)
@@ -557,8 +563,10 @@ void EspNowManager::transport_worker_task(void *arg)
             self->message_router_->handle_packet(packet);
         }
         // Tick pairing manager to handle timeouts, has internaly safe guards to avoid
-        // unnecessary processing when not in pairing mode
-        self->pairing_manager_->tick(self->get_time_ms());
+        // unnecessary processing when not in pairing mode, but we check on Manager too
+        if (self->node_state_.load() == NodeState::PAIRING) {
+            self->pairing_manager_->tick(self->get_time_ms());
+        }
     }
     self->transport_worker_task_handle_ = nullptr;
     self->hal_freertos_->task_suspend(NULL);
@@ -610,6 +618,16 @@ void EspNowManager::transition_to_state(NodeState new_state)
 {
     ESP_LOGI(TAG, "NodeState: %d -> %d", static_cast<int>(node_state_.load()), static_cast<int>(new_state));
     node_state_.store(new_state);
+}
+
+esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
+{
+    if (node_state_ == NodeState::UNINITIALIZED) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    transition_to_state(NodeState::PAIRING);
+    return pairing_manager_->start(timeout_ms, get_time_ms());
 }
 
 bool EspNowManager::is_initialized() const
