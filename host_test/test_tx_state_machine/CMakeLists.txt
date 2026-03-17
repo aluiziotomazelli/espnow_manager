@@ -27,7 +27,7 @@ project(test_tx_state_machine)
 set(EXTRACT_PATTERNS_test_tx_state_machine "*/espnow_manager/src/tx_state_machine.cpp")
 
 # Set the patterns to remove from the binary
-# set(REMOVE_PATTERNS_test_channel_scanner 
+# set(REMOVE_PATTERNS_test_tx_state_machine 
 #
 # )
 

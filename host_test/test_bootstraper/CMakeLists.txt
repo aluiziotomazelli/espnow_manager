@@ -26,10 +26,10 @@ project(test_bootstrapper)
 set(EXTRACT_PATTERNS_test_bootstrapper "*/espnow_manager/src/bootstrapper.cpp")
 
 # Set the patterns to remove from the binary
-# set(REMOVE_PATTERNS_test_channel_scanner 
+# set(REMOVE_PATTERNS_test_bootstrapper 
 #
 # )
 
 # Include common coverage logic
 include("../coverage_common.cmake")
-setup_gtest_coverage(test_channel_scanner test_bootstrapper.elf)
+setup_gtest_coverage(test_bootstrapper test_bootstrapper.elf)

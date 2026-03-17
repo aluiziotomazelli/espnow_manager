@@ -30,7 +30,7 @@ set(EXTRACT_PATTERNS_test_storage_manager
     )
 
 # Set the patterns to remove from the binary
-# set(REMOVE_PATTERNS_test_channel_scanner 
+# set(REMOVE_PATTERNS_test_storage_manager 
 #
 # )
 

@@ -27,7 +27,7 @@ project(test_message_codec)
 set(EXTRACT_PATTERNS_test_message_codec "*/espnow_manager/src/message_codec.cpp")
 
 # Set the patterns to remove from the binary
-# set(REMOVE_PATTERNS_test_channel_scanner 
+# set(REMOVE_PATTERNS_test_message_codec 
 #
 # )
 

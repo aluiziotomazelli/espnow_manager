@@ -59,6 +59,7 @@ add_custom_target(build_all_tests
 
 # Unified target to build, clean, run all tests and generate coverage
 add_custom_target(run_all_tests
+
     COMMAND ${CMAKE_COMMAND} --build . --target build_all_tests
     COMMAND ${CMAKE_COMMAND} --build . --target coverage_clean
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
@@ -66,3 +67,5 @@ add_custom_target(run_all_tests
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Full test cycle: build, clean, run, and coverage"
 )
+
+

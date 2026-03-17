@@ -626,7 +626,7 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 
     // Force TxManager into scanning so the correct channel is discovered
     // before pair requests are sent. Pairing starts after scan result arrives.
-    hal_freertos_->task_notify(tx_manager_->get_task_handle(), NOTIFY_SCANNING, eSetBits);
+    tx_manager_->notify_scanning();
 
     transition_to_state(NodeState::PAIRING);
     return ESP_OK;

@@ -27,7 +27,7 @@ project(test_pairing_manager)
 set(EXTRACT_PATTERNS_test_pairing_manager "*/espnow_manager/src/pairing_manager.cpp")
 
 # Set the patterns to remove from the binary
-# set(REMOVE_PATTERNS_test_channel_scanner 
+# set(REMOVE_PATTERNS_test_pairing_manager 
 #
 # )
 

@@ -28,7 +28,7 @@ project(test_discovery_manager)
 set(EXTRACT_PATTERNS_test_discovery_manager "*/espnow_manager/src/discovery_manager.cpp")
 
 # Set the patterns to remove from the binary
-# set(REMOVE_PATTERNS_test_channel_scanner 
+# set(REMOVE_PATTERNS_test_discovery_manager 
 #
 # )
 

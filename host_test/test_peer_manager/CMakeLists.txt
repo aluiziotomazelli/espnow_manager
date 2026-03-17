@@ -26,10 +26,10 @@ project(test_peer_manager)
 set(EXTRACT_PATTERNS_test_peer_manager "*/espnow_manager/src/peer_manager.cpp")
 
 # Set the patterns to remove from the binary
-# set(REMOVE_PATTERNS_test_channel_scanner 
+# set(REMOVE_PATTERNS_test_peer_manager 
 #
 # )
 
 # Include common coverage logic
 include("../coverage_common.cmake")
-setup_gtest_coverage(test_channel_scanner test_peer_manager.elf)
+setup_gtest_coverage(test_peer_manager test_peer_manager.elf)

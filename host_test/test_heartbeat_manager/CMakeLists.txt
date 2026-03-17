@@ -27,7 +27,7 @@ project(test_heartbeat_manager)
 set(EXTRACT_PATTERNS_test_heartbeat_manager "*/espnow_manager/src/heartbeat_manager.cpp")
 
 # Set the patterns to remove from the binary
-# set(REMOVE_PATTERNS_test_channel_scanner 
+# set(REMOVE_PATTERNS_test_heartbeat_manager 
 #
 # )
 
