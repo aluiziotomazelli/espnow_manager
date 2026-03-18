@@ -27,7 +27,7 @@ This report summarizes the static analysis findings for the `espnow_manager` com
 | Line | Warning Type | Importance / Risk |
 | :--- | :--- | :--- |
 | 23 | `readability-function-cognitive-complexity` | **Moderate**: Complexity of 134. `handle_packet` contains too many nested logic paths. |
-| 75 | `readability-implicit-bool-conversion` | **Moderate**: Implicit conversion of `QueueHandle_t` to `bool`. While common in ESP-IDF, explicit null checks are safer. |
+| 75 | `readability-implicit-bool-conversion` | **FIXED** **Moderate**: Implicit conversion of `QueueHandle_t` to `bool`. While common in ESP-IDF, explicit null checks are safer. |
 
 ---
 
@@ -74,8 +74,8 @@ This report summarizes the static analysis findings for the `espnow_manager` com
 
 | Line | Warning Type | Importance / Risk |
 | :--- | :--- | :--- |
-| 90 | `bugprone-suspicious-memory-comparison` | **High**: Comparing `PersistentData` with `memcmp`. Struct padding bytes contain random garbage, leading to false "dirty" detections. |
-| 32, 71 | `readability-function-cognitive-complexity` | **Moderate**: `load` and `save` logic is becoming complex. |
+| 90 | `bugprone-suspicious-memory-comparison` | **FIXED** **High**: Comparing `PersistentData` with `memcmp`. Struct padding bytes contain random garbage, leading to false "dirty" detections. |
+| 32, 71 | `readability-function-cognitive-complexity` | **FIXED** **Moderate**: `load` and `save` logic is becoming complex. |
 
 ---
 
@@ -83,8 +83,8 @@ This report summarizes the static analysis findings for the `espnow_manager` com
 
 | Line | Warning Type | Importance / Risk |
 | :--- | :--- | :--- |
-| 454 | `bugprone-narrowing-conversions` | **High**: Narrowing `int` to `int8_t`. Risk of data corruption/overflow. |
-| 455 | `bugprone-narrowing-conversions` | **High**: Narrowing `uint64_t` to `int64_t`. Risk of sign issues or data loss. |
+| 454 | `bugprone-narrowing-conversions` | **FIXED** **High**: Narrowing `int` to `int8_t`. Risk of data corruption/overflow. |
+| 455 | `bugprone-narrowing-conversions` | **FIXED** **High**: Narrowing `uint64_t` to `int64_t`. Risk of sign issues or data loss. |
 | 309 | `bugprone-easily-swappable-parameters` | **High**: `dest_node_id` and `payload_type` are swappable. |
 | 114, 182, 465 | `readability-function-cognitive-complexity` | **Moderate**: High complexity in core lifecycle and task functions. |
 | 28 | `readability-duplicate-include` | **Low**: Duplicate include of `bootstrapper.hpp`. |

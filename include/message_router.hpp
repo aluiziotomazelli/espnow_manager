@@ -18,14 +18,10 @@ public:
         IPairingManager &pairing_manager,
         IMessageCodec &message_codec);
 
-    void set_app_queue(QueueHandle_t app_queue) override { app_queue_ = app_queue; }
+    void set_app_queue(QueueHandle_t app_queue) override;
 
     using IMessageRouter::set_node_info;
-    void set_node_info(NodeId id, NodeType type) override
-    {
-        my_id_ = id;
-        my_type_ = type;
-    }
+    void set_node_info(NodeId id, NodeType type) override;
 
     void handle_packet(const RxPacket &packet) override;
     bool should_dispatch_to_worker(MessageType type) override;

@@ -20,6 +20,17 @@ MessageRouter::MessageRouter(
 {
 }
 
+void MessageRouter::set_app_queue(QueueHandle_t app_queue)
+{
+    app_queue_ = app_queue;
+}
+
+void MessageRouter::set_node_info(NodeId id, NodeType type)
+{
+    my_id_ = id;
+    my_type_ = type;
+}
+
 void MessageRouter::handle_packet(const RxPacket &packet)
 {
     auto header_opt = message_codec_.decode_header(packet.data, packet.len);
@@ -72,7 +83,8 @@ void MessageRouter::handle_packet(const RxPacket &packet)
     }
     case MessageType::DATA:
     case MessageType::COMMAND:
-        if (app_queue_) {
+        if (app_queue_ != nullptr) {
+            // TODO: use hal_freertos or delegate this send to tx_manager?
             if (xQueueSend(app_queue_, &packet, 0) != pdTRUE) {
                 ESP_LOGW(TAG, "App queue full, dropping packet type %d", (int)header.msg_type);
             }
