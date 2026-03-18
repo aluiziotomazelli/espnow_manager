@@ -29,7 +29,7 @@ uint32_t StorageManager::calculate_crc(const PersistentData &data)
     return esp_rom_crc32_le(0, reinterpret_cast<const uint8_t *>(&data), length);
 }
 
-esp_err_t StorageManager::load(uint8_t &wifi_channel, std::vector<PersistentPeer> &peers)
+esp_err_t StorageManager::load(uint8_t &wifi_channel, etl::ivector<PersistentPeer> &peers)
 {
     PersistentData data;
 
@@ -68,7 +68,7 @@ esp_err_t StorageManager::load(uint8_t &wifi_channel, std::vector<PersistentPeer
     return ESP_ERR_NOT_FOUND;
 }
 
-esp_err_t StorageManager::save(uint8_t wifi_channel, const std::vector<PersistentPeer> &peers, bool force_nvs_commit)
+esp_err_t StorageManager::save(uint8_t wifi_channel, const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit)
 {
     PersistentData data;
     memset(&data, 0, sizeof(PersistentData));

@@ -1,7 +1,8 @@
 #pragma once
 
 #include <type_traits>
-#include <vector>
+
+#include "etl/vector.h"
 
 #include "esp_err.h"
 
@@ -246,7 +247,7 @@ public:
      *
      * @return Vector containing information for all registered peers.
      */
-    virtual std::vector<PeerInfo> get_peers() = 0;
+    virtual etl::vector<PeerInfo, MAX_PEERS> get_peers() = 0;
 
     /**
      * @brief Get a list of IDs for peers considered offline
@@ -255,7 +256,7 @@ public:
      *
      * @return Vector of Node IDs.
      */
-    virtual std::vector<NodeId> get_offline_peers() const = 0;
+    virtual etl::vector<NodeId, MAX_PEERS> get_offline_peers() const = 0;
 
     // ========================================
     // Pairing

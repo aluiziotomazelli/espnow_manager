@@ -3,14 +3,13 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <vector>
+
+#include "etl/vector.h"
 
 #include "esp_err.h"
 
 #include "i_persistence_backend.hpp"
 #include "i_storage_manager.hpp"
-// #include "protocol_types.hpp"
-// #include "hal_wifi.hpp"
 
 /**
  * @brief Internal structure for persistent data.
@@ -48,7 +47,7 @@ public:
      * @param peers Output for the loaded peer list.
      * @return ESP_OK if loaded successfully, error otherwise.
      */
-    esp_err_t load(uint8_t &wifi_channel, std::vector<PersistentPeer> &peers) override;
+    esp_err_t load(uint8_t &wifi_channel, etl::ivector<PersistentPeer> &peers) override;
 
     /**
      * @brief Saves data to RTC and NVS.
@@ -60,7 +59,7 @@ public:
      * @return ESP_OK if saved successfully, error otherwise.
      */
     esp_err_t
-    save(uint8_t wifi_channel, const std::vector<PersistentPeer> &peers, bool force_nvs_commit = true) override;
+    save(uint8_t wifi_channel, const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit = true) override;
 
     static uint32_t calculate_crc(const PersistentData &data);
 

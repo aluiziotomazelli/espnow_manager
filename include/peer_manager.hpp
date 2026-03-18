@@ -1,9 +1,6 @@
 #pragma once
 
-// #include "freertos/FreeRTOS.h"
-// #include "freertos/queue.h"
-// #include "freertos/semphr.h"
-// #include "freertos/task.h"
+#include "etl/vector.h"
 
 #include "i_peer_manager.hpp"
 #include "i_hal_wifi.hpp"
@@ -25,8 +22,8 @@ public:
     esp_err_t add(NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms = 0) override;
     esp_err_t remove(NodeId id) override;
     bool find_mac(NodeId id, uint8_t *mac) override;
-    std::vector<PeerInfo> get_all() override;
-    std::vector<NodeId> get_offline(uint64_t now_ms) override;
+    etl::vector<PeerInfo, MAX_PEERS> get_all() override;
+    etl::vector<NodeId, MAX_PEERS> get_offline(uint64_t now_ms) override;
     void update_last_seen(NodeId id, uint64_t now_ms) override;
 
     // Helper for initialization (loading from storage)
@@ -39,8 +36,7 @@ private:
     IWiFiHAL &driver_hal_;
     IFreeRTOSHAL &freertos_hal_;
 
-    // TODO: replace std::vector<Peer> with etl::vector<Peer, MAX_PEERS> to avoid heap allocation?
-    std::vector<PeerInfo> peers_;
+    etl::vector<PeerInfo, MAX_PEERS> peers_;
     SemaphoreHandle_t mutex_;
     uint8_t current_channel_ = 0;
 

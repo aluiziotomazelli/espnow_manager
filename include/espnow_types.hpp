@@ -15,7 +15,7 @@
  */
 
 /** @brief Maximum number of peers that can be registered in the manager */
-constexpr int MAX_PEERS = 19;
+static constexpr uint8_t MAX_PEERS = 19;
 
 /**
  * @brief Generic structure for packets received from the ESP-NOW layer.

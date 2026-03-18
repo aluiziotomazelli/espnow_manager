@@ -153,7 +153,7 @@ esp_err_t EspNowManager::deinit()
 
     // Delete peers
     if (esp_now_initialized_ && peer_manager_) {
-        std::vector<PeerInfo> peers = peer_manager_->get_all();
+        etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
         for (const auto &peer : peers) {
             hal_driver_->hal_esp_now_del_peer(peer.mac);
         }
@@ -276,7 +276,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
 
     // Add peers to ESPNOW
     {
-        std::vector<PeerInfo> peers = peer_manager_->get_all();
+        etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
         if (peers.empty()) {
             node_state_.store(NodeState::PAIRING);
         }
@@ -421,12 +421,12 @@ esp_err_t EspNowManager::confirm_reception(AckStatus status)
     return err;
 }
 
-std::vector<PeerInfo> EspNowManager::get_peers()
+etl::vector<PeerInfo, MAX_PEERS> EspNowManager::get_peers()
 {
     return peer_manager_->get_all();
 }
 
-std::vector<NodeId> EspNowManager::get_offline_peers() const
+etl::vector<NodeId, MAX_PEERS> EspNowManager::get_offline_peers() const
 {
     if (node_state_.load() != NodeState::OPERATIONAL)
         return {};

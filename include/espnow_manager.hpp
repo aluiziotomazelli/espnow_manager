@@ -4,6 +4,8 @@
 #include <memory>
 #include <atomic>
 
+#include "etl/vector.h"
+
 // #include "freertos/FreeRTOS.h"
 // #include "freertos/queue.h"
 // #include "freertos/semphr.h"
@@ -49,7 +51,7 @@ public:
         std::unique_ptr<IWiFiHAL> driver_hal,
         std::unique_ptr<ITimerHAL> timer_hal,
         std::unique_ptr<IFreeRTOSHAL> freertos_hal,
-        std::unique_ptr<IBootstrapper> bootstrapper,
+        std::unique_ptr<IBootstrapper> bootstraper,
         std::unique_ptr<IPeerManager> peer_manager,
         std::unique_ptr<IMessageCodec> message_codec,
         std::unique_ptr<IDiscoveryManager> scanner,
@@ -108,10 +110,10 @@ public:
     esp_err_t remove_peer(NodeId node_id) override;
 
     /** @copydoc IEspNowManager::get_peers */
-    std::vector<PeerInfo> get_peers() override;
+    etl::vector<PeerInfo, MAX_PEERS> get_peers() override;
 
     /** @copydoc IEspNowManager::get_offline_peers */
-    std::vector<NodeId> get_offline_peers() const override;
+    etl::vector<NodeId, MAX_PEERS> get_offline_peers() const override;
 
     // ========================================
     // Pairing

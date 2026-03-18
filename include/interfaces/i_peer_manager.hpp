@@ -1,9 +1,10 @@
-// include/internface/i_peer_manager.hpp
+// include/interfaces/i_peer_manager.hpp
 #pragma once
 
 #include <cstdint>
 #include <type_traits>
-#include <vector>
+
+#include "etl/vector.h"
 
 #include "espnow_types.hpp"
 #include "protocol_messages.hpp"
@@ -82,13 +83,13 @@ public:
      * @brief Get all registered peers
      * @internal
      */
-    virtual std::vector<PeerInfo> get_all() = 0;
+    virtual etl::vector<PeerInfo, MAX_PEERS> get_all() = 0;
 
     /**
      * @brief Get peers that haven't been seen since a timeout
      * @internal
      */
-    virtual std::vector<NodeId> get_offline(uint64_t now_ms) = 0;
+    virtual etl::vector<NodeId, MAX_PEERS> get_offline(uint64_t now_ms) = 0;
 
     /**
      * @brief Update the last seen timestamp for a peer

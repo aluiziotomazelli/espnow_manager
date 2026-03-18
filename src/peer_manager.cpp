@@ -20,7 +20,7 @@ PeerManager::PeerManager(IStorageManager &storage, IWiFiHAL &driver_hal, IFreeRT
     , freertos_hal_(freertos_hal)
 {
     mutex_ = freertos_hal_.mutex_create();
-    peers_.reserve(MAX_PEERS);
+    // peers_ is etl::vector, capacity is fixed at compile-time.
 }
 
 PeerManager::~PeerManager()
@@ -88,7 +88,7 @@ PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbea
     else {
         // New peer
         if (peers_.size() >= MAX_PEERS) {
-            ESP_LOGW(TAG, "Peer list is full. Removing the last seen peer.");
+            ESP_LOGW(TAG, "Peer list is full. Removing the oldest seen peer.");
 
             // Returns a iterator to the element with the smallest last_seen_ms
             auto oldest = std::min_element(peers_.begin(), peers_.end(), [](const PeerInfo &a, const PeerInfo &b) {
@@ -172,24 +172,26 @@ bool PeerManager::find_mac(NodeId id, uint8_t *mac)
     return found;
 }
 
-std::vector<PeerInfo> PeerManager::get_all()
+etl::vector<PeerInfo, MAX_PEERS> PeerManager::get_all()
 {
-    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
-        return {};
-    }
+    etl::vector<PeerInfo, MAX_PEERS> copy; 
 
-    std::vector<PeerInfo> copy = peers_;
+    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+        return copy; 
+    }
+    copy = peers_; 
     freertos_hal_.semaphore_give(mutex_);
-    return copy;
+    return copy; 
 }
 
-std::vector<NodeId> PeerManager::get_offline(uint64_t now_ms)
+etl::vector<NodeId, MAX_PEERS> PeerManager::get_offline(uint64_t now_ms)
 {
+    etl::vector<NodeId, MAX_PEERS> offline;
+
     if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
-        return {};
+        return offline;
     }
 
-    std::vector<NodeId> offline;
     for (const auto &p : peers_) {
         if (p.heartbeat_interval_ms > 0) {
             uint32_t timeout = p.heartbeat_interval_ms * HEARTBEAT_OFFLINE_MULTIPLIER;
@@ -219,13 +221,15 @@ void PeerManager::update_last_seen(NodeId id, uint64_t now_ms)
 
 esp_err_t PeerManager::load_from_storage(uint8_t &wifi_channel)
 {
-    std::vector<PersistentPeer> stored_peers;
+    etl::vector<PersistentPeer, MAX_PEERS> stored_peers;
     esp_err_t err = storage_.load(wifi_channel, stored_peers);
     if (err == ESP_OK) {
         if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
             peers_.clear();
             for (const auto &sp : stored_peers) {
-                peers_.push_back(persistent_to_info(sp));
+                if (peers_.size() < MAX_PEERS) {
+                    peers_.push_back(persistent_to_info(sp));
+                }
             }
             freertos_hal_.semaphore_give(mutex_);
         }
@@ -246,7 +250,7 @@ void PeerManager::persist()
 
 void PeerManager::save_to_storage()
 {
-    std::vector<PersistentPeer> to_save;
+    etl::vector<PersistentPeer, MAX_PEERS> to_save;
     for (const auto &p : peers_) {
         to_save.push_back(info_to_persistent(p));
     }

@@ -1,8 +1,9 @@
-// include/internface/i_storage_manager.hpp
+// include/interfaces/i_storage_manager.hpp
 #pragma once
 
 #include <cstdint>
-#include <vector>
+
+#include "etl/vector.h"
 
 #include "esp_err.h"
 
@@ -19,8 +20,8 @@ public:
     virtual ~IStorageManager() = default;
 
     /** @internal */
-    virtual esp_err_t load(uint8_t &wifi_channel, std::vector<PersistentPeer> &peers) = 0;
+    virtual esp_err_t load(uint8_t &wifi_channel, etl::ivector<PersistentPeer> &peers) = 0;
     /** @internal */
     virtual esp_err_t
-    save(uint8_t wifi_channel, const std::vector<PersistentPeer> &peers, bool force_nvs_commit = true) = 0;
+    save(uint8_t wifi_channel, const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit = true) = 0;
 };
