@@ -91,6 +91,22 @@ esp_err_t StorageManager::load(uint8_t &wifi_channel, etl::ivector<PersistentPee
     return ret;
 }
 
+bool StorageManager::is_data_dirty(const PersistentData &new_data)
+{
+    PersistentData current_rtc;
+
+    // If we can't load from RTC, assume it's dirty to be safe
+    if (rtc_backend_->load(&current_rtc, sizeof(PersistentData)) != ESP_OK) {
+        return true;
+    }
+
+    // Using our safe custom comparison operator. This compares only actual field
+    // values instead of the entire raw memory block, preventing struct padding bytes
+    // or unused array elements from triggering a false "dirty" state, thus
+    // avoiding needless NVS flash writes.
+    return (current_rtc != new_data);
+}
+
 esp_err_t StorageManager::save(uint8_t wifi_channel, const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit)
 {
     PersistentData data;
@@ -104,30 +120,25 @@ esp_err_t StorageManager::save(uint8_t wifi_channel, const etl::ivector<Persiste
         data.peers[i] = peers[i];
     }
 
-    // Calculate CRC after all fields are set, but not used in the comparison operator
+    // Calculate CRC after all fields are set, not used in
+    // the comparison operator, only to save data if is dirty
     data.crc = calculate_crc(data);
 
-    // Get current RTC data to check if dirty
-    PersistentData current_rtc;
-    bool is_dirty = true;
-    if (rtc_backend_->load(&current_rtc, sizeof(PersistentData)) == ESP_OK) {
-        // Using our safe custom comparison operator. This compares only actual field
-        // values instead of the entire raw memory block, preventing struct padding bytes
-        // or unused array elements from triggering a false "dirty" state, thus
-        // avoiding needless NVS flash writes.
-        is_dirty = (current_rtc != data);
+    // Check if data is dirty
+    bool is_dirty = is_data_dirty(data);
+
+    // If data is not dirty and force_nvs_commit is false, return
+    if (!is_dirty && !force_nvs_commit) {
+        return ESP_OK;
     }
 
+    // If is dirty, persist data to RTC
     if (is_dirty) {
         rtc_backend_->save(&data, sizeof(PersistentData));
         ESP_LOGI(TAG, "Saved data to RTC");
     }
 
-    if (!is_dirty && !force_nvs_commit) {
-        return ESP_OK;
-    }
-
-    // Save to NVS
+    // Persist data to NVS
     esp_err_t err = nvs_backend_->save(&data, sizeof(PersistentData));
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "Saved data to NVS");

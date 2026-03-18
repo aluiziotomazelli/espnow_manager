@@ -105,4 +105,5 @@ private:
 
     esp_err_t
     validate_and_unpack_data(PersistentData &data, uint8_t &wifi_channel, etl::ivector<PersistentPeer> &peers);
+    bool is_data_dirty(const PersistentData &new_data);
 };
