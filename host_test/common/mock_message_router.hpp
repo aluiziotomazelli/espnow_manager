@@ -2,7 +2,7 @@
 #pragma once
 
 #include <gmock/gmock.h>
-#include "interface/i_message_router.hpp"
+#include "i_message_router.hpp"
 
 class MockMessageRouter : public IMessageRouter
 {

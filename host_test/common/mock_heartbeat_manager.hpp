@@ -2,7 +2,7 @@
 #pragma once
 
 #include <gmock/gmock.h>
-#include "interface/i_heartbeat_manager.hpp"
+#include "i_heartbeat_manager.hpp"
 
 class MockHeartbeatManager : public IHeartbeatManager
 {
