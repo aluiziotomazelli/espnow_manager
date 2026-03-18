@@ -178,23 +178,23 @@ void TxManager::handle_notifications(uint32_t notifications)
 {
     // Multiple notification bits can arrive simultaneously and must all be
     // processed. else-if would silently drop bits after the first match.
-    if (notifications & NOTIFY_LINK_ALIVE) {
+    if ((notifications & NOTIFY_LINK_ALIVE) == NOTIFY_LINK_ALIVE) {
         fsm_.on_link_alive();
     }
-    if (notifications & NOTIFY_SCANNING) {
+    if ((notifications & NOTIFY_SCANNING) == NOTIFY_SCANNING) {
         fsm_.on_scan_requested();
     }
-    if (notifications & NOTIFY_PHYSICAL_FAIL) {
+    if ((notifications & NOTIFY_PHYSICAL_FAIL) == NOTIFY_PHYSICAL_FAIL) {
         fsm_.on_physical_fail();
     }
-    if (notifications & NOTIFY_LOGICAL_ACK) {
+    if ((notifications & NOTIFY_LOGICAL_ACK) == NOTIFY_LOGICAL_ACK) {
         fsm_.on_ack_received();
         freertos_hal_.timer_start(ack_timeout_timer_, pdMS_TO_TICKS(10));
     }
-    if (notifications & NOTIFY_ACK_TIMEOUT) {
+    if ((notifications & NOTIFY_ACK_TIMEOUT) == NOTIFY_ACK_TIMEOUT) {
         fsm_.on_ack_timeout();
     }
-    if (notifications & NOTIFY_STOP) {
+    if ((notifications & NOTIFY_STOP) == NOTIFY_STOP) {
         ESP_LOGI(TAG, "TX Manager task exiting.");
         task_handle_ = nullptr;
         freertos_hal_.semaphore_give(task_done_semaphore_);

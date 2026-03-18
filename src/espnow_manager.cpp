@@ -476,13 +476,13 @@ void EspNowManager::rx_dispatch_task(void *arg)
         if (self->hal_freertos_->task_notify_wait(0, 0xFFFFFFFF, &notifications, 0) == pdTRUE) {
             // Entered scanning state — TxManager is actively searching for the HUB. NodeState transitions to
             // SCANNING so the rest of the system knows normal operation is suspended until the channel is rediscovered.
-            if (notifications & NOTIFY_SCANNING) {
+            if ((notifications & NOTIFY_SCANNING) == NOTIFY_SCANNING) {
                 self->transition_to_state(NodeState::SCANNING);
             }
             // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb(), which runs in the TxManager task
             // context. All work that touches EspNowManager state (config_, peer_manager_, node_state_)
             // is done here in the rx_dispatch_task to avoid cross-task data races.
-            if (notifications & NOTIFY_CHANNEL_FOUND) {
+            if ((notifications & NOTIFY_CHANNEL_FOUND) == NOTIFY_CHANNEL_FOUND) {
                 uint8_t channel = self->last_found_channel_.load();
                 self->config_.wifi_channel = channel;
                 self->propagate_channel();
@@ -494,7 +494,7 @@ void EspNowManager::rx_dispatch_task(void *arg)
             }
             // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb() when the DiscoveryManager exhausts all channels
             // without finding the HUB. Transition to PAIRING so the node can attempt re-association.
-            if (notifications & NOTIFY_SCAN_FAILED) {
+            if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
                 self->transition_to_state(NodeState::PAIRING);
             }
             // If NOTIFY_STOP is set, we break the loop and exit the task.
