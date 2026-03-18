@@ -221,56 +221,24 @@ TEST_F(StorageManagerTest, LoadWithInvalidCrcCallsNvsLoad)
     EXPECT_EQ(3, ch);
 }
 
-TEST_F(StorageManagerTest, LoadWithInvalidRtcAndNvsFails)
+TEST_F(StorageManagerTest, LoadNvsFailsPropagatesError)
 {
-    // RTC returns ESP_OK but with invalid crc data
-    ON_CALL(*rtc_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
-        PersistentData invalid_data = {};
-        invalid_data.crc = 0;
-        memcpy(data, &invalid_data, size);
-        return ESP_OK;
-    });
-
-    // NVS returns ESP_OK but with invalid crcdata
-    ON_CALL(*nvs_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
-        PersistentData invalid_data = {};
-        invalid_data.crc = 10;
-        memcpy(data, &invalid_data, size);
-        return ESP_OK;
-    });
-
-    uint8_t ch = 0;
-    etl::vector<PersistentPeer, MAX_PEERS> loaded_peers;
-    EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load(ch, loaded_peers));
-}
-
-TEST_F(StorageManagerTest, LoadInvalidRtcNvsFailsPropagatesError)
-{
-    // RTC returns ESP_OK but with invalid crc data
-    ON_CALL(*rtc_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
-        PersistentData invalid_data = {};
-        invalid_data.crc = 0;
-        memcpy(data, &invalid_data, size);
-        return ESP_OK;
-    });
+    // RTC returns ESP_OK
+    ON_CALL(*rtc_mock, load(_, _)).WillByDefault(Return(ESP_OK));
 
     // nvs returns ESP_FAIL
     EXPECT_CALL(*nvs_mock, load(_, _)).Times(1).WillOnce(Return(ESP_FAIL));
 
     uint8_t ch = 0;
     etl::vector<PersistentPeer, MAX_PEERS> loaded_peers;
-    EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load(ch, loaded_peers)); // ESP_ERR_NOT_FOUND
+    EXPECT_EQ(ESP_FAIL, manager->load(ch, loaded_peers)); // ESP_ERR_NOT_FOUND
 }
 
 TEST_F(StorageManagerTest, LoadWithWrongMagicReturnsError)
 {
     // PersistentData valid with invalid magic
     PersistentData valid_data = {};
-    valid_data.magic = 0x12345678; // Wrong magic
-    valid_data.version = PersistentData::VERSION;
-    valid_data.wifi_channel = 3;
-    valid_data.num_peers = 0;
-    valid_data.crc = StorageManager::calculate_crc(valid_data);
+    valid_data.magic = 0xDEADBEEF; // Wrong magic
 
     // RTC is called
     EXPECT_CALL(*rtc_mock, load(_, _)).Times(1).WillOnce([&](void *data, size_t size) {
@@ -286,18 +254,15 @@ TEST_F(StorageManagerTest, LoadWithWrongMagicReturnsError)
 
     uint8_t ch = 0;
     etl::vector<PersistentPeer, MAX_PEERS> loaded_peers;
-    EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load(ch, loaded_peers));
+    EXPECT_EQ(ESP_ERR_INVALID_STATE, manager->load(ch, loaded_peers));
 }
 
 TEST_F(StorageManagerTest, LoadWithWrongVersionReturnsError)
 {
     // PersistentData valid with invalid version
     PersistentData valid_data = {};
-    valid_data.magic = PersistentData::MAGIC;
-    valid_data.version = 0x12345678; // Wrong version
-    valid_data.wifi_channel = 3;
-    valid_data.num_peers = 0;
-    valid_data.crc = StorageManager::calculate_crc(valid_data);
+    valid_data.magic = PersistentData::MAGIC; // Valid magic
+    valid_data.version = 0x12345678;          // Wrong version
 
     // RTC is called
     EXPECT_CALL(*rtc_mock, load(_, _)).Times(1).WillOnce([&](void *data, size_t size) {
@@ -313,7 +278,76 @@ TEST_F(StorageManagerTest, LoadWithWrongVersionReturnsError)
 
     uint8_t ch = 0;
     etl::vector<PersistentPeer, MAX_PEERS> loaded_peers;
-    EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load(ch, loaded_peers));
+    EXPECT_EQ(ESP_ERR_INVALID_VERSION, manager->load(ch, loaded_peers));
+}
+
+TEST_F(StorageManagerTest, LoadWithInvalidRtcReturnsError)
+{
+    // PersistentData with invalid crc
+    PersistentData invalid_data = {};
+    invalid_data.magic = PersistentData::MAGIC;     // Valid magic
+    invalid_data.version = PersistentData::VERSION; // Valid version
+    invalid_data.crc = 0;                           // Invalid crc
+
+    // RTC returns ESP_OK but with invalid crc data
+    ON_CALL(*rtc_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+        memcpy(data, &invalid_data, size);
+        return ESP_OK;
+    });
+
+    // This should trigger NVS -> returns ESP_OK but with invalid crcdata
+    ON_CALL(*nvs_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+        memcpy(data, &invalid_data, size);
+        return ESP_OK;
+    });
+
+    uint8_t ch = 0;
+    etl::vector<PersistentPeer, MAX_PEERS> loaded_peers;
+    EXPECT_EQ(ESP_ERR_INVALID_CRC, manager->load(ch, loaded_peers));
+}
+
+TEST_F(StorageManagerTest, LoadTruncatesWhenDataExceedsVectorCapacity)
+{
+    // 1. Prepare data with more peers than the vector can hold
+    // Assuming MAX_PEERS is 19 for this example
+    PersistentData oversized_data = {};
+    oversized_data.magic = PersistentData::MAGIC;
+    oversized_data.version = PersistentData::VERSION;
+    oversized_data.wifi_channel = 11;
+
+    // Set num_peers to a value greater than MAX_PEERS (e.g., 25)
+    oversized_data.num_peers = MAX_PEERS + 6;
+
+    // Fill the array with dummy peers to avoid reading uninitialized memory during CRC
+    for (int i = 0; i < MAX_PEERS; ++i) {
+        memset(oversized_data.peers[i].mac, i, 6);
+    }
+
+    // Calculate CRC based on this oversized structure
+    oversized_data.crc = manager->calculate_crc(oversized_data);
+
+    // 2. Mock NVS to return this oversized data
+    // RTC fails to force NVS path
+    EXPECT_CALL(*rtc_mock, load(_, _)).Times(1).WillOnce(Return(ESP_FAIL));
+    EXPECT_CALL(*nvs_mock, load(_, _)).Times(1).WillOnce([&](void *data, size_t size) {
+        memcpy(data, &oversized_data, size);
+        return ESP_OK;
+    });
+
+    // 3. Execution
+    uint8_t ch = 0;
+    // The vector is explicitly capped at MAX_PEERS
+    etl::vector<PersistentPeer, MAX_PEERS> loaded_peers;
+
+    esp_err_t err = manager->load(ch, loaded_peers);
+
+    // 4. Verification
+    EXPECT_EQ(ESP_OK, err);
+    EXPECT_EQ(11, ch);
+    // Ensure the vector only took what it could handle (MAX_PEERS)
+    // and didn't overflow or crash
+    EXPECT_EQ(MAX_PEERS, loaded_peers.size());
+    EXPECT_TRUE(loaded_peers.full());
 }
 
 // ===========================================================================
