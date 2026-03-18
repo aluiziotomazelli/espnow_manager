@@ -16,7 +16,11 @@
  */
 struct PersistentData
 {
-    static constexpr size_t MAX_PERSISTENT_PEERS = 19;
+    // TODO: Remove MAX_PERSISTENT_PEERS from struct, maybe create a namespace
+    // for constants related to config in espnow_types.hpp that already has
+    // other constants like MAX_PEERS, in fact, MAX_PERSISTENT_PEERS == MAX_PEERS
+    // and perhaps should be removed
+    static constexpr size_t MAX_PERSISTENT_PEERS = MAX_PEERS;
     static constexpr uint32_t MAGIC = 0x4553504E;
     static constexpr uint32_t VERSION = 1;
 
