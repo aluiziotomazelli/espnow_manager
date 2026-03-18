@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
+#include <tuple>
 #include <vector>
 
 #include "esp_now.h"
@@ -54,6 +56,28 @@ struct PersistentPeer
     uint8_t channel;                /**< Operating WiFi channel */
     bool paired;                    /**< Pairing status */
     uint32_t heartbeat_interval_ms; /**< Configured heartbeat interval */
+
+    /**
+     * @brief Custom equality operator to prevent padding byte evaluation.
+     * 
+     * In C++, structs can contain hidden padding bytes for memory alignment. 
+     * Doing a direct memcmp() on the entire struct might cause false negatives 
+     * (i.e. identical data but different padding memory junk). 
+     * Using std::tie only compares the actual explicit data members safely.
+     */
+    bool operator==(const PersistentPeer& other) const
+    {
+        if (std::tie(type, node_id, channel, paired, heartbeat_interval_ms) !=
+            std::tie(other.type, other.node_id, other.channel, other.paired, other.heartbeat_interval_ms)) {
+            return false;
+        }
+        return std::memcmp(mac, other.mac, sizeof(mac)) == 0;
+    }
+
+    bool operator!=(const PersistentPeer& other) const
+    {
+        return !(*this == other);
+    }
 };
 
 // --- FSM and TX Task Structures ---

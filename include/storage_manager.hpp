@@ -34,6 +34,34 @@ struct PersistentData
     uint8_t num_peers;
     PersistentPeer peers[MAX_PEERS]; // Array of peers, size determined by MAX_PEERS
     uint32_t crc;                    // CRC for data integrity
+
+    /**
+     * @brief Custom equality operator for dirty-state validation.
+     *
+     * We avoid a simple memcmp(this, &other, sizeof(PersistentData)) because:
+     * 1. Struct padding might contain uninitialized junk from memory assignments.
+     * 2. We don't want to evaluate the unused elements in the `peers` array
+     *    (indexes from num_peers up to MAX_PEERS).
+     * 3. magic, version, and crc aren't mutable logical user data.
+     *
+     * This guarantees we only write to NVS when actual user state has changed.
+     */
+    bool operator==(const PersistentData &other) const
+    {
+        if (std::tie(wifi_channel, num_peers) != std::tie(other.wifi_channel, other.num_peers)) {
+            return false;
+        }
+
+        // Only evaluate the active peers, ignoring trailing unused entries in the array.
+        for (uint8_t i = 0; i < num_peers; ++i) {
+            if (peers[i] != other.peers[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool operator!=(const PersistentData &other) const { return !(*this == other); }
 };
 
 /**
@@ -74,4 +102,7 @@ public:
 private:
     std::unique_ptr<IPersistenceBackend> rtc_backend_;
     std::unique_ptr<IPersistenceBackend> nvs_backend_;
+
+    esp_err_t
+    validate_and_unpack_data(PersistentData &data, uint8_t &wifi_channel, etl::ivector<PersistentPeer> &peers);
 };
