@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <tuple> // Required for std::tie
 
 #include "etl/vector.h"
 
@@ -11,25 +12,28 @@
 #include "i_persistence_backend.hpp"
 #include "i_storage_manager.hpp"
 
+// Forward declarations for PersistentPeer and MAX_PEERS if they are defined elsewhere and needed.
+// Assuming PersistentPeer is defined and MAX_PEERS is available in the scope.
+// If MAX_PEERS is not globally available here, it might need to be included from espnow_types.hpp or similar.
+// For now, assuming MAX_PEERS is visible in this translation unit.
+
 /**
  * @brief Internal structure for persistent data.
+ * This structure is serialized and stored in RTC RAM and NVS.
  */
 struct PersistentData
 {
-    // TODO: Remove MAX_PERSISTENT_PEERS from struct, maybe create a namespace
-    // for constants related to config in espnow_types.hpp that already has
-    // other constants like MAX_PEERS, in fact, MAX_PERSISTENT_PEERS == MAX_PEERS
-    // and perhaps should be removed
-    static constexpr size_t MAX_PERSISTENT_PEERS = MAX_PEERS;
+    // Schema identifiers (constants, not user data for dirty check)
     static constexpr uint32_t MAGIC = 0x4553504E;
     static constexpr uint32_t VERSION = 1;
 
+    // Actual data fields
     uint32_t magic;
     uint32_t version;
     uint8_t wifi_channel;
     uint8_t num_peers;
-    PersistentPeer peers[MAX_PERSISTENT_PEERS];
-    uint32_t crc;
+    PersistentPeer peers[MAX_PEERS]; // Array of peers, size determined by MAX_PEERS
+    uint32_t crc;                    // CRC for data integrity
 };
 
 /**

@@ -75,7 +75,7 @@ esp_err_t StorageManager::save(uint8_t wifi_channel, const etl::ivector<Persiste
     data.magic = PersistentData::MAGIC;
     data.version = PersistentData::VERSION;
     data.wifi_channel = wifi_channel;
-    data.num_peers = std::min(peers.size(), PersistentData::MAX_PERSISTENT_PEERS);
+    data.num_peers = std::min(peers.size(), (size_t)MAX_PEERS);
 
     for (size_t i = 0; i < data.num_peers; ++i) {
         data.peers[i] = peers[i];
@@ -87,6 +87,9 @@ esp_err_t StorageManager::save(uint8_t wifi_channel, const etl::ivector<Persiste
     PersistentData current_rtc;
     bool is_dirty = true;
     if (rtc_backend_->load(&current_rtc, sizeof(PersistentData)) == ESP_OK) {
+        // TODO: This bellow compare is not eficient because we are using memcmp
+        // in a struct tha may have padding bytes. We should consider to implement
+        // a explicit comparison operator for PersistentData.
         is_dirty = (memcmp(&current_rtc, &data, sizeof(PersistentData)) != 0);
     }
 

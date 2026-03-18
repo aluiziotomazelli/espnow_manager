@@ -12,7 +12,7 @@ A persistent storage solution for ESP-NOW peer information and configuration on 
 - **Data Integrity**: CRC32 validation to detect data corruption
 - **Optimized Operations**: Avoids unnecessary NVS writes when data hasn't changed
 - **Automatic Recovery**: Graceful handling of corrupted or missing data
-- **Peer Management**: Stores up to `MAX_PERSISTENT_PEERS` peer configurations
+- **Peer Management**: Stores up to `MAX_PEERS` peer configurations
 
 ## Storage Architecture
 
@@ -36,7 +36,7 @@ struct PersistentData {
     uint8_t version;              // Version for backward compatibility
     uint8_t wifi_channel;         // ESP-NOW channel
     uint8_t num_peers;            // Number of stored peers
-    PeerInfo peers[MAX_PERSISTENT_PEERS];  // Peer array
+    PeerInfo peers[MAX_PEERS];  // Peer array
     uint32_t crc;                 // CRC32 for data integrity
 };
 ```
@@ -113,7 +113,7 @@ storage.save(channel, peers, false);
 ```cpp
 static constexpr uint32_t MAGIC   = 0x4553504E;
 static constexpr uint32_t VERSION = 1;
-static constexpr size_t MAX_PERSISTENT_PEERS = 19;
+static constexpr size_t MAX_PEERS = 19;
 ```
 ### Error Handling
 | Error Code              | Description                                  |
