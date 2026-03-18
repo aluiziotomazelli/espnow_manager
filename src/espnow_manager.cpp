@@ -108,7 +108,8 @@ EspNowManager::EspNowManager(
 
 EspNowManager::~EspNowManager()
 {
-    deinit();
+    // Caller is responsible for calling deinit() before destruction.
+    // Resources allocated in init() must be explicitly released.
 }
 
 esp_err_t EspNowManager::deinit()
@@ -259,10 +260,8 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
 
     // PairingManager
     if (pairing_manager_) {
-        ret = pairing_manager_->init(config_.node_type, config_.node_id);
-        if (ret == ESP_OK) {
-        }
-        else {
+        ret = pairing_manager_->init(config_.node_id, config_.node_type);
+        if (ret != ESP_OK) {
             ESP_LOGE(TAG, "pairing_manager init failed: %s", esp_err_to_name(ret));
             goto fail;
         }
