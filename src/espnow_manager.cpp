@@ -451,7 +451,7 @@ void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8
     memcpy(packet.src_mac, info->src_addr, 6);
     memcpy(packet.data, data, len);
     packet.len = len;
-    packet.rssi = info->rx_ctrl->rssi;
+    packet.rssi = static_cast<int8_t>(info->rx_ctrl->rssi);
     packet.timestamp_us = instance().hal_timer_->get_time_us();
     instance().hal_freertos_->queue_send_fromISR(instance().rx_dispatch_queue_, &packet, 0);
 }

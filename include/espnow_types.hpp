@@ -28,7 +28,7 @@ struct RxPacket
     uint8_t data[ESP_NOW_MAX_DATA_LEN]; /**< Raw payload data */
     size_t len;                         /**< Length of the payload in bytes */
     int8_t rssi;                        /**< Received Signal Strength Indicator (dBm) */
-    int64_t timestamp_us;               /**< Microsecond timestamp (esp_timer_get_time) */
+    uint64_t timestamp_us;              /**< Microsecond timestamp (esp_timer_get_time) */
 };
 
 /**
@@ -59,13 +59,13 @@ struct PersistentPeer
 
     /**
      * @brief Custom equality operator to prevent padding byte evaluation.
-     * 
-     * In C++, structs can contain hidden padding bytes for memory alignment. 
-     * Doing a direct memcmp() on the entire struct might cause false negatives 
-     * (i.e. identical data but different padding memory junk). 
+     *
+     * In C++, structs can contain hidden padding bytes for memory alignment.
+     * Doing a direct memcmp() on the entire struct might cause false negatives
+     * (i.e. identical data but different padding memory junk).
      * Using std::tie only compares the actual explicit data members safely.
      */
-    bool operator==(const PersistentPeer& other) const
+    bool operator==(const PersistentPeer &other) const
     {
         if (std::tie(type, node_id, channel, paired, heartbeat_interval_ms) !=
             std::tie(other.type, other.node_id, other.channel, other.paired, other.heartbeat_interval_ms)) {
@@ -74,10 +74,7 @@ struct PersistentPeer
         return std::memcmp(mac, other.mac, sizeof(mac)) == 0;
     }
 
-    bool operator!=(const PersistentPeer& other) const
-    {
-        return !(*this == other);
-    }
+    bool operator!=(const PersistentPeer &other) const { return !(*this == other); }
 };
 
 // --- FSM and TX Task Structures ---
