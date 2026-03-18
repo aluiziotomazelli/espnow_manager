@@ -30,7 +30,7 @@ protected:
     NiceMock<MockMessageCodec> codec;
     NiceMock<MockFreeRTOSHAL> freertos_hal;
     NiceMock<MockTxManager> tx_manager;
-    MockChannelObserver observer;
+    NiceMock<MockChannelObserver> observer;
     std::unique_ptr<DiscoveryManager> scanner;
 
     static constexpr NodeId MY_ID = 2;

@@ -26,7 +26,7 @@ protected:
     std::unique_ptr<StorageManager> manager;
 
     uint8_t channel = 0;
-    std::vector<PersistentPeer> peers;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS> peers;
 
     void SetUp() override
     {
@@ -39,9 +39,10 @@ protected:
 };
 
 // Helper to generate a list of dummy peers for testing.
-static std::vector<PersistentPeer> create_test_peers(int count)
+// Using PersistentData::MAX_PERSISTENT_PEERS * 2 to allow overflow to test max limit
+static etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS * 2> create_test_peers(int count)
 {
-    std::vector<PersistentPeer> peers;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS * 2> peers;
     for (int i = 0; i < count; ++i) {
         PersistentPeer p;
         memset(&p, 0, sizeof(p));
@@ -160,7 +161,7 @@ TEST_F(StorageManagerTest, LoadFromRtcWhenValid)
     EXPECT_CALL(*nvs_mock, load(_, _)).Times(0);
 
     uint8_t ch = 0;
-    std::vector<PersistentPeer> loaded_peers;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS> loaded_peers;
     EXPECT_EQ(ESP_OK, manager->load(ch, loaded_peers));
     EXPECT_EQ(6, ch);
 }
@@ -184,7 +185,7 @@ TEST_F(StorageManagerTest, LoadFromRtcFailCallsNvsLoad)
         return ESP_OK;
     });
 
-    std::vector<PersistentPeer> loaded_peers;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS> loaded_peers;
     EXPECT_EQ(ESP_OK, manager->load(ch, loaded_peers));
 }
 
@@ -215,7 +216,7 @@ TEST_F(StorageManagerTest, LoadWithInvalidCrcCallsNvsLoad)
     });
 
     uint8_t ch = 0;
-    std::vector<PersistentPeer> loaded_peers;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS> loaded_peers;
     EXPECT_EQ(ESP_OK, manager->load(ch, loaded_peers));
     EXPECT_EQ(3, ch);
 }
@@ -239,7 +240,7 @@ TEST_F(StorageManagerTest, LoadWithInvalidRtcAndNvsFails)
     });
 
     uint8_t ch = 0;
-    std::vector<PersistentPeer> loaded_peers;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS> loaded_peers;
     EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load(ch, loaded_peers));
 }
 
@@ -257,7 +258,7 @@ TEST_F(StorageManagerTest, LoadInvalidRtcNvsFailsPropagatesError)
     EXPECT_CALL(*nvs_mock, load(_, _)).Times(1).WillOnce(Return(ESP_FAIL));
 
     uint8_t ch = 0;
-    std::vector<PersistentPeer> loaded_peers;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS> loaded_peers;
     EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load(ch, loaded_peers)); // ESP_ERR_NOT_FOUND
 }
 
@@ -284,7 +285,7 @@ TEST_F(StorageManagerTest, LoadWithWrongMagicReturnsError)
     });
 
     uint8_t ch = 0;
-    std::vector<PersistentPeer> loaded_peers;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS> loaded_peers;
     EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load(ch, loaded_peers));
 }
 
@@ -311,7 +312,7 @@ TEST_F(StorageManagerTest, LoadWithWrongVersionReturnsError)
     });
 
     uint8_t ch = 0;
-    std::vector<PersistentPeer> loaded_peers;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS> loaded_peers;
     EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load(ch, loaded_peers));
 }
 
@@ -344,7 +345,7 @@ TEST_F(StorageManagerTest, SaveAndLoadWithPeers)
     });
 
     uint8_t ch = 0;
-    std::vector<PersistentPeer> loaded;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS> loaded;
     ASSERT_EQ(ESP_OK, manager->load(ch, loaded));
     EXPECT_EQ(6, ch);
     ASSERT_EQ(3u, loaded.size());
@@ -398,7 +399,7 @@ TEST_F(StorageManagerTest, LoadFromNvsWithPeersSyncsRtc)
     EXPECT_CALL(*rtc_mock, save(_, _)).Times(1);
 
     uint8_t ch = 0;
-    std::vector<PersistentPeer> loaded;
+    etl::vector<PersistentPeer, PersistentData::MAX_PERSISTENT_PEERS> loaded;
 
     ASSERT_EQ(ESP_OK, manager->load(ch, loaded));           // call load
     EXPECT_EQ(11, ch);                                      // channel should be synced

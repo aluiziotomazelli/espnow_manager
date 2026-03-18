@@ -50,7 +50,6 @@ protected:
         manager = std::make_unique<PeerManager>(storage, wifi_hal, freertos_hal);
     }
 
-    
     static constexpr NodeId ID_2 = 2;
     static constexpr NodeId ID_3 = 3;
     static constexpr NodeId ID_4 = 4;
@@ -207,7 +206,7 @@ TEST_F(PeerManagerTest, AddBeyondMaxRemovesPeerWithOldestLastSeen)
     EXPECT_TRUE(manager->find_mac(99, found_mac));
 }
 
-TEST_F(PeerManagerTest, AddBeyondMaxDelOldestDelFailsStillAdds)
+TEST_F(PeerManagerTest, AddBeyondMaxDeleteOldestDeleteFailsStillAdds)
 {
     // Fill to max
     for (int i = 0; i < MAX_PEERS; i++) {
@@ -386,7 +385,7 @@ TEST_F(PeerManagerTest, LoadFromStorageReturnsErrorWhenEmpty)
 TEST_F(PeerManagerTest, LoadFromStoragePopulatesPeerList)
 {
     // Storage returns 2 peers
-    std::vector<PersistentPeer> stored;
+    etl::vector<PersistentPeer, 2> stored;
     PersistentPeer p1 = {};
     p1.node_id = ID_2;
     p1.channel = 6;
@@ -400,7 +399,7 @@ TEST_F(PeerManagerTest, LoadFromStoragePopulatesPeerList)
     stored.push_back(p1);
     stored.push_back(p2);
 
-    ON_CALL(storage, load(_, _)).WillByDefault([&](uint8_t &channel, std::vector<PersistentPeer> &peers) {
+    ON_CALL(storage, load(_, _)).WillByDefault([&](uint8_t &channel, etl::ivector<PersistentPeer> &peers) {
         channel = 6;
         peers = stored;
         return ESP_OK;
@@ -429,13 +428,17 @@ TEST_F(PeerManagerTest, LoadFromStorageClearsPreviousPeers)
     EXPECT_EQ(1, manager->get_all().size());
 
     // Storage returns different peer
+    etl::vector<PersistentPeer, 1> stored;
     PersistentPeer p1 = {};
     p1.node_id = ID_2;
     memset(p1.mac, 0xAA, 6);
 
-    ON_CALL(storage, load(_, _)).WillByDefault([&](uint8_t &channel, std::vector<PersistentPeer> &peers) {
+    stored.push_back(p1);
+
+    EXPECT_CALL(storage, load(_, _)).WillOnce([&](uint8_t &channel, etl::ivector<PersistentPeer> &peers) {
         channel = 1;
-        peers = {p1};
+        // peers.assign(stored.begin(), stored.end());
+        peers = stored;
         return ESP_OK;
     });
 
