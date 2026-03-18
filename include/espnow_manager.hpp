@@ -129,6 +129,9 @@ public:
     /** @copydoc IEspNowManager::is_initialized */
     bool is_initialized() const override;
 
+    /** @copydoc IEspNowManager::get_node_state */
+    NodeState get_node_state() const override;
+
 protected:
     // --- Notification Bits ---
     // static constexpr uint32_t NOTIFY_STOP = 0x100;
@@ -178,27 +181,6 @@ protected:
     // Static ESP-NOW callbacks (ISR context)
     static void esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len);
     static void esp_now_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status);
-
-    /**
-     * NodeState transitions:
-     * UNINITIALIZED → OPERATIONAL  (init(), peers found in storage)
-     * UNINITIALIZED → PAIRING      (init(), no peers in storage)
-     * PAIRING       → OPERATIONAL  (pairing accepted)
-     * OPERATIONAL   → PAIRING      (button press, explicit request)
-     * OPERATIONAL   → SCANNING     (TX failures exceed threshold)
-     * SCANNING      → OPERATIONAL  (channel found)
-     * SCANNING      → PAIRING      (scan failed, peers may be stale)
-     *
-     **/
-
-    enum class NodeState
-    {
-        UNINITIALIZED, ///< Initial state before initialization
-        PAIRING,       ///< No peers, scanning + actively accepting pairing requests
-        OPERATIONAL,   ///< Has peers, normal operation
-        SCANNING,      ///< Has peers but lost channel, rediscovering
-        COUNT          ///< Number of states (for validation)
-    };
 
     std::atomic<uint8_t> last_found_channel_{0};
     std::atomic<NodeState> node_state_{NodeState::UNINITIALIZED};

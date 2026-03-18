@@ -290,6 +290,13 @@ public:
     // ========================================
 
     /**
+     * @brief Get the current node state
+     *
+     * @return The current node state.
+     */
+    virtual NodeState get_node_state() const = 0;
+
+    /**
      * @brief Check if EspNowManager is initialized
      *
      * @return true if initialized, false otherwise.

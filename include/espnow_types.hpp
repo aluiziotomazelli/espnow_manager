@@ -91,6 +91,27 @@ struct TxPacket
 };
 
 /**
+ * @brief Enumeration of node states.
+ *
+ * NodeState transitions:
+ * UNINITIALIZED → OPERATIONAL  (init(), peers found in storage)
+ * UNINITIALIZED → PAIRING      (init(), no peers in storage)
+ * PAIRING       → OPERATIONAL  (pairing accepted)
+ * OPERATIONAL   → PAIRING      (button press, explicit request)
+ * OPERATIONAL   → SCANNING     (TX failures exceed threshold)
+ * SCANNING      → OPERATIONAL  (channel found)
+ * SCANNING      → PAIRING      (scan failed, peers may be stale)
+ */
+enum class NodeState
+{
+    UNINITIALIZED, ///< Initial state before initialization
+    PAIRING,       ///< No peers, scanning + actively accepting pairing requests
+    OPERATIONAL,   ///< Has peers, normal operation
+    SCANNING,      ///< Has peers but lost channel, rediscovering
+    COUNT          ///< Number of states (for validation)
+};
+
+/**
  * @brief Enumeration of internal transmission states.
  */
 enum class TxState

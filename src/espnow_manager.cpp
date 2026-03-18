@@ -632,6 +632,11 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
     return ESP_OK;
 }
 
+NodeState EspNowManager::get_node_state() const
+{
+    return node_state_.load();
+}
+
 bool EspNowManager::is_initialized() const
 {
     return node_state_.load() != NodeState::UNINITIALIZED;
