@@ -355,3 +355,9 @@ TEST_F(EspNowManagerTest, DeinitCallsBootstrapperDeinit)
             Return(ESP_OK)));
     sut_->deinit();
 }
+
+TEST_F(EspNowManagerTest, InitPropagatesCorrectNodeIdAndTypeToPairingManager)
+{
+    EXPECT_CALL(*pairing_mgr_, init(0x01, 0x01)).WillOnce(Return(ESP_OK));
+    sut_->init(make_valid_config());
+}

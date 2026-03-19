@@ -174,6 +174,17 @@ protected:
     void update_wifi_channel(uint8_t channel);
     void propagate_channel();
 
+    // Init helpers
+    esp_err_t init_bootstrapper();
+    esp_err_t init_tx_manager();
+    esp_err_t init_discovery_manager();
+    esp_err_t init_heartbeat_manager();
+    esp_err_t init_pairing_manager();
+    esp_err_t init_message_router();
+    void determine_initial_state(etl::ivector<PeerInfo> &peers);
+    void add_peers_to_espnow(etl::ivector<PeerInfo> &peers);
+    esp_err_t init_fail(esp_err_t ret, const char *step);
+
     // Task functions
     static void rx_dispatch_task(void *arg);
     static void transport_worker_task(void *arg);

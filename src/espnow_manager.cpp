@@ -135,20 +135,13 @@ esp_err_t EspNowManager::deinit()
         hal_freertos_->task_notify(transport_worker_task_handle_, NOTIFY_STOP, eSetBits);
     }
 
-    // Send packets to weakup tasks
-    RxPacket stop_packet = {};
-    if (rx_dispatch_queue_ != nullptr)
-        hal_freertos_->queue_send(rx_dispatch_queue_, &stop_packet, 0);
-    if (transport_worker_queue_ != nullptr)
-        hal_freertos_->queue_send(transport_worker_queue_, &stop_packet, 0);
-
     // Wait for tasks to exit (up to 1s).
     int timeout = 1000;
     while ((rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) && timeout-- > 0) {
         hal_freertos_->task_delay(pdMS_TO_TICKS(10));
     }
 
-    if (timeout <= 0 && (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr)) {
+    if (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) {
         ESP_LOGW(TAG, "Tasks did not terminate gracefully within timeout");
     }
 
@@ -198,109 +191,43 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
         }
     }
 
-    // BootStrapper initializes ESPNOW, creates tasks, queues and mutexes
-    if (bootstrapper_) {
-        EspNowBootstrapConfig bootstrap_cfg = {};
-        bootstrap_cfg.recv_cb = esp_now_recv_cb;
-        bootstrap_cfg.send_cb = esp_now_send_cb;
-        bootstrap_cfg.rx_dispatch_fn = EspNowManager::rx_dispatch_task;
-        bootstrap_cfg.transport_worker_fn = EspNowManager::transport_worker_task;
-        bootstrap_cfg.task_params = this;
+    // // BootStrapper initializes ESPNOW, creates tasks, queues and mutexes
+    if ((ret = init_bootstrapper()) != ESP_OK) {
+        return init_fail(ret, "bootstrapper");
+    }
+    esp_now_initialized_ = true;
 
-        ret = bootstrapper_->init(
-            config_,
-            bootstrap_cfg,
-            rx_dispatch_queue_,
-            transport_worker_queue_,
-            ack_mutex_,
-            rx_dispatch_task_handle_,
-            transport_worker_task_handle_);
-
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to initialize bootstraper: %s", esp_err_to_name(ret));
-            goto fail;
-        }
-        esp_now_initialized_ = true;
+    if ((ret = init_tx_manager()) != ESP_OK) {
+        return init_fail(ret, "tx_manager");
     }
 
-    // TxManager
-    if (tx_manager_) {
-        ret = tx_manager_->init(config_.stack_size_tx_manager, 9);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "tx_manager init failed: %s", esp_err_to_name(ret));
-            goto fail;
-        }
+    if ((ret = init_discovery_manager()) != ESP_OK) {
+        return init_fail(ret, "discovery_manager");
     }
 
-    // DiscoveryManager
-    if (scanner_) {
-        if (config_.node_type == ReservedTypes::HUB) {
-            ret = scanner_->init(config_.node_id, config_.node_type, tx_manager_.get(), nullptr);
-        }
-        else {
-            ret = scanner_->init(config_.node_id, config_.node_type, nullptr, this);
-        }
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to initialize discovery manager: %s", esp_err_to_name(ret));
-            goto fail;
-        }
+    if ((ret = init_heartbeat_manager()) != ESP_OK) {
+        return init_fail(ret, "heartbeat_manager");
     }
 
-    // HeartbeatManager
-    if (heartbeat_manager_) {
-        ret = heartbeat_manager_->init(config_.heartbeat_interval_ms, config_.node_type);
-        if (ret == ESP_OK) {
-            heartbeat_manager_->update_node_id(config_.node_id);
-        }
-        else {
-            ESP_LOGE(TAG, "heartbeat_manager init failed: %s", esp_err_to_name(ret));
-            goto fail;
-        }
+    if ((ret = init_pairing_manager()) != ESP_OK) {
+        return init_fail(ret, "pairing_manager");
     }
 
-    // PairingManager
-    if (pairing_manager_) {
-        ret = pairing_manager_->init(config_.node_id, config_.node_type);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "pairing_manager init failed: %s", esp_err_to_name(ret));
-            goto fail;
-        }
+    if ((ret = init_message_router()) != ESP_OK) {
+        return init_fail(ret, "message_router");
     }
 
-    // MessageRouter
-    if (message_router_) {
-        message_router_->set_app_queue(config_.app_rx_queue);
-        message_router_->set_node_info(config_.node_id, config_.node_type);
-    }
+    etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
+    determine_initial_state(peers);
 
-    // Add peers to ESPNOW
-    {
-        etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
-        if (peers.empty()) {
-            node_state_.store(NodeState::PAIRING);
-        }
-        else {
-            node_state_.store(NodeState::OPERATIONAL);
-
-            for (auto &peer : peers) {
-                esp_now_peer_info_t info = {};
-                memcpy(info.peer_addr, peer.mac, 6);
-                info.channel = peer.channel;
-                info.ifidx = WIFI_IF_STA;
-                info.encrypt = false;
-                hal_driver_->hal_esp_now_add_peer(&info);
-            }
-        }
+    if (node_state_ == NodeState::OPERATIONAL) {
+        add_peers_to_espnow(peers);
     }
 
     // Update sub componentes with current channel from loaded NVS or Config default
     propagate_channel();
 
     ESP_LOGI(TAG, "EspNow component initialized successfully.");
-    return ESP_OK;
-
-fail:
-    deinit();
     return ret;
 }
 
@@ -474,7 +401,8 @@ void EspNowManager::rx_dispatch_task(void *arg)
         // No bits are cleared on entry since we want to read whatever accumulated since last check.
         if (self->hal_freertos_->task_notify_wait(0, 0xFFFFFFFF, &notifications, 0) == pdTRUE) {
             // Entered scanning state — TxManager is actively searching for the HUB. NodeState transitions to
-            // SCANNING so the rest of the system knows normal operation is suspended until the channel is rediscovered.
+            // SCANNING so the rest of the system knows normal operation is suspended until the channel is
+            // rediscovered.
             if ((notifications & NOTIFY_SCANNING) == NOTIFY_SCANNING) {
                 self->transition_to_state(NodeState::SCANNING);
             }
@@ -639,4 +567,114 @@ NodeState EspNowManager::get_node_state() const
 bool EspNowManager::is_initialized() const
 {
     return node_state_.load() != NodeState::UNINITIALIZED;
+}
+
+// ==================================================================
+// Init helpers
+// ==================================================================
+
+esp_err_t EspNowManager::init_bootstrapper()
+{
+    if (!bootstrapper_) {
+        return ESP_FAIL;
+    }
+    EspNowBootstrapConfig bootstrap_cfg = {};
+    bootstrap_cfg.recv_cb = esp_now_recv_cb;
+    bootstrap_cfg.send_cb = esp_now_send_cb;
+    bootstrap_cfg.rx_dispatch_fn = EspNowManager::rx_dispatch_task;
+    bootstrap_cfg.transport_worker_fn = EspNowManager::transport_worker_task;
+    bootstrap_cfg.task_params = this;
+
+    esp_err_t ret = bootstrapper_->init(
+        config_,
+        bootstrap_cfg,
+        rx_dispatch_queue_,
+        transport_worker_queue_,
+        ack_mutex_,
+        rx_dispatch_task_handle_,
+        transport_worker_task_handle_);
+
+    return ret;
+}
+
+esp_err_t EspNowManager::init_tx_manager()
+{
+    if (!tx_manager_) {
+        return ESP_FAIL;
+    }
+    return tx_manager_->init(config_.stack_size_tx_manager, 9);
+}
+
+esp_err_t EspNowManager::init_discovery_manager()
+{
+    if (!scanner_) {
+        return ESP_FAIL;
+    }
+    esp_err_t ret;
+    if (config_.node_type == ReservedTypes::HUB) {
+        ret = scanner_->init(config_.node_id, config_.node_type, tx_manager_.get(), nullptr);
+    }
+    else {
+        ret = scanner_->init(config_.node_id, config_.node_type, nullptr, this);
+    }
+    return ret;
+}
+
+esp_err_t EspNowManager::init_heartbeat_manager()
+{
+    if (!heartbeat_manager_) {
+        return ESP_FAIL;
+    }
+    esp_err_t ret = heartbeat_manager_->init(config_.heartbeat_interval_ms, config_.node_type);
+    if (ret == ESP_OK) {
+        heartbeat_manager_->update_node_id(config_.node_id);
+    }
+    return ret;
+}
+
+esp_err_t EspNowManager::init_pairing_manager()
+{
+    if (!pairing_manager_) {
+        return ESP_FAIL;
+    }
+    return pairing_manager_->init(config_.node_id, config_.node_type);
+}
+
+esp_err_t EspNowManager::init_message_router()
+{
+    if (!message_router_) {
+        return ESP_FAIL;
+    }
+    message_router_->set_app_queue(config_.app_rx_queue);
+    message_router_->set_node_info(config_.node_id, config_.node_type);
+    return ESP_OK;
+}
+
+void EspNowManager::determine_initial_state(etl::ivector<PeerInfo> &peers)
+{
+    if (peers.empty()) {
+        node_state_.store(NodeState::PAIRING);
+    }
+    else {
+        node_state_.store(NodeState::OPERATIONAL);
+    }
+}
+
+void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo> &peers)
+{
+    for (auto &peer : peers) {
+        esp_now_peer_info_t info = {};
+        memcpy(info.peer_addr, peer.mac, 6);
+        info.channel = peer.channel;
+        info.ifidx = WIFI_IF_STA;
+        info.encrypt = false;
+        hal_driver_->hal_esp_now_add_peer(&info);
+    }
+}
+
+esp_err_t EspNowManager::init_fail(esp_err_t ret, const char *step)
+{
+    ESP_LOGE(TAG, "init failed at %s: %s", step, esp_err_to_name(ret));
+    deinit();
+    return ret;
 }
