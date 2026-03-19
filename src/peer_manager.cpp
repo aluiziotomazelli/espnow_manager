@@ -25,7 +25,7 @@ PeerManager::PeerManager(IStorageManager &storage, IWiFiHAL &driver_hal, IFreeRT
 
 PeerManager::~PeerManager()
 {
-    if (mutex_) {
+    if (mutex_ != nullptr) {
         freertos_hal_.semaphore_delete(mutex_);
     }
 }
@@ -161,8 +161,9 @@ bool PeerManager::find_mac(NodeId id, uint8_t *mac)
     bool found = false;
     for (const auto &p : peers_) {
         if (p.node_id == id) {
-            if (mac)
+            if (mac != nullptr) {
                 memcpy(mac, p.mac, 6);
+            }
             found = true;
             break;
         }
@@ -174,14 +175,14 @@ bool PeerManager::find_mac(NodeId id, uint8_t *mac)
 
 etl::vector<PeerInfo, MAX_PEERS> PeerManager::get_all()
 {
-    etl::vector<PeerInfo, MAX_PEERS> copy; 
+    etl::vector<PeerInfo, MAX_PEERS> copy;
 
     if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
-        return copy; 
+        return copy;
     }
-    copy = peers_; 
+    copy = peers_;
     freertos_hal_.semaphore_give(mutex_);
-    return copy; 
+    return copy;
 }
 
 etl::vector<NodeId, MAX_PEERS> PeerManager::get_offline(uint64_t now_ms)

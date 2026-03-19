@@ -58,7 +58,7 @@ esp_err_t HeartbeatManager::init(uint32_t interval_ms, NodeType type)
 esp_err_t HeartbeatManager::deinit()
 {
     esp_err_t ret = ESP_OK;
-    if (timer_) {
+    if (timer_ != nullptr) {
         if (hal_freertos_.timer_stop(timer_, pdMS_TO_TICKS(100)) == pdFAIL) {
             ret = ESP_FAIL;
         }
@@ -93,7 +93,7 @@ void HeartbeatManager::handle_request(const RxPacket &packet)
 
     // We only need the header for now
     uint64_t now_ms = hal_timer_.get_time_us() / 1000;
-    
+
     peer_mgr_.update_last_seen(header.sender_node_id, now_ms);
     ESP_LOGI(TAG, "Heartbeat received from Node ID %d.", (int)header.sender_node_id);
 
@@ -108,7 +108,12 @@ void HeartbeatManager::handle_request(const RxPacket &packet)
 
     TxPacket tx_packet;
     memcpy(tx_packet.dest_mac, packet.src_mac, 6);
-    tx_packet.len = codec_.encode(response.header, &response.server_time_ms, sizeof(HeartbeatResponse) - sizeof(MessageHeader), tx_packet.data, sizeof(tx_packet.data));
+    tx_packet.len = codec_.encode(
+        response.header,
+        &response.server_time_ms,
+        sizeof(HeartbeatResponse) - sizeof(MessageHeader),
+        tx_packet.data,
+        sizeof(tx_packet.data));
     if (tx_packet.len > 0) {
         tx_packet.requires_ack = false;
         tx_mgr_.queue_packet(tx_packet);
@@ -131,7 +136,12 @@ void HeartbeatManager::send_heartbeat()
     heartbeat.header.sequence_number = 0;
     heartbeat.uptime_ms = hal_timer_.get_time_us() / 1000;
 
-    tx_packet.len = codec_.encode(heartbeat.header, &heartbeat.battery_mv, sizeof(HeartbeatMessage) - sizeof(MessageHeader), tx_packet.data, sizeof(tx_packet.data));
+    tx_packet.len = codec_.encode(
+        heartbeat.header,
+        &heartbeat.battery_mv,
+        sizeof(HeartbeatMessage) - sizeof(MessageHeader),
+        tx_packet.data,
+        sizeof(tx_packet.data));
     if (tx_packet.len > 0) {
         tx_packet.requires_ack = false;
         tx_mgr_.queue_packet(tx_packet);

@@ -190,9 +190,11 @@ protected:
     esp_err_t init_heartbeat_manager();
     esp_err_t init_pairing_manager();
     esp_err_t init_message_router();
-    void determine_initial_state(etl::ivector<PeerInfo> &peers);
+    NodeState determine_initial_state(etl::ivector<PeerInfo> &peers);
     void add_peers_to_espnow(etl::ivector<PeerInfo> &peers);
     esp_err_t init_fail(esp_err_t ret, const char *step);
+
+    void signal_tasks_to_stop();
 
     // Task functions
     static void rx_dispatch_task(void *arg);

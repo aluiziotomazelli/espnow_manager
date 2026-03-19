@@ -34,8 +34,9 @@ esp_err_t PairingManager::init(NodeId id, NodeType type)
 
 void PairingManager::tick(uint64_t now_ms)
 {
-    if (!is_initialized_ || !is_active_)
+    if (!is_initialized_ || !is_active_) {
         return;
+    }
 
     if (now_ms - started_at_ms_ >= timeout_ms_) {
         is_active_ = false;
@@ -58,8 +59,9 @@ void PairingManager::set_channel(uint8_t channel)
 
 esp_err_t PairingManager::start(uint32_t timeout_ms, uint64_t now_ms)
 {
-    if (!is_initialized_ || is_active_)
+    if (!is_initialized_ || is_active_) {
         return ESP_ERR_INVALID_STATE;
+    }
 
     timeout_ms_ = timeout_ms;
     started_at_ms_ = now_ms;

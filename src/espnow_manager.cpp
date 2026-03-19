@@ -126,23 +126,8 @@ esp_err_t EspNowManager::deinit()
     if (heartbeat_manager_)
         heartbeat_manager_->deinit();
 
-    // Signal tasks to stop
-    if (rx_dispatch_task_handle_ != nullptr) {
-        hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
-    }
-    if (transport_worker_task_handle_ != nullptr) {
-        hal_freertos_->task_notify(transport_worker_task_handle_, NOTIFY_STOP, eSetBits);
-    }
-
-    // Wait for tasks to exit (up to 1s).
-    int timeout = 1000;
-    while ((rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) && timeout-- > 0) {
-        hal_freertos_->task_delay(pdMS_TO_TICKS(10));
-    }
-
-    if (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) {
-        ESP_LOGW(TAG, "Tasks did not terminate gracefully within timeout");
-    }
+    // Signal rx_dispatch and transport_worker tasks to stop
+    signal_tasks_to_stop();
 
     // Delete peers
     if (esp_now_initialized_ && peer_manager_) {
@@ -166,7 +151,7 @@ esp_err_t EspNowManager::deinit()
     esp_now_initialized_ = false;
     last_header_requiring_ack_.reset();
     config_ = EspNowConfig();
-    node_state_.store(NodeState::UNINITIALIZED);
+    transition_to_state(NodeState::UNINITIALIZED);
 
     ESP_LOGI(TAG, "EspNow component deinitialized.");
     return ESP_OK;
@@ -193,35 +178,42 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     }
 
     // // BootStrapper initializes ESPNOW, creates tasks, queues and mutexes
-    if ((ret = init_bootstrapper()) != ESP_OK) {
+    ret = init_bootstrapper();
+    if (ret != ESP_OK) {
         return init_fail(ret, "bootstrapper");
     }
     esp_now_initialized_ = true;
 
-    if ((ret = init_tx_manager()) != ESP_OK) {
+    ret = init_tx_manager();
+    if (ret != ESP_OK) {
         return init_fail(ret, "tx_manager");
     }
 
-    if ((ret = init_discovery_manager()) != ESP_OK) {
+    ret = init_discovery_manager();
+    if (ret != ESP_OK) {
         return init_fail(ret, "discovery_manager");
     }
 
-    if ((ret = init_heartbeat_manager()) != ESP_OK) {
+    ret = init_heartbeat_manager();
+    if (ret != ESP_OK) {
         return init_fail(ret, "heartbeat_manager");
     }
 
-    if ((ret = init_pairing_manager()) != ESP_OK) {
+    ret = init_pairing_manager();
+    if (ret != ESP_OK) {
         return init_fail(ret, "pairing_manager");
     }
 
-    if ((ret = init_message_router()) != ESP_OK) {
+    ret = init_message_router();
+    if (ret != ESP_OK) {
         return init_fail(ret, "message_router");
     }
 
     etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
-    determine_initial_state(peers);
+    NodeState initial_state = determine_initial_state(peers);
+    transition_to_state(initial_state);
 
-    if (node_state_ == NodeState::OPERATIONAL) {
+    if (initial_state == NodeState::OPERATIONAL) {
         add_peers_to_espnow(peers);
     }
 
@@ -646,13 +638,13 @@ esp_err_t EspNowManager::init_message_router()
     return ESP_OK;
 }
 
-void EspNowManager::determine_initial_state(etl::ivector<PeerInfo> &peers)
+NodeState EspNowManager::determine_initial_state(etl::ivector<PeerInfo> &peers)
 {
     if (peers.empty()) {
-        node_state_.store(NodeState::PAIRING);
+        return NodeState::PAIRING;
     }
     else {
-        node_state_.store(NodeState::OPERATIONAL);
+        return NodeState::OPERATIONAL;
     }
 }
 
@@ -671,6 +663,27 @@ void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo> &peers)
 esp_err_t EspNowManager::init_fail(esp_err_t ret, const char *step)
 {
     ESP_LOGE(TAG, "init failed at %s: %s", step, esp_err_to_name(ret));
-    deinit();
+    // deinit();
     return ret;
+}
+
+void EspNowManager::signal_tasks_to_stop()
+{
+    // Signal tasks to stop
+    if (rx_dispatch_task_handle_ != nullptr) {
+        hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
+    }
+    if (transport_worker_task_handle_ != nullptr) {
+        hal_freertos_->task_notify(transport_worker_task_handle_, NOTIFY_STOP, eSetBits);
+    }
+
+    // Wait for tasks to exit (up to 1s).
+    int timeout = 1000;
+    while ((rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) && timeout-- > 0) {
+        hal_freertos_->task_delay(pdMS_TO_TICKS(10));
+    }
+
+    if (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) {
+        ESP_LOGW(TAG, "Tasks did not terminate gracefully within timeout");
+    }
 }

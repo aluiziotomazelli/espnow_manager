@@ -41,19 +41,19 @@ void TxManager::ack_timeout_callback(TimerHandle_t xTimer)
 esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
 {
     tx_queue_ = freertos_hal_.queue_create(20, sizeof(TxPacket));
-    if (!tx_queue_) {
+    if (tx_queue_ == nullptr) {
         return ESP_ERR_NO_MEM;
     }
 
     task_done_semaphore_ = freertos_hal_.semaphore_create_binary();
-    if (!task_done_semaphore_) {
+    if (task_done_semaphore_ == nullptr) {
         deinit();
         return ESP_ERR_NO_MEM;
     }
 
     ack_timeout_timer_ =
         freertos_hal_.timer_create("ack_timeout", pdMS_TO_TICKS(ack_timeout_ms_), pdFALSE, this, ack_timeout_callback);
-    if (!ack_timeout_timer_) {
+    if (ack_timeout_timer_ == nullptr) {
         deinit();
         return ESP_ERR_NO_MEM;
     }
@@ -70,14 +70,15 @@ esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
 
 esp_err_t TxManager::deinit()
 {
-    if (task_handle_) {
+    if (task_handle_ != nullptr) {
         // Notify task to stop
         freertos_hal_.task_notify(task_handle_, NOTIFY_STOP, eSetBits);
 
         // Send packet to weakup task
         TxPacket stop_packet = {};
-        if (tx_queue_)
+        if (tx_queue_ != nullptr) {
             freertos_hal_.queue_send(tx_queue_, &stop_packet, 0);
+        }
 
         // Wait for task to exit
         uint8_t delay = 10;
@@ -86,24 +87,24 @@ esp_err_t TxManager::deinit()
                 break;
         }
         // Forcing deleting task
-        if (task_handle_) {
+        if (task_handle_ != nullptr) {
             ESP_LOGW(TAG, "Forcing deletion of tx manager task");
             freertos_hal_.task_delete(task_handle_);
             task_handle_ = nullptr;
         }
     }
 
-    if (task_done_semaphore_) {
+    if (task_done_semaphore_ != nullptr) {
         freertos_hal_.semaphore_delete(task_done_semaphore_);
         task_done_semaphore_ = nullptr;
     }
 
-    if (tx_queue_) {
+    if (tx_queue_ != nullptr) {
         freertos_hal_.queue_delete(tx_queue_);
         tx_queue_ = nullptr;
     }
 
-    if (ack_timeout_timer_) {
+    if (ack_timeout_timer_ != nullptr) {
         freertos_hal_.timer_delete(ack_timeout_timer_, portMAX_DELAY);
         ack_timeout_timer_ = nullptr;
     }
@@ -113,40 +114,47 @@ esp_err_t TxManager::deinit()
 
 esp_err_t TxManager::queue_packet(const TxPacket &packet)
 {
-    if (!tx_queue_)
+    if (tx_queue_ == nullptr) {
         return ESP_ERR_INVALID_STATE;
+    }
 
-    if (freertos_hal_.queue_send(tx_queue_, &packet, 100) != pdTRUE)
+    if (freertos_hal_.queue_send(tx_queue_, &packet, 100) != pdTRUE) {
         return ESP_FAIL;
+    }
 
-    if (task_handle_)
+    if (task_handle_ != nullptr) {
         freertos_hal_.task_notify(task_handle_, NOTIFY_DATA, eSetBits);
+    }
 
     return ESP_OK;
 }
 
 void TxManager::notify_physical_fail()
 {
-    if (task_handle_)
+    if (task_handle_ != nullptr) {
         freertos_hal_.task_notify(task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits);
+    }
 }
 
 void TxManager::notify_scanning()
 {
-    if (task_handle_)
+    if (task_handle_ != nullptr) {
         freertos_hal_.task_notify(task_handle_, NOTIFY_SCANNING, eSetBits);
+    }
 }
 
 void TxManager::notify_link_alive()
 {
-    if (task_handle_)
+    if (task_handle_ != nullptr) {
         freertos_hal_.task_notify(task_handle_, NOTIFY_LINK_ALIVE, eSetBits);
+    }
 }
 
 void TxManager::notify_logical_ack()
 {
-    if (task_handle_)
+    if (task_handle_ != nullptr) {
         freertos_hal_.task_notify(task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
+    }
 }
 
 void TxManager::tx_task_func(void *arg)
