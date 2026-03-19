@@ -186,6 +186,7 @@ public:
      * @param mac MAC address of the node (6 bytes).
      * @param channel WiFi channel the node is operating on.
      * @param type Role/Type of the node.
+     * @param heartbeat_interval_ms Heartbeat interval in milliseconds.
      * @return ESP_OK: on success.
      * @return ESP_ERR_INVALID_ARG: mac is nullptr
      * @return ESP_ERR_TIMEOUT: method timed out to get the mutex_
@@ -199,7 +200,7 @@ public:
      *
      * @warning ESP-NOW hardware limit is 20 peers, but 1 is reserved for broadcast
      */
-    virtual esp_err_t add_peer(NodeId node_id, const uint8_t *mac, NodeType type) = 0; // TODO: Verify channel
+    virtual esp_err_t add_peer(NodeId node_id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms) = 0;
 
     /**
      * @brief Template overload for add_peer using enums
@@ -213,9 +214,9 @@ public:
         typename T2,
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
-    esp_err_t add_peer(T1 node_id, const uint8_t *mac, T2 type) // TODO: Verify channel
+    esp_err_t add_peer(T1 node_id, const uint8_t *mac, T2 type, uint32_t heartbeat_interval_ms)
     {
-        return add_peer(static_cast<NodeId>(node_id), mac, static_cast<NodeType>(type)); // TODO: Verify channel
+        return add_peer(static_cast<NodeId>(node_id), mac, static_cast<NodeType>(type), heartbeat_interval_ms);
     }
 
     /**

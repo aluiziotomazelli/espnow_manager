@@ -103,7 +103,7 @@ public:
 
     using IEspNowManager::add_peer;
     /** @copydoc IEspNowManager::add_peer */
-    esp_err_t add_peer(NodeId node_id, const uint8_t *mac, NodeType type) override; // TODO: Verify channel
+    esp_err_t add_peer(NodeId node_id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms) override;
 
     using IEspNowManager::remove_peer;
     /** @copydoc IEspNowManager::remove_peer */
@@ -169,6 +169,15 @@ protected:
 
     // --- Private Methods ---
     uint64_t get_time_ms() const;
+
+    // Send packet helper
+    esp_err_t send_packet(
+        NodeId dest_node_id,
+        MessageType msg_type,
+        PayloadType payload_type,
+        const void *payload,
+        size_t len,
+        bool require_ack);
 
     // Persistence helpers
     void update_wifi_channel(uint8_t channel);

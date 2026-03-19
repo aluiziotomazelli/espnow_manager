@@ -232,8 +232,9 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     return ret;
 }
 
-esp_err_t EspNowManager::send_data(
+esp_err_t EspNowManager::send_packet(
     NodeId dest_node_id,
+    MessageType msg_type,
     PayloadType payload_type,
     const void *payload,
     size_t len,
@@ -247,7 +248,13 @@ esp_err_t EspNowManager::send_data(
         return ESP_ERR_NOT_FOUND;
 
     MessageHeader header;
-    header.msg_type = MessageType::DATA;
+    if (msg_type == MessageType::DATA) {
+        header.msg_type = MessageType::DATA;
+    }
+    else {
+        header.msg_type = MessageType::COMMAND;
+    }
+
     header.sequence_number = 0;
     header.sender_type = config_.node_type;
     header.sender_node_id = config_.node_id;
@@ -265,6 +272,16 @@ esp_err_t EspNowManager::send_data(
     return tx_manager_->queue_packet(tx_packet);
 }
 
+esp_err_t EspNowManager::send_data(
+    NodeId dest_node_id,
+    PayloadType payload_type,
+    const void *payload,
+    size_t len,
+    bool require_ack)
+{
+    return send_packet(dest_node_id, MessageType::DATA, payload_type, payload, len, require_ack);
+}
+
 esp_err_t EspNowManager::send_command(
     NodeId dest_node_id,
     CommandType command_type,
@@ -272,30 +289,8 @@ esp_err_t EspNowManager::send_command(
     size_t len,
     bool require_ack)
 {
-    if (node_state_.load() != NodeState::OPERATIONAL)
-        return ESP_ERR_INVALID_STATE;
-
-    TxPacket tx_packet;
-    if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac))
-        return ESP_ERR_NOT_FOUND;
-
-    MessageHeader header;
-    header.msg_type = MessageType::COMMAND;
-    header.sequence_number = 0;
-    header.sender_type = config_.node_type;
-    header.sender_node_id = config_.node_id;
-    header.payload_type = static_cast<PayloadType>(command_type);
-    header.requires_ack = require_ack;
-    header.dest_node_id = dest_node_id;
-    header.timestamp_ms = get_time_ms();
-
-    tx_packet.len = message_codec_->encode(header, payload, len, tx_packet.data, sizeof(tx_packet.data));
-    if (tx_packet.len == 0)
-        return ESP_ERR_INVALID_ARG;
-
-    tx_packet.requires_ack = require_ack;
-
-    return tx_manager_->queue_packet(tx_packet);
+    return send_packet(
+        dest_node_id, MessageType::COMMAND, static_cast<PayloadType>(command_type), payload, len, require_ack);
 }
 
 esp_err_t EspNowManager::confirm_reception(AckStatus status)
@@ -360,9 +355,9 @@ etl::vector<NodeId, MAX_PEERS> EspNowManager::get_offline_peers() const
     return peer_manager_->get_offline(get_time_ms());
 }
 
-esp_err_t EspNowManager::add_peer(NodeId node_id, const uint8_t *mac, NodeType type)
+esp_err_t EspNowManager::add_peer(NodeId node_id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms)
 {
-    return peer_manager_->add(node_id, mac, type);
+    return peer_manager_->add(node_id, mac, type, heartbeat_interval_ms);
 }
 
 esp_err_t EspNowManager::remove_peer(NodeId node_id)
