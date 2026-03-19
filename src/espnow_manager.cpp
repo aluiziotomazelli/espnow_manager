@@ -495,9 +495,9 @@ void EspNowManager::transport_worker_task(void *arg)
     self->hal_freertos_->task_delete(NULL);
 }
 
-uint64_t EspNowManager::get_time_ms()
+uint64_t EspNowManager::get_time_ms() const
 {
-    return esp_timer_get_time() / 1000;
+    return hal_timer_->get_time_us() / 1000;
 }
 
 // IChannelObserver implementation for DiscoveryManager callbacks
