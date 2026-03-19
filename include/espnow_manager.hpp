@@ -168,7 +168,7 @@ protected:
     void on_scan_started_cb() override;
 
     // --- Private Methods ---
-    uint64_t get_time_ms() const;
+    static uint64_t get_time_ms();
 
     // Persistence helpers
     void update_wifi_channel(uint8_t channel);

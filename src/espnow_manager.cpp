@@ -13,7 +13,6 @@
 // #include "freertos/semphr.h"
 // #include "freertos/task.h"
 
-#include "bootstrapper.hpp"
 #include "discovery_manager.hpp"
 #include "heartbeat_manager.hpp"
 #include "message_codec.hpp"
@@ -175,10 +174,12 @@ esp_err_t EspNowManager::deinit()
 
 esp_err_t EspNowManager::init(const EspNowConfig &config)
 {
-    if (node_state_.load() != NodeState::UNINITIALIZED)
+    if (node_state_.load() != NodeState::UNINITIALIZED) {
         return ESP_ERR_INVALID_STATE;
-    if (config.app_rx_queue == nullptr)
+    }
+    if (config.app_rx_queue == nullptr) {
         return ESP_ERR_INVALID_ARG;
+    }
 
     config_ = config;
     esp_err_t ret = ESP_OK;
@@ -494,7 +495,7 @@ void EspNowManager::transport_worker_task(void *arg)
     self->hal_freertos_->task_delete(NULL);
 }
 
-uint64_t EspNowManager::get_time_ms() const
+uint64_t EspNowManager::get_time_ms()
 {
     return esp_timer_get_time() / 1000;
 }

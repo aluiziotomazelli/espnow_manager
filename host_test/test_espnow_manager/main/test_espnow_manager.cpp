@@ -46,14 +46,22 @@ static TaskHandle_t fake_rx_task = reinterpret_cast<TaskHandle_t>(&fake_rx_task_
 static TaskHandle_t fake_worker_task = reinterpret_cast<TaskHandle_t>(&fake_worker_task_storage);
 
 // ---------------------------------------------------------------------------
+// Test constants
+// ---------------------------------------------------------------------------
+static constexpr NodeId kNodeId = 0x05;
+static constexpr NodeType kNodeType = 0x02; // non-HUB
+static constexpr NodeId kHubId = ReservedIds::HUB;
+static constexpr NodeType kHubType = ReservedTypes::HUB;
+
+// ---------------------------------------------------------------------------
 // Helper: minimal valid EspNowConfig
 // app_rx_queue must be non-null to pass the guard in init().
 // ---------------------------------------------------------------------------
 static EspNowConfig make_valid_config()
 {
     EspNowConfig cfg{};
-    cfg.node_id = 0x02;
-    cfg.node_type = 0x02;
+    cfg.node_id = kNodeId;
+    cfg.node_type = kNodeType;
     cfg.wifi_channel = 1;
     cfg.app_rx_queue = fake_queue;
     return cfg;
@@ -356,8 +364,33 @@ TEST_F(EspNowManagerTest, DeinitCallsBootstrapperDeinit)
     sut_->deinit();
 }
 
+// ===========================================================================
+// init() — correct argument propagation to submódules
+//
+// These tests guard against swapped id/type arguments, which compile
+// silently because both NodeId and NodeType are uint8_t aliases.
+// ===========================================================================
+
 TEST_F(EspNowManagerTest, InitPropagatesCorrectNodeIdAndTypeToPairingManager)
 {
-    EXPECT_CALL(*pairing_mgr_, init(0x01, 0x01)).WillOnce(Return(ESP_OK));
+    // If id and type are swapped in EspNowManager::init(), this test fails
+    EXPECT_CALL(*pairing_mgr_, init(kNodeId, kNodeType)).WillOnce(Return(ESP_OK));
+    sut_->init(make_valid_config());
+}
+
+TEST_F(EspNowManagerTest, InitPropagatesCorrectIntervalAndTypeToHeartbeatManager)
+{
+    EspNowConfig cfg = make_valid_config();
+    cfg.heartbeat_interval_ms = 5000;
+
+    // heartbeat_manager::init(interval_ms, node_type) — order matters
+    EXPECT_CALL(*heartbeat_mgr_, init(cfg.heartbeat_interval_ms, kNodeType)).WillOnce(Return(ESP_OK));
+    sut_->init(cfg);
+}
+
+TEST_F(EspNowManagerTest, InitCallsHeartbeatManagerUpdateNodeId)
+{
+    // update_node_id() is called after init() succeeds — must carry kNodeId
+    EXPECT_CALL(*heartbeat_mgr_, update_node_id(kNodeId)).Times(1);
     sut_->init(make_valid_config());
 }

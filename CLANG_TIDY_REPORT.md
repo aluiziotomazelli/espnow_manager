@@ -85,7 +85,7 @@ This report summarizes the static analysis findings for the `espnow_manager` com
 | :--- | :--- | :--- |
 | 454 | `bugprone-narrowing-conversions` | **FIXED** **High**: Narrowing `int` to `int8_t`. Risk of data corruption/overflow. |
 | 455 | `bugprone-narrowing-conversions` | **FIXED** **High**: Narrowing `uint64_t` to `int64_t`. Risk of sign issues or data loss. |
-| 309 | `bugprone-easily-swappable-parameters` | **High**: `dest_node_id` and `payload_type` are swappable. |
-| 114, 182, 465 | `readability-function-cognitive-complexity` | **Moderate**: High complexity in core lifecycle and task functions. |
-| 28 | `readability-duplicate-include` | **Low**: Duplicate include of `bootstrapper.hpp`. |
-| 570 | `readability-convert-member-functions-to-static` | **Low**: `get_time_ms` doesn't use instance state and can be static. |
+| 309 | `bugprone-easily-swappable-parameters` | **FIXED BY TEST** **High**: `dest_node_id` and `payload_type` are swappable. |
+| 114, 182 **FIXED** , 465 | `readability-function-cognitive-complexity` | **Moderate**: High complexity in core lifecycle and task functions. |
+| 28 | `readability-duplicate-include` | **FIXED** **Low**: Duplicate include of `bootstrapper.hpp`. |
+| 570 | `readability-convert-member-functions-to-static` | **FIXED** **Low**: `get_time_ms` doesn't use instance state and can be static. |
