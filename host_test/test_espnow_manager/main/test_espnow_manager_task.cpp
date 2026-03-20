@@ -32,14 +32,15 @@ using ::testing::Return;
 // ---------------------------------------------------------------------------
 static constexpr NodeId kNodeId = 0x05;
 static constexpr NodeType kNodeType = 0x02; // non-HUB
-static constexpr uint32_t kDelayMs = 20;    // time to let tasks process one iteration
-static constexpr uint32_t kTickMs = 120;    // slightly longer than queue_receive timeout (100ms)
-
+static constexpr uint32_t delay_ms = 10;    // time to let tasks process
 // Slightly longer than queue_receive timeout (100ms) to guarantee
 // the rx_dispatch_task has completed at least one full loop iteration
 // and processed any pending notifications.
 // Must be > pdMS_TO_TICKS(100) — the queue_receive timeout in rx_dispatch_task
 static constexpr uint32_t notify_delay_ms = 105;
+
+static constexpr uint8_t rx_queue_full_count = 30;
+static constexpr uint8_t worker_queue_full_count = 20;
 
 // ---------------------------------------------------------------------------
 // Testable subclass — exposes protected callbacks for direct test invocation
@@ -55,6 +56,14 @@ public:
     void on_channel_found_cb(uint8_t ch) override { EspNowManager::on_channel_found_cb(ch); }
     void on_scan_failed_cb() override { EspNowManager::on_scan_failed_cb(); }
     void on_scan_started_cb() override { EspNowManager::on_scan_started_cb(); }
+
+    std::optional<MessageHeader> get_last_header_ack() const { return last_header_requiring_ack_; }
+
+    // Expose protected members for testing
+    using EspNowManager::rx_dispatch_queue_;
+    using EspNowManager::rx_dispatch_task_handle_;
+    using EspNowManager::transport_worker_queue_;
+    using EspNowManager::transport_worker_task_handle_;
 };
 
 // ---------------------------------------------------------------------------
@@ -152,7 +161,7 @@ protected:
     {
         sut_->deinit();
         // Give tasks time to exit cleanly after deinit() signals stop
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(delay_ms));
         sut_.reset(); // destroy SUT before mocks
     }
 
@@ -166,9 +175,19 @@ protected:
         cfg.node_type = kNodeType;
         cfg.wifi_channel = 1;
         cfg.app_rx_queue = xQueueCreate(10, sizeof(RxPacket)); // app queue
+        cfg.rx_dispatch_queue_length = rx_queue_full_count;
+        cfg.transport_worker_queue_length = worker_queue_full_count;
 
         ASSERT_EQ(sut_->init(cfg), ESP_OK);
-        vTaskDelay(pdMS_TO_TICKS(kDelayMs)); // let tasks start and block
+        vTaskDelay(pdMS_TO_TICKS(delay_ms)); // let tasks start and block
+    }
+
+    void receive_valid_rx_packet()
+    {
+        RxPacket packet{};
+        packet.len = sizeof(MessageHeader) + 1;
+        xQueueSend(sut_->rx_dispatch_queue_, &packet, 0);
+        vTaskDelay(pdMS_TO_TICKS(delay_ms));
     }
 };
 
@@ -181,6 +200,8 @@ TEST_F(EspNowManagerTaskTest, ChannelFoundTransitionsToOperational)
     init_and_wait();
     ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
 
+    EXPECT_CALL(*peer_mgr_, persist()).Times(1); // peer_manager::persist is called when channel is found
+
     // on_channel_found_cb stores the channel and notifies rx_dispatch_task
     // via NOTIFY_CHANNEL_FOUND. The task then transitions NodeState.
     sut_->on_channel_found_cb(6);
@@ -189,29 +210,20 @@ TEST_F(EspNowManagerTaskTest, ChannelFoundTransitionsToOperational)
     EXPECT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
 }
 
-TEST_F(EspNowManagerTaskTest, ChannelFoundCallsPeerManagerPersist)
-{
-    init_and_wait();
-
-    EXPECT_CALL(*peer_mgr_, persist()).Times(1);
-
-    sut_->on_channel_found_cb(6);
-    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
-}
-
 // ===========================================================================
 // rx_dispatch_task — NOTIFY_SCAN_FAILED
 // ===========================================================================
 
-TEST_F(EspNowManagerTaskTest, ScanFailedStaysInPairing)
+TEST_F(EspNowManagerTaskTest, ScanFailedSendsToPairingState)
 {
     init_and_wait();
-    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
+    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING); // Initial state when no peers are found on init
+    sut_->set_node_state(NodeState::OPERATIONAL);          // Set to operational to test the callback
 
     sut_->on_scan_failed_cb();
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
 
-    // SCAN_FAILED while in PAIRING keeps the node in PAIRING
+    // SCAN_FAILED while in OPERATIONAL sends the node to PAIRING
     EXPECT_EQ(sut_->get_node_state(), NodeState::PAIRING);
 }
 
@@ -256,4 +268,167 @@ TEST_F(EspNowManagerTaskTest, WorkerTaskDoesNotCallPairingTickWhenOperational)
 
     EXPECT_CALL(*pairing_mgr_, tick(_)).Times(0);
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+}
+
+// ===========================================================================
+// RxPackets tests
+// ===========================================================================
+
+TEST_F(EspNowManagerTaskTest, RxDispatchTaskRoutesPacketToMessageRouter)
+{
+    init_and_wait();
+
+    // codec must validate CRC and decode header successfully
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::DATA;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    // DATA type goes to handle_packet directly (not worker queue)
+    ON_CALL(*message_router_, should_dispatch_to_worker(_)).WillByDefault(Return(false));
+
+    EXPECT_CALL(*message_router_, handle_packet(_)).Times(1); // Packet should be routed
+
+    receive_valid_rx_packet();
+}
+
+TEST_F(EspNowManagerTaskTest, RxDispatchDoesNotRouteInvalidCrcPackets)
+{
+    init_and_wait();
+
+    // codec must validate CRC and decode header successfully
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(false));
+
+    EXPECT_CALL(*message_router_, handle_packet(_)).Times(0); // No packet should be routed
+
+    receive_valid_rx_packet();
+}
+
+TEST_F(EspNowManagerTaskTest, RxDispatchDoesNotRouteIfCodecFailsToDecodeHeader)
+{
+    init_and_wait();
+
+    // codec must validate CRC and decode header successfully
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(std::nullopt));
+
+    EXPECT_CALL(*message_router_, handle_packet(_)).Times(0); // No packet should be routed
+
+    receive_valid_rx_packet();
+}
+
+TEST_F(EspNowManagerTaskTest, PacketRequiringAckIsStored)
+{
+    init_and_wait();
+
+    // codec must validate CRC and decode header successfully
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::DATA;
+    header.requires_ack = true;
+    header.sender_node_id = kNodeId;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    // DATA type goes to handle_packet directly (not worker queue)
+    ON_CALL(*message_router_, should_dispatch_to_worker(_)).WillByDefault(Return(false));
+
+    receive_valid_rx_packet();
+
+    auto decoded_header = sut_->get_last_header_ack();
+    EXPECT_TRUE(decoded_header.has_value());
+    EXPECT_EQ(decoded_header->msg_type, MessageType::DATA);
+    EXPECT_EQ(decoded_header->sender_node_id, kNodeId);
+}
+
+TEST_F(EspNowManagerTaskTest, RxDispatchRoutesDataToWorkerQueueWhenShouldDispatchToWorkerReturnsTrue)
+{
+    init_and_wait();
+
+    // codec must validate CRC and decode header successfully
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::HEARTBEAT; // HEARTBEAT is handled by worker task
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    // HEARTBEAT type goes to worker queue
+    ON_CALL(*message_router_, should_dispatch_to_worker(_)).WillByDefault(Return(true));
+
+    // Suspend worker task so it cannot consume from the queue before we check
+    vTaskSuspend(sut_->transport_worker_task_handle_);
+
+    EXPECT_CALL(*message_router_, handle_packet(_)).Times(0); // No packet should be routed by rx_dispatch_task
+
+    receive_valid_rx_packet(); // rx_dispatch_task processes and routes to worker queue
+
+    EXPECT_EQ(uxQueueMessagesWaiting(sut_->transport_worker_queue_), 1); // Packet should be in worker queue
+
+    EXPECT_CALL(*message_router_, handle_packet(_)).Times(1);            // Packet should be routed by worker task
+    vTaskResume(sut_->transport_worker_task_handle_);                    // Resume so TearDown can consume the packet
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));                                 // Lets wait to worker task process
+    EXPECT_EQ(uxQueueMessagesWaiting(sut_->transport_worker_queue_), 0); // Packet should be consumed
+}
+
+TEST_F(EspNowManagerTaskTest, RxDispatchTaskDropsPacketWhenQueueFull)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+
+    // Normal packets
+    MessageHeader header{};
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    vTaskSuspend(sut_->rx_dispatch_task_handle_); // Suspend so it cannot consume from the queue before we check
+
+    // Prepare RxPacket to send
+    RxPacket packet{};
+    packet.len = sizeof(MessageHeader) + 1;
+    // Fill the queue completely
+    for (int i = 0; i < rx_queue_full_count; ++i) {
+        xQueueSend(sut_->rx_dispatch_queue_, &packet, 0);
+    }
+    // One extra packet should be dropped
+    BaseType_t result = xQueueSend(sut_->rx_dispatch_queue_, &packet, 0);
+    EXPECT_EQ(result, errQUEUE_FULL); // confirms it was rejected at queue level
+
+    EXPECT_EQ(uxQueueMessagesWaiting(sut_->rx_dispatch_queue_), rx_queue_full_count);
+
+    vTaskResume(sut_->rx_dispatch_task_handle_); // Resume so task can consume the packets
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));         // Lets wait to rx_dispatch_task process
+
+    EXPECT_EQ(uxQueueMessagesWaiting(sut_->rx_dispatch_queue_), 0);
+}
+
+TEST_F(EspNowManagerTaskTest, WorkerTaskDropsPacketWhenQueueFull)
+{
+    init_and_wait();
+
+    // codec must validate CRC and decode header successfully
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    // Send the packets to worker task
+    ON_CALL(*message_router_, should_dispatch_to_worker(_)).WillByDefault(Return(true));
+
+    vTaskSuspend(sut_->transport_worker_task_handle_); // Suspend so it cannot consume from the queue before we check
+
+    // Prepare RxPacket to send
+    RxPacket packet{};
+    packet.len = sizeof(MessageHeader) + 1;
+
+    // Fill the queue completely
+    for (int i = 0; i < worker_queue_full_count; ++i) {
+        xQueueSend(sut_->rx_dispatch_queue_, &packet, 0); // Send through rx_dispatch_queue_ to transport_worker_queue_
+    }
+    // One extra packet send directly to worker queue
+    BaseType_t result = xQueueSend(sut_->transport_worker_queue_, &packet, 0);
+    EXPECT_EQ(result, errQUEUE_FULL); // confirms it was rejected at queue level
+
+    EXPECT_EQ(uxQueueMessagesWaiting(sut_->transport_worker_queue_), worker_queue_full_count);
+
+    vTaskResume(sut_->transport_worker_task_handle_); // Resume so task can consume the packets
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));              // Lets wait to worker task process
+
+    EXPECT_EQ(uxQueueMessagesWaiting(sut_->transport_worker_queue_), 0);
 }
