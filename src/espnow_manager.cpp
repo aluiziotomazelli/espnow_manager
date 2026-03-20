@@ -1,17 +1,8 @@
 // src/espnow_manager.cpp
-// #include <algorithm>
 #include <cstring>
-// #include <inttypes.h>
 
 #include "esp_log.h"
-// #include "esp_mac.h"
-// #include "esp_rom_crc.h"
-// #include "esp_timer.h"
 #include "esp_attr.h"
-// #include "freertos/FreeRTOS.h"
-// #include "freertos/queue.h"
-// #include "freertos/semphr.h"
-// #include "freertos/task.h"
 
 #include "discovery_manager.hpp"
 #include "heartbeat_manager.hpp"
@@ -37,7 +28,7 @@ static const char *TAG = "EspNow";
 // RTC storage for peer list persistence must stay in global scope
 static RTC_DATA_ATTR PersistentData g_rtc_storage;
 
-// --- Singleton ---
+// Singleton Factory Constructor ---- (not used in host based tests) LCOV_EXCL_START
 EspNowManager &EspNowManager::instance()
 {
     static NvsHAL nvs_hal;
@@ -76,6 +67,7 @@ EspNowManager &EspNowManager::instance()
         std::move(message_router));
     return instance;
 }
+// LCOV_EXCL_STOP
 
 EspNowManager::EspNowManager(
     std::unique_ptr<IWiFiHAL> driver_hal,
@@ -111,53 +103,9 @@ EspNowManager::~EspNowManager()
     // Resources allocated in init() must be explicitly released.
 }
 
-// TODO: return type is not realy used, since we not check any error, continue even if some
-// thing fails to delete all resources. Should be return void?
-esp_err_t EspNowManager::deinit()
-{
-    ESP_LOGI(TAG, "Deinitializing EspNowManager...");
-
-    if (tx_manager_ != nullptr) {
-        tx_manager_->deinit();
-    }
-    if (heartbeat_manager_ != nullptr) {
-        heartbeat_manager_->deinit();
-    }
-
-    if (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) {
-        // Signal rx_dispatch and transport_worker tasks to stop
-        signal_tasks_to_stop();
-        // Delete tasks if not terminated gracefully
-        delete_tasks();
-    }
-
-    // Call cleanup_resources to delete queues and mutex
-    if (rx_dispatch_queue_ != nullptr || transport_worker_queue_ != nullptr || ack_mutex_ != nullptr) {
-        cleanup_resources();
-    }
-
-    // Delete peers
-    if (esp_now_initialized_ && peer_manager_) {
-        etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
-        for (const auto &peer : peers) {
-            hal_wifi_->hal_esp_now_del_peer(peer.mac);
-        }
-    }
-
-    // Call EspNowDriver to deinit ESP-NOW
-    if (espnow_driver_ != nullptr) {
-        espnow_driver_->deinit();
-    }
-
-    // Reset state
-    esp_now_initialized_ = false;
-    last_header_requiring_ack_.reset();
-    config_ = EspNowConfig();
-    transition_to_state(NodeState::UNINITIALIZED);
-
-    ESP_LOGI(TAG, "EspNow component deinitialized.");
-    return ESP_OK;
-}
+// =========================================================================================
+// Public API
+// =========================================================================================
 
 esp_err_t EspNowManager::init(const EspNowConfig &config)
 {
@@ -241,40 +189,70 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     return ret;
 }
 
-// Helper method used by send_data and send_command
-esp_err_t EspNowManager::send_packet(
-    NodeId dest_node_id,
-    MessageType msg_type,
-    PayloadType payload_type,
-    const void *payload,
-    size_t len,
-    bool require_ack)
+// TODO: return type is not realy used, since we not check any error, continue even if some
+// thing fails to delete all resources. Should be return void?
+esp_err_t EspNowManager::deinit()
 {
-    if (node_state_.load() != NodeState::OPERATIONAL)
-        return ESP_ERR_INVALID_STATE;
+    ESP_LOGI(TAG, "Deinitializing EspNowManager...");
 
-    TxPacket tx_packet;
-    if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac))
-        return ESP_ERR_NOT_FOUND;
-
-    MessageHeader header;
-    header.msg_type = msg_type;
-    header.sequence_number = 0;
-    header.sender_type = config_.node_type;
-    header.sender_node_id = config_.node_id;
-    header.payload_type = payload_type;
-    header.requires_ack = require_ack;
-    header.dest_node_id = dest_node_id;
-    header.timestamp_ms = get_time_ms();
-
-    tx_packet.len = message_codec_->encode(header, payload, len, tx_packet.data, sizeof(tx_packet.data));
-    if (tx_packet.len == 0) {
-        return ESP_ERR_INVALID_ARG;
+    if (tx_manager_ != nullptr) {
+        tx_manager_->deinit();
+    }
+    if (heartbeat_manager_ != nullptr) {
+        heartbeat_manager_->deinit();
     }
 
-    tx_packet.requires_ack = require_ack;
+    if (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) {
+        // Signal rx_dispatch and transport_worker tasks to stop
+        signal_tasks_to_stop();
+        // Delete tasks if not terminated gracefully
+        delete_tasks();
+    }
 
-    return tx_manager_->queue_packet(tx_packet);
+    // Call cleanup_resources to delete queues and mutex
+    if (rx_dispatch_queue_ != nullptr || transport_worker_queue_ != nullptr || ack_mutex_ != nullptr) {
+        cleanup_resources();
+    }
+
+    // Delete peers
+    if (esp_now_initialized_ && peer_manager_) {
+        etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
+        for (const auto &peer : peers) {
+            hal_wifi_->hal_esp_now_del_peer(peer.mac);
+        }
+    }
+
+    // Call EspNowDriver to deinit ESP-NOW
+    if (espnow_driver_ != nullptr) {
+        espnow_driver_->deinit();
+    }
+
+    // Reset state
+    esp_now_initialized_ = false;
+    last_header_requiring_ack_.reset();
+    config_ = EspNowConfig();
+    transition_to_state(NodeState::UNINITIALIZED);
+
+    ESP_LOGI(TAG, "EspNow component deinitialized.");
+    return ESP_OK;
+}
+
+esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
+{
+    if (node_state_.load() == NodeState::UNINITIALIZED) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    // Store timeout for use when scan completes (NOTIFY_CHANNEL_FOUND or NOTIFY_SCAN_FAILED)
+    // pairing_manager_->start()  is called from rx_dispatch_task after the correct channel is confirmed.
+    pairing_timeout_ms_ = timeout_ms;
+
+    // Force TxManager into scanning so the correct channel is discovered
+    // before pair requests are sent. Pairing starts after scan result arrives.
+    tx_manager_->notify_scanning();
+
+    transition_to_state(NodeState::PAIRING);
+    return ESP_OK;
 }
 
 esp_err_t EspNowManager::send_data(
@@ -348,18 +326,7 @@ esp_err_t EspNowManager::confirm_reception(AckStatus status)
     return err;
 }
 
-etl::vector<PeerInfo, MAX_PEERS> EspNowManager::get_peers()
-{
-    return peer_manager_->get_all();
-}
-
-etl::vector<NodeId, MAX_PEERS> EspNowManager::get_offline_peers() const
-{
-    if (node_state_.load() != NodeState::OPERATIONAL)
-        return {};
-    return peer_manager_->get_offline(get_time_ms());
-}
-
+// Peer management
 esp_err_t EspNowManager::add_peer(NodeId node_id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms)
 {
     return peer_manager_->add(node_id, mac, type, heartbeat_interval_ms);
@@ -370,6 +337,32 @@ esp_err_t EspNowManager::remove_peer(NodeId node_id)
     return peer_manager_->remove(node_id);
 }
 
+etl::vector<NodeId, MAX_PEERS> EspNowManager::get_offline_peers() const
+{
+    if (node_state_.load() != NodeState::OPERATIONAL)
+        return {};
+    return peer_manager_->get_offline(get_time_ms());
+}
+
+// Getters
+NodeState EspNowManager::get_node_state() const
+{
+    return node_state_.load();
+}
+
+bool EspNowManager::is_initialized() const
+{
+    return node_state_.load() != NodeState::UNINITIALIZED;
+}
+
+etl::vector<PeerInfo, MAX_PEERS> EspNowManager::get_peers()
+{
+    return peer_manager_->get_all();
+}
+
+// =========================================================================================
+// ESP-NOW callbacks - called by ESP-NOW driver in ISR context --- LCOV_EXCL_START
+// =========================================================================================
 void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len)
 {
     if (!info || !data || len <= 0 || len > ESP_NOW_MAX_DATA_LEN)
@@ -388,7 +381,11 @@ void EspNowManager::esp_now_send_cb(const esp_now_send_info_t *info, esp_now_sen
     if (info->tx_status == static_cast<wifi_tx_status_t>(ESP_NOW_SEND_FAIL))
         instance().tx_manager_->notify_physical_fail();
 }
+// LCOV_EXCL_STOP
 
+// =========================================================================================
+// Task implementations
+// =========================================================================================
 void EspNowManager::rx_dispatch_task(void *arg)
 {
     EspNowManager *self = static_cast<EspNowManager *>(arg);
@@ -454,6 +451,7 @@ void EspNowManager::rx_dispatch_task(void *arg)
             }
         }
     }
+    // Task cleanup on exit
     self->rx_dispatch_task_handle_ = nullptr;
     self->hal_freertos_->task_suspend(NULL);
     self->hal_freertos_->task_delete(NULL);
@@ -480,17 +478,16 @@ void EspNowManager::transport_worker_task(void *arg)
             self->pairing_manager_->tick(self->get_time_ms());
         }
     }
+    // Task cleanup on exit
     self->transport_worker_task_handle_ = nullptr;
     self->hal_freertos_->task_suspend(NULL);
     self->hal_freertos_->task_delete(NULL);
 }
 
-uint64_t EspNowManager::get_time_ms() const
-{
-    return hal_timer_->get_time_us() / 1000;
-}
-
+// =========================================================================================
 // IChannelObserver implementation for DiscoveryManager callbacks
+// =========================================================================================
+
 void EspNowManager::on_channel_found_cb(uint8_t channel)
 {
     last_found_channel_.store(channel);
@@ -507,6 +504,51 @@ void EspNowManager::on_scan_started_cb()
     hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_SCANNING, eSetBits);
 }
 
+// =========================================================================================
+// Internal methods
+// =========================================================================================
+
+// Helper method used by send_data and send_command
+esp_err_t EspNowManager::send_packet(
+    NodeId dest_node_id,
+    MessageType msg_type,
+    PayloadType payload_type,
+    const void *payload,
+    size_t len,
+    bool require_ack)
+{
+    if (node_state_.load() != NodeState::OPERATIONAL)
+        return ESP_ERR_INVALID_STATE;
+
+    TxPacket tx_packet;
+    if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac))
+        return ESP_ERR_NOT_FOUND;
+
+    MessageHeader header;
+    header.msg_type = msg_type;
+    header.sequence_number = 0;
+    header.sender_type = config_.node_type;
+    header.sender_node_id = config_.node_id;
+    header.payload_type = payload_type;
+    header.requires_ack = require_ack;
+    header.dest_node_id = dest_node_id;
+    header.timestamp_ms = get_time_ms();
+
+    tx_packet.len = message_codec_->encode(header, payload, len, tx_packet.data, sizeof(tx_packet.data));
+    if (tx_packet.len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    tx_packet.requires_ack = require_ack;
+
+    return tx_manager_->queue_packet(tx_packet);
+}
+
+uint64_t EspNowManager::get_time_ms() const
+{
+    return hal_timer_->get_time_us() / 1000;
+}
+
 void EspNowManager::propagate_channel()
 {
     heartbeat_manager_->set_channel(config_.wifi_channel);
@@ -519,34 +561,6 @@ void EspNowManager::transition_to_state(NodeState new_state)
 {
     ESP_LOGI(TAG, "NodeState: %d -> %d", static_cast<int>(node_state_.load()), static_cast<int>(new_state));
     node_state_.store(new_state);
-}
-
-esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
-{
-    if (node_state_.load() == NodeState::UNINITIALIZED) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    // Store timeout for use when scan completes (NOTIFY_CHANNEL_FOUND or NOTIFY_SCAN_FAILED)
-    // pairing_manager_->start()  is called from rx_dispatch_task after the correct channel is confirmed.
-    pairing_timeout_ms_ = timeout_ms;
-
-    // Force TxManager into scanning so the correct channel is discovered
-    // before pair requests are sent. Pairing starts after scan result arrives.
-    tx_manager_->notify_scanning();
-
-    transition_to_state(NodeState::PAIRING);
-    return ESP_OK;
-}
-
-NodeState EspNowManager::get_node_state() const
-{
-    return node_state_.load();
-}
-
-bool EspNowManager::is_initialized() const
-{
-    return node_state_.load() != NodeState::UNINITIALIZED;
 }
 
 // ==================================================================
