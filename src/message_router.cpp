@@ -20,17 +20,6 @@ MessageRouter::MessageRouter(
 {
 }
 
-void MessageRouter::set_app_queue(QueueHandle_t app_queue)
-{
-    app_queue_ = app_queue;
-}
-
-void MessageRouter::set_node_info(NodeId id, NodeType type)
-{
-    my_id_ = id;
-    my_type_ = type;
-}
-
 void MessageRouter::handle_packet(const RxPacket &packet)
 {
     auto header_opt = message_codec_.decode_header(packet.data, packet.len);
@@ -81,32 +70,7 @@ void MessageRouter::handle_packet(const RxPacket &packet)
         tx_manager_.notify_link_alive();
         break;
     }
-    case MessageType::DATA:
-    case MessageType::COMMAND:
-        if (app_queue_ != nullptr) {
-            // TODO: use hal_freertos or delegate this send to tx_manager?
-            if (xQueueSend(app_queue_, &packet, 0) != pdTRUE) {
-                ESP_LOGW(TAG, "App queue full, dropping packet type %d", (int)header.msg_type);
-            }
-        }
-        break;
     default:
         break;
-    }
-}
-
-bool MessageRouter::should_dispatch_to_worker(MessageType type)
-{
-    switch (type) {
-    case MessageType::PAIR_REQUEST:
-    case MessageType::PAIR_RESPONSE:
-    case MessageType::HEARTBEAT:
-    case MessageType::HEARTBEAT_RESPONSE:
-    case MessageType::ACK:
-    case MessageType::CHANNEL_SCAN_PROBE:
-    case MessageType::CHANNEL_SCAN_RESPONSE:
-        return true;
-    default:
-        return false;
     }
 }

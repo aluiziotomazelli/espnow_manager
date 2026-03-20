@@ -18,13 +18,7 @@ public:
         IPairingManager &pairing_manager,
         IMessageCodec &message_codec);
 
-    void set_app_queue(QueueHandle_t app_queue) override;
-
-    using IMessageRouter::set_node_info;
-    void set_node_info(NodeId id, NodeType type) override;
-
     void handle_packet(const RxPacket &packet) override;
-    bool should_dispatch_to_worker(MessageType type) override;
 
 private:
     IDiscoveryManager &discovery_manager_;
@@ -32,8 +26,4 @@ private:
     IHeartbeatManager &heartbeat_manager_;
     IPairingManager &pairing_manager_;
     IMessageCodec &message_codec_;
-
-    QueueHandle_t app_queue_ = nullptr;
-    NodeId my_id_ = ReservedIds::HUB;
-    NodeType my_type_ = ReservedTypes::HUB;
 };
