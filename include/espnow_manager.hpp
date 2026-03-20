@@ -23,7 +23,7 @@
 #include "i_tx_state_machine.hpp"
 // #include "i_hal_nvs.hpp"
 #include "i_hal_wifi.hpp"
-#include "i_bootstrapper.hpp"
+#include "i_espnow_driver.hpp"
 #include "i_hal_freertos.hpp"
 // #include "storage_manager.hpp"
 
@@ -48,10 +48,10 @@ public:
      * @internal
      */
     EspNowManager(
-        std::unique_ptr<IWiFiHAL> driver_hal,
-        std::unique_ptr<ITimerHAL> timer_hal,
-        std::unique_ptr<IFreeRTOSHAL> freertos_hal,
-        std::unique_ptr<IBootstrapper> bootstraper,
+        std::unique_ptr<IWiFiHAL> hal_wifi,
+        std::unique_ptr<ITimerHAL> hal_timer,
+        std::unique_ptr<IFreeRTOSHAL> hal_freertos,
+        std::unique_ptr<IEspNowDriver> espnow_driver,
         std::unique_ptr<IPeerManager> peer_manager,
         std::unique_ptr<IMessageCodec> message_codec,
         std::unique_ptr<IDiscoveryManager> scanner,
@@ -140,10 +140,10 @@ protected:
     EspNowConfig config_{};
 
     // --- Sub-components (Interfaces) ---
-    std::unique_ptr<IWiFiHAL> hal_driver_;                 ///< Pointer to WiFi HAL
+    std::unique_ptr<IWiFiHAL> hal_wifi_;                   ///< Pointer to WiFi HAL
     std::unique_ptr<ITimerHAL> hal_timer_;                 ///< Pointer to timer HAL
     std::unique_ptr<IFreeRTOSHAL> hal_freertos_;           ///< Pointer to FreeRTOS HAL
-    std::unique_ptr<IBootstrapper> bootstrapper_;          ///< Pointer to bootstrapper
+    std::unique_ptr<IEspNowDriver> espnow_driver_;         ///< Pointer to espnow_driver
     std::unique_ptr<IPeerManager> peer_manager_;           ///< Pointer to peer manager
     std::unique_ptr<IMessageCodec> message_codec_;         ///< Pointer to message codec
     std::unique_ptr<IDiscoveryManager> scanner_;           ///< Pointer to discovery manager
@@ -184,7 +184,9 @@ protected:
     void propagate_channel();
 
     // Init helpers
-    esp_err_t init_bootstrapper();
+    esp_err_t create_mutex();
+    esp_err_t create_queues();
+    esp_err_t create_tasks();
     esp_err_t init_tx_manager();
     esp_err_t init_discovery_manager();
     esp_err_t init_heartbeat_manager();
@@ -195,6 +197,8 @@ protected:
     esp_err_t init_fail(esp_err_t ret, const char *step);
 
     void signal_tasks_to_stop();
+    void delete_tasks();
+    void cleanup_resources();
 
     // Task functions
     static void rx_dispatch_task(void *arg);

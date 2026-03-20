@@ -6,7 +6,7 @@
 #include "esp_log.h"
 // #include "esp_mac.h"
 // #include "esp_rom_crc.h"
-#include "esp_timer.h"
+// #include "esp_timer.h"
 #include "esp_attr.h"
 // #include "freertos/FreeRTOS.h"
 // #include "freertos/queue.h"
@@ -24,7 +24,7 @@
 #include "tx_manager.hpp"
 #include "tx_state_machine.hpp"
 #include "hal_wifi.hpp"
-#include "bootstrapper.hpp"
+#include "espnow_driver.hpp"
 #include "hal_freertos.hpp"
 #include "hal_nvs.hpp"
 #include "persistence_backend.hpp"
@@ -48,7 +48,7 @@ EspNowManager &EspNowManager::instance()
     static auto hal_wifi = std::make_unique<WiFiHAL>();
     static auto hal_timer = std::make_unique<TimerHAL>();
     static auto hal_freertos = std::make_unique<FreeRTOSHAL>();
-    static auto bootstraper = std::make_unique<Bootstrapper>(*hal_wifi, *hal_freertos);
+    static auto bootstraper = std::make_unique<EspNowDriver>(*hal_wifi);
     static auto peer_manager = std::make_unique<PeerManager>(storage, *hal_wifi, *hal_freertos);
     static auto message_codec = std::make_unique<MessageCodec>();
     static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *message_codec, *hal_freertos);
@@ -81,7 +81,7 @@ EspNowManager::EspNowManager(
     std::unique_ptr<IWiFiHAL> driver_hal,
     std::unique_ptr<ITimerHAL> timer_hal,
     std::unique_ptr<IFreeRTOSHAL> freertos_hal,
-    std::unique_ptr<IBootstrapper> bootstraper,
+    std::unique_ptr<IEspNowDriver> bootstraper,
     std::unique_ptr<IPeerManager> peer_manager,
     std::unique_ptr<IMessageCodec> message_codec,
     std::unique_ptr<IDiscoveryManager> scanner,
@@ -90,10 +90,10 @@ EspNowManager::EspNowManager(
     std::unique_ptr<IHeartbeatManager> heartbeat_manager,
     std::unique_ptr<IPairingManager> pairing_manager,
     std::unique_ptr<IMessageRouter> message_router)
-    : hal_driver_(std::move(driver_hal))
+    : hal_wifi_(std::move(driver_hal))
     , hal_timer_(std::move(timer_hal))
     , hal_freertos_(std::move(freertos_hal))
-    , bootstrapper_(std::move(bootstraper))
+    , espnow_driver_(std::move(bootstraper))
     , peer_manager_(std::move(peer_manager))
     , message_codec_(std::move(message_codec))
     , scanner_(std::move(scanner))
@@ -111,40 +111,42 @@ EspNowManager::~EspNowManager()
     // Resources allocated in init() must be explicitly released.
 }
 
+// TODO: return type is not realy used, since we not check any error, continue even if some
+// thing fails to delete all resources. Should be return void?
 esp_err_t EspNowManager::deinit()
 {
-    if (node_state_.load() == NodeState::UNINITIALIZED && !esp_now_initialized_ && rx_dispatch_queue_ == nullptr &&
-        transport_worker_queue_ == nullptr && ack_mutex_ == nullptr && rx_dispatch_task_handle_ == nullptr &&
-        transport_worker_task_handle_ == nullptr) {
-        return ESP_OK;
+    ESP_LOGI(TAG, "Deinitializing EspNowManager...");
+
+    if (tx_manager_ != nullptr) {
+        tx_manager_->deinit();
+    }
+    if (heartbeat_manager_ != nullptr) {
+        heartbeat_manager_->deinit();
     }
 
-    ESP_LOGI(TAG, "Deinitializing EspNow component...");
+    if (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) {
+        // Signal rx_dispatch and transport_worker tasks to stop
+        signal_tasks_to_stop();
+        // Delete tasks if not terminated gracefully
+        delete_tasks();
+    }
 
-    if (tx_manager_)
-        tx_manager_->deinit();
-    if (heartbeat_manager_)
-        heartbeat_manager_->deinit();
-
-    // Signal rx_dispatch and transport_worker tasks to stop
-    signal_tasks_to_stop();
+    // Call cleanup_resources to delete queues and mutex
+    if (rx_dispatch_queue_ != nullptr || transport_worker_queue_ != nullptr || ack_mutex_ != nullptr) {
+        cleanup_resources();
+    }
 
     // Delete peers
     if (esp_now_initialized_ && peer_manager_) {
         etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
         for (const auto &peer : peers) {
-            hal_driver_->hal_esp_now_del_peer(peer.mac);
+            hal_wifi_->hal_esp_now_del_peer(peer.mac);
         }
     }
 
-    // Call bootstraper to delete queues, mutex and task if not terminated gracefully
-    if (bootstrapper_) {
-        bootstrapper_->deinit(
-            rx_dispatch_queue_,
-            transport_worker_queue_,
-            ack_mutex_,
-            rx_dispatch_task_handle_,
-            transport_worker_task_handle_);
+    // Call EspNowDriver to deinit ESP-NOW
+    if (espnow_driver_ != nullptr) {
+        espnow_driver_->deinit();
     }
 
     // Reset state
@@ -169,20 +171,35 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     config_ = config;
     esp_err_t ret = ESP_OK;
 
-    // PeerManager needs to be initialized to load channel from storage before bootstraper
-    if (peer_manager_) {
+    // PeerManager needs to be initialized to load channel from storage before EspNowDriver
+    if (peer_manager_ != nullptr) {
         uint8_t stored_channel;
         if (peer_manager_->load_from_storage(stored_channel) == ESP_OK) {
             config_.wifi_channel = stored_channel;
         }
     }
 
-    // // BootStrapper initializes ESPNOW, creates tasks, queues and mutexes
-    ret = init_bootstrapper();
+    // EspNowDriver initializes ESPNOW
+    ret = espnow_driver_->init(config_, esp_now_recv_cb, esp_now_send_cb);
     if (ret != ESP_OK) {
-        return init_fail(ret, "bootstrapper");
+        return init_fail(ret, "espnow_driver");
     }
     esp_now_initialized_ = true;
+
+    ret = create_mutex();
+    if (ret != ESP_OK) {
+        return init_fail(ret, "mutex");
+    }
+
+    ret = create_queues();
+    if (ret != ESP_OK) {
+        return init_fail(ret, "queues");
+    }
+
+    ret = create_tasks();
+    if (ret != ESP_OK) {
+        return init_fail(ret, "tasks");
+    }
 
     ret = init_tx_manager();
     if (ret != ESP_OK) {
@@ -240,13 +257,7 @@ esp_err_t EspNowManager::send_packet(
         return ESP_ERR_NOT_FOUND;
 
     MessageHeader header;
-    if (msg_type == MessageType::DATA) {
-        header.msg_type = MessageType::DATA;
-    }
-    else {
-        header.msg_type = MessageType::COMMAND;
-    }
-
+    header.msg_type = msg_type;
     header.sequence_number = 0;
     header.sender_type = config_.node_type;
     header.sender_node_id = config_.node_id;
@@ -256,8 +267,9 @@ esp_err_t EspNowManager::send_packet(
     header.timestamp_ms = get_time_ms();
 
     tx_packet.len = message_codec_->encode(header, payload, len, tx_packet.data, sizeof(tx_packet.data));
-    if (tx_packet.len == 0)
+    if (tx_packet.len == 0) {
         return ESP_ERR_INVALID_ARG;
+    }
 
     tx_packet.requires_ack = require_ack;
 
@@ -420,7 +432,7 @@ void EspNowManager::rx_dispatch_task(void *arg)
 
         // Wait for incoming packets with a timeout to periodically check for notifications.
         if (self->hal_freertos_->queue_receive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
-            // TODO: check for bootstrapper sending empty packet to stop the task,
+            // TODO: check for espnow_driver sending empty packet to stop the task,
             // since we are no longer blocking the task on queue receive, we dont need
             // more packets to weakup the task to check for notifications. The code bellow is for
             // documentation during the refactoring process
@@ -492,17 +504,6 @@ void EspNowManager::on_channel_found_cb(uint8_t channel)
 {
     last_found_channel_.store(channel);
     hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_CHANNEL_FOUND, eSetBits);
-
-    // config_.wifi_channel = channel;
-    // // Update broadcast peer channel
-    // esp_now_peer_info_t broadcast = {};
-    // memcpy(broadcast.peer_addr, BROADCAST_MAC, 6);
-    // broadcast.channel = channel;
-    // broadcast.ifidx = WIFI_IF_STA;
-    // broadcast.encrypt = false;
-    // hal_driver_->hal_esp_now_mod_peer(&broadcast);
-    // propagate_channel();
-    // peer_manager_->persist();
 }
 
 void EspNowManager::on_scan_failed_cb()
@@ -561,33 +562,63 @@ bool EspNowManager::is_initialized() const
 // Init helpers
 // ==================================================================
 
-esp_err_t EspNowManager::init_bootstrapper()
+esp_err_t EspNowManager::create_mutex()
 {
-    if (!bootstrapper_) {
+    ack_mutex_ = hal_freertos_->mutex_create();
+    if (ack_mutex_ == nullptr) {
         return ESP_FAIL;
     }
-    EspNowBootstrapConfig bootstrap_cfg = {};
-    bootstrap_cfg.recv_cb = esp_now_recv_cb;
-    bootstrap_cfg.send_cb = esp_now_send_cb;
-    bootstrap_cfg.rx_dispatch_fn = EspNowManager::rx_dispatch_task;
-    bootstrap_cfg.transport_worker_fn = EspNowManager::transport_worker_task;
-    bootstrap_cfg.task_params = this;
+    return ESP_OK;
+}
 
-    esp_err_t ret = bootstrapper_->init(
-        config_,
-        bootstrap_cfg,
-        rx_dispatch_queue_,
-        transport_worker_queue_,
-        ack_mutex_,
-        rx_dispatch_task_handle_,
-        transport_worker_task_handle_);
+esp_err_t EspNowManager::create_queues()
+{
+    rx_dispatch_queue_ = hal_freertos_->queue_create(config_.rx_dispatch_queue_length, sizeof(RxPacket));
+    if (rx_dispatch_queue_ == nullptr) {
+        return ESP_FAIL;
+    }
 
-    return ret;
+    transport_worker_queue_ = hal_freertos_->queue_create(config_.transport_worker_queue_length, sizeof(RxPacket));
+    if (transport_worker_queue_ == nullptr) {
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t EspNowManager::create_tasks()
+{
+    BaseType_t ret;
+    ret = hal_freertos_->task_create(
+        rx_dispatch_task,
+        "rx_dispatch",
+        config_.stack_size_rx_dispatch,
+        this,
+        config_.priority_rx_dispatch,
+        &rx_dispatch_task_handle_);
+
+    if (ret != pdPASS) {
+        return ESP_FAIL;
+    }
+
+    ret = hal_freertos_->task_create(
+        transport_worker_task,
+        "transport_worker",
+        config_.stack_size_transport_worker,
+        this,
+        config_.priority_transport_worker,
+        &transport_worker_task_handle_);
+
+    if (ret != pdPASS) {
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
 }
 
 esp_err_t EspNowManager::init_tx_manager()
 {
-    if (!tx_manager_) {
+    if (tx_manager_ == nullptr) {
         return ESP_FAIL;
     }
     return tx_manager_->init(config_.stack_size_tx_manager, 9);
@@ -595,7 +626,7 @@ esp_err_t EspNowManager::init_tx_manager()
 
 esp_err_t EspNowManager::init_discovery_manager()
 {
-    if (!scanner_) {
+    if (scanner_ == nullptr) {
         return ESP_FAIL;
     }
     esp_err_t ret;
@@ -610,7 +641,7 @@ esp_err_t EspNowManager::init_discovery_manager()
 
 esp_err_t EspNowManager::init_heartbeat_manager()
 {
-    if (!heartbeat_manager_) {
+    if (heartbeat_manager_ == nullptr) {
         return ESP_FAIL;
     }
     esp_err_t ret = heartbeat_manager_->init(config_.heartbeat_interval_ms, config_.node_type);
@@ -622,7 +653,7 @@ esp_err_t EspNowManager::init_heartbeat_manager()
 
 esp_err_t EspNowManager::init_pairing_manager()
 {
-    if (!pairing_manager_) {
+    if (pairing_manager_ == nullptr) {
         return ESP_FAIL;
     }
     return pairing_manager_->init(config_.node_id, config_.node_type);
@@ -630,7 +661,7 @@ esp_err_t EspNowManager::init_pairing_manager()
 
 esp_err_t EspNowManager::init_message_router()
 {
-    if (!message_router_) {
+    if (message_router_ == nullptr) {
         return ESP_FAIL;
     }
     message_router_->set_app_queue(config_.app_rx_queue);
@@ -656,14 +687,14 @@ void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo> &peers)
         info.channel = peer.channel;
         info.ifidx = WIFI_IF_STA;
         info.encrypt = false;
-        hal_driver_->hal_esp_now_add_peer(&info);
+        hal_wifi_->hal_esp_now_add_peer(&info);
     }
 }
 
 esp_err_t EspNowManager::init_fail(esp_err_t ret, const char *step)
 {
     ESP_LOGE(TAG, "init failed at %s: %s", step, esp_err_to_name(ret));
-    // deinit();
+    deinit();
     return ret;
 }
 
@@ -678,12 +709,47 @@ void EspNowManager::signal_tasks_to_stop()
     }
 
     // Wait for tasks to exit (up to 1s).
-    int timeout = 1000;
-    while ((rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) && timeout-- > 0) {
-        hal_freertos_->task_delay(pdMS_TO_TICKS(10));
+    uint16_t timeout_ms = 1000;
+    uint8_t delay_ms = 10;
+    while (timeout_ms > 0) {
+        if (rx_dispatch_task_handle_ == nullptr && transport_worker_task_handle_ == nullptr) {
+            break;
+        }
+        hal_freertos_->task_delay(pdMS_TO_TICKS(delay_ms));
+        timeout_ms -= delay_ms;
     }
 
     if (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) {
         ESP_LOGW(TAG, "Tasks did not terminate gracefully within timeout");
+    }
+}
+
+void EspNowManager::delete_tasks()
+{
+    if (rx_dispatch_task_handle_ != nullptr) {
+        hal_freertos_->task_suspend(rx_dispatch_task_handle_);
+        hal_freertos_->task_delete(rx_dispatch_task_handle_);
+        rx_dispatch_task_handle_ = nullptr;
+    }
+    if (transport_worker_task_handle_ != nullptr) {
+        hal_freertos_->task_suspend(transport_worker_task_handle_);
+        hal_freertos_->task_delete(transport_worker_task_handle_);
+        transport_worker_task_handle_ = nullptr;
+    }
+}
+
+void EspNowManager::cleanup_resources()
+{
+    if (rx_dispatch_queue_ != nullptr) {
+        hal_freertos_->queue_delete(rx_dispatch_queue_);
+        rx_dispatch_queue_ = nullptr;
+    }
+    if (transport_worker_queue_ != nullptr) {
+        hal_freertos_->queue_delete(transport_worker_queue_);
+        transport_worker_queue_ = nullptr;
+    }
+    if (ack_mutex_ != nullptr) {
+        hal_freertos_->semaphore_delete(ack_mutex_);
+        ack_mutex_ = nullptr;
     }
 }
