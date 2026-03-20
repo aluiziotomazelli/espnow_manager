@@ -241,6 +241,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     return ret;
 }
 
+// Helper method used by send_data and send_command
 esp_err_t EspNowManager::send_packet(
     NodeId dest_node_id,
     MessageType msg_type,
@@ -432,19 +433,6 @@ void EspNowManager::rx_dispatch_task(void *arg)
 
         // Wait for incoming packets with a timeout to periodically check for notifications.
         if (self->hal_freertos_->queue_receive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
-            // TODO: check for espnow_driver sending empty packet to stop the task,
-            // since we are no longer blocking the task on queue receive, we dont need
-            // more packets to weakup the task to check for notifications. The code bellow is for
-            // documentation during the refactoring process
-
-            // // Check for stop packet (empty packet or specific flag)
-            // // if (packet.len == 0) {
-            // //     uint32_t notif = 0;
-            // //     if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif &
-            ////     NOTIFY_STOP))
-            ////         break;
-            //// }
-
             if (!self->message_codec_->validate_crc(packet.data, packet.len))
                 continue;
             auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
@@ -477,9 +465,12 @@ void EspNowManager::transport_worker_task(void *arg)
     RxPacket packet;
     while (true) {
         uint32_t notifications = 0;
+        // Check for stop notification without blocking (timeout = 0) to prioritize packets on queue
         if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE &&
-            (notifications & NOTIFY_STOP))
+            (notifications & NOTIFY_STOP)) {
             break;
+        }
+        // Wait for incoming packets with a timeout to periodically check for notifications.
         if (self->hal_freertos_->queue_receive(self->transport_worker_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
             self->message_router_->handle_packet(packet);
         }
