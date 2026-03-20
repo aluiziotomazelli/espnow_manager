@@ -2,7 +2,6 @@
 #pragma once
 
 #include "espnow_types.hpp"
-#include "protocol_messages.hpp"
 
 /**
  * @interface IMessageRouter
@@ -16,5 +15,5 @@ public:
     virtual ~IMessageRouter() = default;
 
     /** @internal */
-    virtual void handle_packet(const RxPacket &packet, const MessageHeader &header) = 0;
+    virtual void handle_packet(const DecodedPacket &decoded) = 0;
 };

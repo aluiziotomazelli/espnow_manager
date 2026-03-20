@@ -3,10 +3,9 @@
 
 #include "i_discovery_manager.hpp"
 #include "i_heartbeat_manager.hpp"
-#include "i_message_codec.hpp"
-#include "i_message_router.hpp"
 #include "i_pairing_manager.hpp"
 #include "i_tx_manager.hpp"
+#include "i_message_router.hpp"
 
 class MessageRouter : public IMessageRouter
 {
@@ -17,7 +16,7 @@ public:
         IHeartbeatManager &heartbeat_manager,
         IPairingManager &pairing_manager);
 
-    void handle_packet(const RxPacket &packet, const MessageHeader &header) override;
+    void handle_packet(const DecodedPacket &decoded) override;
 
 private:
     IDiscoveryManager &discovery_manager_;

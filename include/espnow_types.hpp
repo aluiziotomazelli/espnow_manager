@@ -2,14 +2,15 @@
 
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <tuple>
-#include <vector>
 
 #include "esp_now.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
 #include "protocol_types.hpp"
+#include "protocol_messages.hpp"
 
 /**
  * @file espnow_types.hpp
@@ -29,6 +30,15 @@ struct RxPacket
     size_t len;                         /**< Length of the payload in bytes */
     int8_t rssi;                        /**< Received Signal Strength Indicator (dBm) */
     uint64_t timestamp_us;              /**< Microsecond timestamp (esp_timer_get_time) */
+};
+
+/**
+ * @brief Structure for packets that have been decoded in rx_dispatch_task
+ */
+struct DecodedPacket
+{
+    RxPacket raw;         ///< Original complete packet
+    MessageHeader header; ///< Decoded header
 };
 
 /**
