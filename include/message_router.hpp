@@ -15,15 +15,13 @@ public:
         IDiscoveryManager &discovery_manager,
         ITxManager &tx_manager,
         IHeartbeatManager &heartbeat_manager,
-        IPairingManager &pairing_manager,
-        IMessageCodec &message_codec);
+        IPairingManager &pairing_manager);
 
-    void handle_packet(const RxPacket &packet) override;
+    void handle_packet(const RxPacket &packet, const MessageHeader &header) override;
 
 private:
     IDiscoveryManager &discovery_manager_;
     ITxManager &tx_manager_;
     IHeartbeatManager &heartbeat_manager_;
     IPairingManager &pairing_manager_;
-    IMessageCodec &message_codec_;
 };

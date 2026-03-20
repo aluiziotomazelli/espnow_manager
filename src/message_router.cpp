@@ -10,25 +10,19 @@ MessageRouter::MessageRouter(
     IDiscoveryManager &discovery_manager,
     ITxManager &tx_manager,
     IHeartbeatManager &heartbeat_manager,
-    IPairingManager &pairing_manager,
-    IMessageCodec &message_codec)
+    IPairingManager &pairing_manager)
     : discovery_manager_(discovery_manager)
     , tx_manager_(tx_manager)
     , heartbeat_manager_(heartbeat_manager)
     , pairing_manager_(pairing_manager)
-    , message_codec_(message_codec)
+
 {
 }
 
-void MessageRouter::handle_packet(const RxPacket &packet)
+void MessageRouter::handle_packet(const RxPacket &packet, const MessageHeader &header)
 {
-    auto header_opt = message_codec_.decode_header(packet.data, packet.len);
-    if (!header_opt)
-        return;
-    const MessageHeader &header = header_opt.value();
-
-    tx_manager_.notify_link_alive();
     // TODO: update last seen here or on manager rx_dispatch_task
+    tx_manager_.notify_link_alive();
 
     switch (header.msg_type) {
     case MessageType::PAIR_REQUEST:

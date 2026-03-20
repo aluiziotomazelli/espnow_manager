@@ -1,13 +1,8 @@
 // include/internface/i_message_router.hpp
 #pragma once
 
-#include <cstdint>
-#include <type_traits>
-
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-
 #include "espnow_types.hpp"
+#include "protocol_messages.hpp"
 
 /**
  * @interface IMessageRouter
@@ -21,5 +16,5 @@ public:
     virtual ~IMessageRouter() = default;
 
     /** @internal */
-    virtual void handle_packet(const RxPacket &packet) = 0;
+    virtual void handle_packet(const RxPacket &packet, const MessageHeader &header) = 0;
 };
