@@ -1,7 +1,8 @@
 idf_component_register(
     SRCS
         "main.cpp"
-        "test_espnow_manager.cpp"
+        # "test_espnow_manager.cpp"
+        "test_espnow_manager_task.cpp"
     INCLUDE_DIRS
         "."
         "../../common"
