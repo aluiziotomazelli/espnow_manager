@@ -1,12 +1,12 @@
 // host_test/test_espnow_manager/main/test_espnow_manager.cpp
 //
-// Synchronous tests — no real tasks are created. The bootstrapper mock
+// Synchronous tests — no real tasks are created. The espnow_driver mock
 // returns ESP_OK without spawning any task, so all tested behaviour is
 // exercised through direct method calls on the SUT.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "mock_bootstrapper.hpp"
+#include "mock_espnow_driver.hpp"
 #include "mock_discovery_manager.hpp"
 #include "mock_hal_freertos.hpp"
 #include "mock_hal_timer.hpp"
@@ -25,6 +25,7 @@ using ::testing::_;
 using ::testing::DoAll;
 using ::testing::NiceMock;
 using ::testing::Return;
+using ::testing::SetArgPointee;
 using ::testing::SetArgReferee;
 
 // ---------------------------------------------------------------------------
@@ -39,8 +40,8 @@ static int fake_mutex_storage = 0;
 static int fake_rx_task_storage = 0;
 static int fake_worker_task_storage = 0;
 
-static QueueHandle_t fake_queue = reinterpret_cast<QueueHandle_t>(&fake_queue_storage);
-static QueueHandle_t fake_worker = reinterpret_cast<QueueHandle_t>(&fake_worker_storage);
+static QueueHandle_t fake_tx_queue = reinterpret_cast<QueueHandle_t>(&fake_queue_storage);
+static QueueHandle_t fake_worker_queue = reinterpret_cast<QueueHandle_t>(&fake_worker_storage);
 static SemaphoreHandle_t fake_mutex = reinterpret_cast<SemaphoreHandle_t>(&fake_mutex_storage);
 static TaskHandle_t fake_rx_task = reinterpret_cast<TaskHandle_t>(&fake_rx_task_storage);
 static TaskHandle_t fake_worker_task = reinterpret_cast<TaskHandle_t>(&fake_worker_task_storage);
@@ -68,7 +69,7 @@ static EspNowConfig make_valid_config()
     cfg.node_id = kNodeId;
     cfg.node_type = kNodeType;
     cfg.wifi_channel = 1;
-    cfg.app_rx_queue = fake_queue;
+    cfg.app_rx_queue = fake_tx_queue;
     return cfg;
 }
 
@@ -114,7 +115,7 @@ protected:
     NiceMock<MockWiFiHAL> *hal_wifi_;
     NiceMock<MockTimerHAL> *hal_timer_;
     NiceMock<MockFreeRTOSHAL> *hal_freertos_;
-    NiceMock<MockBootstrapper> *bootstrapper_;
+    NiceMock<MockEspNowDriver> *espnow_driver_;
     NiceMock<MockPeerManager> *peer_mgr_;
     NiceMock<MockMessageCodec> *codec_;
     NiceMock<MockDiscoveryManager> *scanner_;
@@ -131,7 +132,7 @@ protected:
         auto hal_wifi = std::make_unique<NiceMock<MockWiFiHAL>>();
         auto hal_timer = std::make_unique<NiceMock<MockTimerHAL>>();
         auto hal_freertos = std::make_unique<NiceMock<MockFreeRTOSHAL>>();
-        auto bootstrapper = std::make_unique<NiceMock<MockBootstrapper>>();
+        auto espnow_driver = std::make_unique<NiceMock<MockEspNowDriver>>();
         auto peer_mgr = std::make_unique<NiceMock<MockPeerManager>>();
         auto codec = std::make_unique<NiceMock<MockMessageCodec>>();
         auto scanner = std::make_unique<NiceMock<MockDiscoveryManager>>();
@@ -145,7 +146,7 @@ protected:
         hal_wifi_ = hal_wifi.get();
         hal_timer_ = hal_timer.get();
         hal_freertos_ = hal_freertos.get();
-        bootstrapper_ = bootstrapper.get();
+        espnow_driver_ = espnow_driver.get();
         peer_mgr_ = peer_mgr.get();
         codec_ = codec.get();
         scanner_ = scanner.get();
@@ -155,44 +156,34 @@ protected:
         pairing_mgr_ = pairing_mgr.get();
         message_router_ = message_router.get();
 
-        // -------------------------------------------------------------------
-        // Default bootstrapper behaviour
-        //
-        // bootstrapper::init() populates the handles passed by reference —
-        // without this the SUT would operate with null handles internally,
-        // causing guards like (rx_dispatch_task_handle_ != nullptr) to fail.
-        //
-        // bootstrapper::deinit() clears them — mirrors real behaviour so
-        // deinit() guards work correctly across multiple init/deinit cycles.
-        // -------------------------------------------------------------------
-        ON_CALL(*bootstrapper_, init(_, _, _, _, _, _, _))
-            .WillByDefault(DoAll(
-                SetArgReferee<2>(fake_queue),
-                SetArgReferee<3>(fake_worker),
-                SetArgReferee<4>(fake_mutex),
-                SetArgReferee<5>(fake_rx_task),
-                SetArgReferee<6>(fake_worker_task),
-                Return(ESP_OK)));
-
-        ON_CALL(*bootstrapper_, deinit(_, _, _, _, _))
-            .WillByDefault(DoAll(
-                SetArgReferee<0>(nullptr),
-                SetArgReferee<1>(nullptr),
-                SetArgReferee<2>(nullptr),
-                SetArgReferee<3>(nullptr),
-                SetArgReferee<4>(nullptr),
-                Return(ESP_OK)));
-
         // peer_mgr: empty list by default — node starts in PAIRING state
         ON_CALL(*peer_mgr_, load_from_storage(_)).WillByDefault(Return(ESP_OK));
+
+        // espnow_driver init and deinit()
+        ON_CALL(*espnow_driver_, init(_, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*espnow_driver_, deinit()).WillByDefault(Return(ESP_OK));
+
+        // Creating mutex
+        ON_CALL(*hal_freertos_, mutex_create()).WillByDefault(Return(fake_mutex));
+        ON_CALL(*hal_freertos_, semaphore_delete(_)).WillByDefault(Return());
+
+        // Creating queues
+        ON_CALL(*hal_freertos_, queue_create(_, _)).WillByDefault(Return(fake_tx_queue));
+        ON_CALL(*hal_freertos_, queue_delete(_)).WillByDefault(Return());
+
+        // Creating tasks
+        ON_CALL(*hal_freertos_, task_create(_, _, _, _, _, _))
+            .WillByDefault(DoAll(SetArgPointee<5>(fake_worker_task), Return(pdPASS)));
+        ON_CALL(*hal_freertos_, task_delete(_)).WillByDefault(Return());
+
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
         // submódule inits succeed by default
         ON_CALL(*tx_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(fake_worker_task));
+        ON_CALL(*scanner_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*heartbeat_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*scanner_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
 
         // hal_freertos: semaphore used by confirm_reception ack_mutex_
         ON_CALL(*hal_freertos_, semaphore_take(_, _)).WillByDefault(Return(pdTRUE));
@@ -202,7 +193,7 @@ protected:
             std::move(hal_wifi),
             std::move(hal_timer),
             std::move(hal_freertos),
-            std::move(bootstrapper),
+            std::move(espnow_driver),
             std::move(peer_mgr),
             std::move(codec),
             std::move(scanner),
@@ -221,12 +212,6 @@ protected:
     {
         init_sut();
         sut_->set_node_state_operational();
-        // etl::vector<PeerInfo, MAX_PEERS> peers;
-        // PeerInfo p{};
-        // p.node_id = kHubId;
-        // peers.push_back(p);
-        // ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
-        // init_sut();
     }
 };
 
@@ -294,26 +279,85 @@ TEST_F(EspNowManagerTest, IsInitializedReturnsTrueAfterSuccessfulInit)
 }
 
 // ===========================================================================
-// init() — submódule delegation
+// init() - FreeRTOS resources creation
 // ===========================================================================
 
-TEST_F(EspNowManagerTest, InitCallsBootstrapperInit)
+TEST_F(EspNowManagerTest, InitCallsMutexCreate)
 {
-    EXPECT_CALL(*bootstrapper_, init(_, _, _, _, _, _, _))
-        .WillOnce(DoAll(
-            SetArgReferee<2>(fake_queue),
-            SetArgReferee<3>(fake_worker),
-            SetArgReferee<4>(fake_mutex),
-            SetArgReferee<5>(fake_rx_task),
-            SetArgReferee<6>(fake_worker_task),
-            Return(ESP_OK)));
-
+    EXPECT_CALL(*hal_freertos_, mutex_create()).WillOnce(Return(fake_mutex));
     sut_->init(make_valid_config());
 }
 
-TEST_F(EspNowManagerTest, InitReturnsFailIfBootstrapperInitFails)
+TEST_F(EspNowManagerTest, InitReturnsFailIfMutexCreateFails)
 {
-    ON_CALL(*bootstrapper_, init(_, _, _, _, _, _, _)).WillByDefault(Return(ESP_FAIL));
+    ON_CALL(*hal_freertos_, mutex_create()).WillByDefault(Return(nullptr));
+    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
+    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
+}
+
+TEST_F(EspNowManagerTest, InitCallsQueueCreateTwice)
+{
+    EXPECT_CALL(*hal_freertos_, queue_create(_, _))
+        .Times(2)
+        .WillOnce(Return(fake_tx_queue))
+        .WillOnce(Return(fake_worker_queue));
+    EXPECT_EQ(sut_->init(make_valid_config()), ESP_OK);
+}
+
+TEST_F(EspNowManagerTest, InitReturnsFailIfFirstQueueCreationFails)
+{
+    EXPECT_CALL(*hal_freertos_, queue_create(_, _)).WillOnce(Return(nullptr));
+    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
+    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
+}
+
+TEST_F(EspNowManagerTest, InitReturnsFailIfSecondQueueCreationFails)
+{
+    EXPECT_CALL(*hal_freertos_, queue_create(_, _)).Times(2).WillOnce(Return(fake_tx_queue)).WillOnce(Return(nullptr));
+    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
+    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
+}
+
+TEST_F(EspNowManagerTest, InitCallsTaskCreateTwice)
+{
+    EXPECT_CALL(*hal_freertos_, task_create(_, _, _, _, _, _))
+        .Times(2)
+        .WillOnce(DoAll(SetArgPointee<5>(fake_rx_task), Return(pdPASS)))
+        .WillOnce(DoAll(SetArgPointee<5>(fake_worker_task), Return(pdPASS)));
+    EXPECT_EQ(sut_->init(make_valid_config()), ESP_OK);
+}
+
+TEST_F(EspNowManagerTest, InitReturnsFailIfFirstTaskCreationFails)
+{
+    EXPECT_CALL(*hal_freertos_, task_create(_, _, _, _, _, _))
+        .WillOnce(DoAll(SetArgPointee<5>(fake_rx_task), Return(pdFAIL)));
+    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
+    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
+}
+
+TEST_F(EspNowManagerTest, InitReturnsFailIfSecondTaskCreationFails)
+{
+    EXPECT_CALL(*hal_freertos_, task_create(_, _, _, _, _, _))
+        .Times(2)
+        .WillOnce(DoAll(SetArgPointee<5>(fake_rx_task), Return(pdPASS)))
+        .WillOnce(DoAll(SetArgPointee<5>(fake_worker_task), Return(pdFAIL)));
+    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
+    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
+}
+
+// ===========================================================================
+// init() - submódule delegation
+// ===========================================================================
+
+TEST_F(EspNowManagerTest, InitCallsEspNowDriverInit)
+{
+    EXPECT_CALL(*espnow_driver_, init(_, _, _)).WillOnce(Return(ESP_OK));
+    sut_->init(make_valid_config());
+}
+
+TEST_F(EspNowManagerTest, InitReturnsFailIfEspNowDriverInitFails)
+{
+    ON_CALL(*espnow_driver_, init(_, _, _)).WillByDefault(Return(ESP_FAIL));
     EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
@@ -413,10 +457,51 @@ TEST_F(EspNowManagerTest, InitCallsHeartbeatManagerUpdateNodeId)
 // deinit()
 // ===========================================================================
 
-TEST_F(EspNowManagerTest, DeinitIsIdempotentWhenNotInitialized)
+TEST_F(EspNowManagerTest, DeinitDoesNotCleanResourcesWhenNotInitialized)
 {
+    EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(0);
+    EXPECT_CALL(*hal_freertos_, queue_delete(_)).Times(0);
+    EXPECT_CALL(*hal_freertos_, semaphore_delete(_)).Times(0);
+    EXPECT_CALL(*hal_wifi_, hal_esp_now_del_peer(_)).Times(0);
+
     EXPECT_EQ(sut_->deinit(), ESP_OK);
-    EXPECT_EQ(sut_->deinit(), ESP_OK);
+}
+
+TEST_F(EspNowManagerTest, DeinitDoesNotDeleteNullTaskHandles)
+{
+    // Init pass but task_handles are null
+    EXPECT_CALL(*hal_freertos_, task_create(_, _, _, _, _, _))
+        .Times(2)
+        .WillOnce(DoAll(SetArgPointee<5>(nullptr), Return(pdPASS)))
+        .WillOnce(DoAll(SetArgPointee<5>(nullptr), Return(pdPASS)));
+    EXPECT_EQ(sut_->init(make_valid_config()), ESP_OK);
+
+    sut_->init(make_valid_config());
+
+    // Will not try to delete null task handles
+    EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(0);
+    sut_->deinit();
+}
+
+TEST_F(EspNowManagerTest, DeinitCallsAllDeleteFunctions)
+{
+    // setup a peer so that deinit calls del_peer
+    etl::vector<PeerInfo, MAX_PEERS> peers;
+    PeerInfo p{};
+    p.node_id = ReservedIds::HUB;
+    peers.push_back(p);
+    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+    init_operational_sut();
+
+    EXPECT_CALL(*tx_mgr_, deinit()).Times(1);
+    EXPECT_CALL(*heartbeat_mgr_, deinit()).Times(1);
+    EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(2);
+    EXPECT_CALL(*hal_freertos_, queue_delete(_)).Times(2);
+    EXPECT_CALL(*hal_freertos_, semaphore_delete(_)).Times(1);
+    EXPECT_CALL(*hal_wifi_, hal_esp_now_del_peer(_)).Times(1);
+    EXPECT_CALL(*espnow_driver_, deinit()).Times(1);
+
+    sut_->deinit();
 }
 
 TEST_F(EspNowManagerTest, DeinitTransitionsToUninitialized)
@@ -449,17 +534,10 @@ TEST_F(EspNowManagerTest, DeinitCallsHeartbeatManagerDeinit)
     sut_->deinit();
 }
 
-TEST_F(EspNowManagerTest, DeinitCallsBootstrapperDeinit)
+TEST_F(EspNowManagerTest, DeinitCallsEspNowDriverDeinit)
 {
     init_sut();
-    EXPECT_CALL(*bootstrapper_, deinit(_, _, _, _, _))
-        .WillOnce(DoAll(
-            SetArgReferee<0>(nullptr),
-            SetArgReferee<1>(nullptr),
-            SetArgReferee<2>(nullptr),
-            SetArgReferee<3>(nullptr),
-            SetArgReferee<4>(nullptr),
-            Return(ESP_OK)));
+    EXPECT_CALL(*espnow_driver_, deinit()).WillOnce(Return(ESP_OK));
     sut_->deinit();
 }
 
