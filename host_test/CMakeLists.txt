@@ -7,7 +7,7 @@ include(CTest)
 # Define the tests for CTest.
 # These commands assume that each project has been built using 'idf.py build'
 # and that CTest is being run from a 'build' subdirectory within 'host_test'.
-add_test(NAME test_bootstrapper COMMAND ../test_bootstraper/build/test_bootstrapper.elf)
+add_test(NAME test_espnow_driver COMMAND ../test_bootstraper/build/test_espnow_driver.elf)
 add_test(NAME test_discovery_manager COMMAND ../test_discovery_manager/build/test_discovery_manager.elf)
 add_test(NAME test_heartbeat_manager COMMAND ../test_heartbeat_manager/build/test_heartbeat_manager.elf)
 add_test(NAME test_message_codec COMMAND ../test_message_codec/build/test_message_codec.elf)
@@ -45,7 +45,7 @@ add_custom_target(coverage_clean
 
 # Helper target to build all tests at once (requires idf.py to be in your PATH)
 add_custom_target(build_all_tests
-    COMMAND idf.py -C ../test_bootstraper build
+    COMMAND idf.py -C ../test_espnow_driver build
     COMMAND idf.py -C ../test_discovery_manager build
     COMMAND idf.py -C ../test_heartbeat_manager build
     COMMAND idf.py -C ../test_message_codec build

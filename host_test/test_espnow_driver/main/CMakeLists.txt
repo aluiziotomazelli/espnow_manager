@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS
         "main.cpp"
-        "test_bootstrapper.cpp"
+        "test_espnow_driver.cpp"
     INCLUDE_DIRS
         "."
         "../../common"
