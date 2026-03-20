@@ -268,6 +268,9 @@ TEST_F(EspNowManagerTest, InitWithPeersTransitionsToOperational)
     peers.push_back(p);
     ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
 
+    // add_peers_to_espnow(_) will call hal_esp_now_add_peer(_)
+    EXPECT_CALL(*hal_wifi_, hal_esp_now_add_peer(_)).WillOnce(Return(ESP_OK));
+
     init_sut();
     EXPECT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
 }
