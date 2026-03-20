@@ -155,6 +155,9 @@ struct EspNowConfig
     UBaseType_t priority_transport_worker; /**< Priority for the worker task (Heartbeats, Pairing) */
     UBaseType_t priority_tx_manager;       /**< Priority for the transmission manager task */
 
+    uint32_t rx_dispatch_queue_length;      /**< Length of the internal packet dispatcher queue */
+    uint32_t transport_worker_queue_length; /**< Length of the worker task queue (Heartbeats, Pairing) */
+
     /**
      * @brief Default constructor with sensible defaults.
      */
@@ -171,6 +174,9 @@ struct EspNowConfig
         , priority_rx_dispatch(10)
         , priority_transport_worker(5)
         , priority_tx_manager(9)
+        , rx_dispatch_queue_length(30)
+        , transport_worker_queue_length(20)
+
     {
     }
 };
