@@ -12,7 +12,7 @@ The `espnow_manager` component follows a **Facade + Decentralized Managers** pat
 graph TD
     App["Application"] --> EM["EspNowManager\n(Facade)"]
 
-    EM --> BS["Bootstrapper\n(Init / Task Creation)"]
+    EM --> BS["EspNowDriver\n(Init / Task Creation)"]
     EM --> MR["MessageRouter\n(Control Dispatch)"]
     EM --> TM["TxManager\n(Transmission + FSM)"]
     EM --> PM["PeerManager\n(Peer List / Channel Tracking)"]
@@ -35,7 +35,7 @@ graph TD
 | Component | Role | Driven By |
 |---|---|---|
 | `EspNowManager` | Public API, Singleton Orchestrator | Application |
-| `Bootstrapper` | ESP-NOW init, Task & Queue creation | `EspNowManager` |
+| `EspNowDriver` | ESP-NOW init, Task & Queue creation | `EspNowManager` |
 | `MessageRouter` | Pure delegator for control messages | `rx_dispatch_task` |
 | `TxManager` | Packet queueing and retry logic | `transport_worker_task` |
 | `TxStateMachine` | Manages transmission states (READY / SCANNING) | `TxManager` |
@@ -55,7 +55,7 @@ graph TD
 ### EspNowManager (The Facade)
 The orchestrator. It owns all manager instances and ensures they are correctly wired together (Dependency Injection). It propagates system-wide events, such as WiFi channel updates, to all sub-components.
 
-### Bootstrapper
+### EspNowDriver
 Encapsulates the complexity of ESP-NOW initialization, callback registration, and FreeRTOS resource allocation (Queues, Tasks, Mutexes). It abstracts the low-level lifecycle from the business logic.
 
 ### MessageRouter

@@ -13,7 +13,7 @@ This report provides a filtered analysis of Clang-Tidy warnings for the **espnow
 | `src/discovery_manager.cpp` | 8 |
 | `src/pairing_manager.cpp` | 8 |
 | `src/heartbeat_manager.cpp` | 6 |
-| `src/bootstrapper.cpp` | 5 |
+| `src/espnow_driver.cpp` | 5 |
 | `src/message_router.cpp` | 4 |
 | `src/storage_manager.cpp` | 4 |
 | `src/message_codec.cpp` | 2 |
@@ -28,7 +28,7 @@ The following warnings are primarily triggered by the expansion of ESP-IDF macro
 
 *   **`readability-function-cognitive-complexity` (22 instances):**
     *   Most instances in `init`, `deinit`, and `run` tasks are heavily inflated by `ESP_LOG*` calls.
-    *   *Example:* `Bootstrapper::init` reports a complexity of 300, largely due to multi-level nesting within logging macros.
+    *   *Example:* `EspNowDriver::init` reports a complexity of 300, largely due to multi-level nesting within logging macros.
 *   **Notes on Nesting Depth:**
     *   Notes pointing to +4, +5, or higher nesting penalties usually correspond to lines containing `ESP_LOGE`, `ESP_LOGW`, etc.
 

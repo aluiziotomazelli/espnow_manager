@@ -11,11 +11,11 @@ These allocations occur only once during Singleton creation or when calling the 
 | File                        | Line  | Allocation Type           | Context / Description                                                                |
 | :-------------------------- | :---- | :------------------------ | :----------------------------------------------------------------------------------- |
 | `src/espnow_manager.cpp`    | 45-63 | `std::make_unique`        | Creation of all sub-component instances (backends, HALs, Managers) in the Singleton. |
-| `src/bootstrapper.cpp`      | 80    | `mutex_create`            | ACK mutex creation.                                                                  |
-| `src/bootstrapper.cpp`      | 87    | `queue_create`            | Raw packet reception queue (`rx_queue`).                                             |
-| `src/bootstrapper.cpp`      | 92    | `queue_create`            | Work queue (`worker_queue`) for protocol processing.                                 |
-| `src/bootstrapper.cpp`      | 99    | `task_create`             | Reception dispatch task (`rx_dispatch_task`).                                        |
-| `src/bootstrapper.cpp`      | 111   | `task_create`             | Transport worker task (`worker_task`).                                               |
+| `src/espnow_driver.cpp`      | 80    | `mutex_create`            | ACK mutex creation.                                                                  |
+| `src/espnow_driver.cpp`      | 87    | `queue_create`            | Raw packet reception queue (`rx_queue`).                                             |
+| `src/espnow_driver.cpp`      | 92    | `queue_create`            | Work queue (`worker_queue`) for protocol processing.                                 |
+| `src/espnow_driver.cpp`      | 99    | `task_create`             | Reception dispatch task (`rx_dispatch_task`).                                        |
+| `src/espnow_driver.cpp`      | 111   | `task_create`             | Transport worker task (`worker_task`).                                               |
 | `src/tx_manager.cpp`        | 43    | `queue_create`            | Transmission queue (`tx_queue`).                                                     |
 | `src/tx_manager.cpp`        | 48    | `semaphore_create_binary` | Synchronization semaphore for task termination.                                      |
 | `src/tx_manager.cpp`        | 55    | `timer_create`            | Software timer for ACK timeout.                                                      |
