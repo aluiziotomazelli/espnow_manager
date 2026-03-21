@@ -3,7 +3,6 @@
 
 #include "mock_hal_freertos.hpp"
 #include "mock_hal_timer.hpp"
-#include "mock_message_codec.hpp"
 #include "mock_peer_manager.hpp"
 #include "mock_tx_manager.hpp"
 
@@ -39,12 +38,8 @@ protected:
 
     NiceMock<MockTxManager> tx_mgr_;
     NiceMock<MockPeerManager> peer_mgr_;
-    NiceMock<MockMessageCodec> codec_;
     NiceMock<MockFreeRTOSHAL> hal_freertos_;
     NiceMock<MockTimerHAL> hal_timer_;
-
-    // Default encoded payload — non-empty so queue_packet is reached
-    static constexpr size_t DUMMY_ENCODED_SIZE = 3;
 
     // Helper: build a minimal valid DecodedPacket for handle_request
     DecodedPacket make_heartbeat_decoded_packet(NodeId sender_id, uint8_t len_override = 0)
@@ -58,12 +53,6 @@ protected:
 
         return decoded;
     }
-
-    // Convenience: make codec_.encode() return a non-zero size
-    void stub_encode_ok() { ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault(Return(DUMMY_ENCODED_SIZE)); }
-
-    // Convenience: make codec_.encode() return 0 (failure)
-    void stub_encode_fail() { ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault(Return(0)); }
 
     // Convenience: set up hal_freertos_ so init() succeeds for a PEER node
     void stub_timer_init_ok()
@@ -86,7 +75,7 @@ protected:
 
 TEST_F(HeartbeatManagerTest, Init_Hub_DoesNotCreateTimer)
 {
-    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
 
     EXPECT_CALL(hal_freertos_, timer_create(_, _, _, _, _)).Times(0);
 
@@ -103,7 +92,7 @@ TEST_F(HeartbeatManagerTest, Init_Peer_CreatesAndStartsTimer)
     EXPECT_CALL(hal_freertos_, timer_create(_, _, _, _, _)).WillOnce(Return(fake_timer_));
     EXPECT_CALL(hal_freertos_, timer_start(fake_timer_, _)).WillOnce(Return(pdPASS));
 
-    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
 
     esp_err_t ret = node.init(1000, PEER);
 
@@ -114,7 +103,7 @@ TEST_F(HeartbeatManagerTest, Init_Peer_TimerCreateFails_ReturnsEspFail)
 {
     ON_CALL(hal_freertos_, timer_create(_, _, _, _, _)).WillByDefault(Return(nullptr));
 
-    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
 
     esp_err_t ret = node.init(1000, PEER);
 
@@ -128,7 +117,7 @@ TEST_F(HeartbeatManagerTest, Init_Peer_TimerStartFails_ReturnsEspFail)
     ON_CALL(hal_freertos_, timer_create(_, _, _, _, _)).WillByDefault(Return(fake_timer_));
     ON_CALL(hal_freertos_, timer_start(fake_timer_, _)).WillByDefault(Return(pdFAIL));
 
-    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
 
     esp_err_t ret = node.init(1000, PEER);
 
@@ -137,7 +126,7 @@ TEST_F(HeartbeatManagerTest, Init_Peer_TimerStartFails_ReturnsEspFail)
 
 TEST_F(HeartbeatManagerTest, Init_Peer_ZeroInterval_DoesNotCreateTimer)
 {
-    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
 
     EXPECT_CALL(hal_freertos_, timer_create(_, _, _, _, _)).Times(0);
 
@@ -151,7 +140,7 @@ TEST_F(HeartbeatManagerTest, Deinit_StopTimerFails_ReturnError)
     stub_timer_init_ok();
     stub_timer_deinit_ok();
 
-    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
 
     EXPECT_CALL(hal_freertos_, timer_stop(fake_timer_, _)).WillOnce(Return(pdFAIL));
     EXPECT_EQ(ESP_OK, node.init(1000, PEER));
@@ -164,7 +153,7 @@ TEST_F(HeartbeatManagerTest, Deinit_DeleteTimerFails_ReturnError)
     stub_timer_init_ok();
     stub_timer_deinit_ok();
 
-    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
 
     EXPECT_CALL(hal_freertos_, timer_delete(fake_timer_, _)).WillOnce(Return(pdFAIL));
     EXPECT_EQ(ESP_OK, node.init(1000, PEER));
@@ -178,7 +167,7 @@ TEST_F(HeartbeatManagerTest, Deinit_DeleteTimerFails_ReturnError)
 
 TEST_F(HeartbeatManagerTest, HandleRequest_MalformedLength_NothingQueued)
 {
-    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     hub.init(0, ReservedTypes::HUB);
 
     DecodedPacket pkt = make_heartbeat_decoded_packet(MY_ID, sizeof(HeartbeatMessage) - 1);
@@ -191,11 +180,9 @@ TEST_F(HeartbeatManagerTest, HandleRequest_MalformedLength_NothingQueued)
 
 TEST_F(HeartbeatManagerTest, HandleRequest_Valid_UpdatesLastSeenAndQueuesResponse)
 {
-    stub_encode_ok();
-
     ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(5000000)); // 5 s
 
-    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     hub.init(0, ReservedTypes::HUB);
 
     DecodedPacket pkt = make_heartbeat_decoded_packet(MY_ID);
@@ -208,40 +195,24 @@ TEST_F(HeartbeatManagerTest, HandleRequest_Valid_UpdatesLastSeenAndQueuesRespons
 
 TEST_F(HeartbeatManagerTest, HandleRequest_Valid_ResponseHeaderIsCorrect)
 {
-    stub_encode_ok();
     ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
 
-    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     hub.init(0, ReservedTypes::HUB);
 
     DecodedPacket pkt = make_heartbeat_decoded_packet(MY_ID);
 
-    MessageHeader captured_hdr{};
-    ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault([&](const MessageHeader &hdr, const void *, size_t, uint8_t *, size_t) {
-        captured_hdr = hdr;
-        return DUMMY_ENCODED_SIZE;
-    });
+    DecodedTxPacket captured_pkt{};
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(::testing::Invoke([&](const DecodedTxPacket &pkt) -> esp_err_t {
+        captured_pkt = pkt;
+        return ESP_OK;
+    }));
 
     hub.handle_request(pkt);
 
-    EXPECT_EQ(MessageType::HEARTBEAT_RESPONSE, captured_hdr.msg_type);
-    EXPECT_EQ(ReservedIds::HUB, captured_hdr.sender_node_id);
-    EXPECT_EQ(MY_ID, captured_hdr.dest_node_id);
-}
-
-TEST_F(HeartbeatManagerTest, HandleRequest_EncodeFails_NothingQueued)
-{
-    stub_encode_fail();
-    ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
-
-    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
-    hub.init(0, ReservedTypes::HUB);
-
-    DecodedPacket pkt = make_heartbeat_decoded_packet(MY_ID);
-
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
-
-    hub.handle_request(pkt);
+    EXPECT_EQ(MessageType::HEARTBEAT_RESPONSE, captured_pkt.header.msg_type);
+    EXPECT_EQ(ReservedIds::HUB, captured_pkt.header.sender_node_id);
+    EXPECT_EQ(MY_ID, captured_pkt.header.dest_node_id);
 }
 
 // ===========================================================================
@@ -250,7 +221,7 @@ TEST_F(HeartbeatManagerTest, HandleRequest_EncodeFails_NothingQueued)
 
 TEST_F(HeartbeatManagerTest, HandleResponse_NotifiesLinkAlive)
 {
-    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     node.init(0, PEER);
 
     EXPECT_CALL(tx_mgr_, notify_link_alive()).Times(1);
@@ -264,20 +235,16 @@ TEST_F(HeartbeatManagerTest, HandleResponse_NotifiesLinkAlive)
 
 TEST_F(HeartbeatManagerTest, SendHeartbeat_HubUnknown_UsesBroadcastMac)
 {
-    stub_encode_ok();
     ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
     ON_CALL(peer_mgr_, find_mac(ReservedIds::HUB, _)).WillByDefault(Return(false));
 
-    TestableHeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    TestableHeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     node.init(0, PEER);
 
-    // BROADCAST_MAC is defined in protocol_types.hpp
-    // const uint8_t broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
-    TxPacket captured{};
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(::testing::Invoke([&](const TxPacket &pkt) -> int {
+    DecodedTxPacket captured{};
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(::testing::Invoke([&](const DecodedTxPacket &pkt) -> esp_err_t {
         captured = pkt;
-        return 0;
+        return ESP_OK;
     }));
 
     node.force_send_heartbeat();
@@ -287,7 +254,6 @@ TEST_F(HeartbeatManagerTest, SendHeartbeat_HubUnknown_UsesBroadcastMac)
 
 TEST_F(HeartbeatManagerTest, SendHeartbeat_HubKnown_UsesUnicastMac)
 {
-    stub_encode_ok();
     ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
 
     const uint8_t hub_mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
@@ -296,13 +262,13 @@ TEST_F(HeartbeatManagerTest, SendHeartbeat_HubKnown_UsesUnicastMac)
         return true;
     }));
 
-    TestableHeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    TestableHeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     node.init(0, PEER);
 
-    TxPacket captured{};
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(::testing::Invoke([&](const TxPacket &pkt) -> int {
+    DecodedTxPacket captured{};
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(::testing::Invoke([&](const DecodedTxPacket &pkt) -> esp_err_t {
         captured = pkt;
-        return 0;
+        return ESP_OK;
     }));
 
     node.force_send_heartbeat();
@@ -315,34 +281,20 @@ TEST_F(HeartbeatManagerTest, SendHeartbeat_HeaderIsCorrect)
     ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
     ON_CALL(peer_mgr_, find_mac(_, _)).WillByDefault(Return(false));
 
-    TestableHeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    TestableHeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     node.init(0, PEER);
 
-    MessageHeader captured_hdr{};
-    ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault([&](const MessageHeader &hdr, const void *, size_t, uint8_t *, size_t) {
-        captured_hdr = hdr;
-        return DUMMY_ENCODED_SIZE;
-    });
+    DecodedTxPacket captured_pkt{};
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(::testing::Invoke([&](const DecodedTxPacket &pkt) -> esp_err_t {
+        captured_pkt = pkt;
+        return ESP_OK;
+    }));
 
     node.force_send_heartbeat();
 
-    EXPECT_EQ(MessageType::HEARTBEAT, captured_hdr.msg_type);
-    EXPECT_EQ(MY_ID, captured_hdr.sender_node_id);
-    EXPECT_EQ(ReservedIds::HUB, captured_hdr.dest_node_id);
-}
-
-TEST_F(HeartbeatManagerTest, SendHeartbeat_EncodeFails_NothingQueued)
-{
-    stub_encode_fail();
-    ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
-    ON_CALL(peer_mgr_, find_mac(_, _)).WillByDefault(Return(false));
-
-    TestableHeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
-    node.init(0, PEER);
-
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
-
-    node.force_send_heartbeat();
+    EXPECT_EQ(MessageType::HEARTBEAT, captured_pkt.header.msg_type);
+    EXPECT_EQ(MY_ID, captured_pkt.header.sender_node_id);
+    EXPECT_EQ(ReservedIds::HUB, captured_pkt.header.dest_node_id);
 }
 
 // ===========================================================================
@@ -354,42 +306,39 @@ TEST_F(HeartbeatManagerTest, UpdateNodeId_SubsequentHeartbeatUsesNewId)
     ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
     ON_CALL(peer_mgr_, find_mac(_, _)).WillByDefault(Return(false));
 
-    TestableHeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    TestableHeartbeatManager node(MY_ID, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     node.init(0, PEER);
     node.update_node_id(99);
 
-    MessageHeader captured_hdr{};
-    ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault([&](const MessageHeader &hdr, const void *, size_t, uint8_t *, size_t) {
-        captured_hdr = hdr;
-        return DUMMY_ENCODED_SIZE;
-    });
+    DecodedTxPacket captured_pkt{};
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(::testing::Invoke([&](const DecodedTxPacket &pkt) -> esp_err_t {
+        captured_pkt = pkt;
+        return ESP_OK;
+    }));
 
     node.force_send_heartbeat();
 
-    EXPECT_EQ(99, captured_hdr.sender_node_id);
+    EXPECT_EQ(99, captured_pkt.header.sender_node_id);
 }
 
 TEST_F(HeartbeatManagerTest, HandleRequest_ResponseContainsCurrentChannel)
 {
     ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
 
-    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
+    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     hub.init(0, ReservedTypes::HUB);
     hub.set_channel(6);
 
     DecodedPacket pkt = make_heartbeat_decoded_packet(MY_ID);
 
-    uint8_t captured_channel = 0;
-    ON_CALL(codec_, encode(_, _, _, _, _))
-        .WillByDefault([&](const MessageHeader &, const void *payload, size_t len, uint8_t *, size_t) -> size_t {
-            // Reconstruction of the payload into the HeartbeatResponse struct
-            HeartbeatResponse response{};
-            memcpy(&response.server_time_ms, payload, len);
-            captured_channel = response.wifi_channel;
-            return DUMMY_ENCODED_SIZE;
-        });
+    DecodedTxPacket captured_pkt{};
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(::testing::Invoke([&](const DecodedTxPacket &pkt) -> esp_err_t {
+        captured_pkt = pkt;
+        return ESP_OK;
+    }));
 
     hub.handle_request(pkt);
 
-    EXPECT_EQ(6, captured_channel);
+    // HeartbeatResponse layout: uint64_t server_time_ms (8), uint8_t wifi_channel (1)
+    EXPECT_EQ(6, captured_pkt.payload[8]);
 }
