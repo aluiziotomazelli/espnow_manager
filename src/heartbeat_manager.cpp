@@ -45,7 +45,7 @@ void HeartbeatManager::handle_response()
     ESP_LOGI(TAG, "Heartbeat response received from Hub");
 
     // link_alive already notified by rx_task on packet reception
-    // tx_mgr_.notify_link_alive();
+    tx_mgr_.notify_link_alive();
 }
 
 void HeartbeatManager::handle_request(const DecodedPacket &decoded)
@@ -95,9 +95,9 @@ void HeartbeatManager::send_heartbeat()
     // battery_mv and rssi remain zero until hardware support is added
 
     // Copy only the payload portion of HeartbeatMessage, skipping MessageHeader.
-    // &hb.battery_mv points to the first field after the header.
+    // &hb.uptime_ms points to the first field after the header.
     tx_packet.payload_len = sizeof(HeartbeatMessage) - sizeof(MessageHeader);
-    memcpy(tx_packet.payload, &hb.battery_mv, tx_packet.payload_len);
+    memcpy(tx_packet.payload, &hb.uptime_ms, tx_packet.payload_len);
 
     tx_mgr_.queue_packet(tx_packet);
 }

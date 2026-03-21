@@ -35,10 +35,10 @@ struct MessageHeader
 struct PairRequest
 {
     MessageHeader header;           /**< Universal message header */
+    uint32_t heartbeat_interval_ms; /**< Requested interval between heartbeats */
     uint8_t firmware_version[3];    /**< Current firmware version of the node (major, minor, patch) */
     uint64_t uptime_ms;             /**< Current uptime of the node in milliseconds */
     char device_name[16];           /**< Human-readable name of the device */
-    uint32_t heartbeat_interval_ms; /**< Requested interval between heartbeats */
 };
 
 /**
@@ -64,9 +64,9 @@ struct PairResponse
 struct HeartbeatMessage
 {
     MessageHeader header; /**< Universal message header */
+    uint64_t uptime_ms;   /**< Current uptime of the node in milliseconds */
     uint16_t battery_mv;  /**< Current battery voltage in millivolts */
     int8_t rssi;          /**< RSSI of the Hub as seen by the Node (from last reception) */
-    uint64_t uptime_ms;   /**< Current uptime of the node in milliseconds */
 };
 
 /**
