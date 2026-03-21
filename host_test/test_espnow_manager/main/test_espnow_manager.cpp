@@ -35,16 +35,12 @@ using ::testing::SetArgReferee;
 // dereferences them directly, so any non-null address is sufficient.
 // ---------------------------------------------------------------------------
 static int fake_queue_storage = 0;
-static int fake_worker_storage = 0;
 static int fake_mutex_storage = 0;
 static int fake_rx_task_storage = 0;
-static int fake_worker_task_storage = 0;
 
 static QueueHandle_t fake_tx_queue = reinterpret_cast<QueueHandle_t>(&fake_queue_storage);
-static QueueHandle_t fake_worker_queue = reinterpret_cast<QueueHandle_t>(&fake_worker_storage);
 static SemaphoreHandle_t fake_mutex = reinterpret_cast<SemaphoreHandle_t>(&fake_mutex_storage);
 static TaskHandle_t fake_rx_task = reinterpret_cast<TaskHandle_t>(&fake_rx_task_storage);
-static TaskHandle_t fake_worker_task = reinterpret_cast<TaskHandle_t>(&fake_worker_task_storage);
 
 // ---------------------------------------------------------------------------
 // Test constants
@@ -173,14 +169,14 @@ protected:
 
         // Creating tasks
         ON_CALL(*hal_freertos_, task_create(_, _, _, _, _, _))
-            .WillByDefault(DoAll(SetArgPointee<5>(fake_worker_task), Return(pdPASS)));
+            .WillByDefault(DoAll(SetArgPointee<5>(fake_rx_task), Return(pdPASS)));
         ON_CALL(*hal_freertos_, task_delete(_)).WillByDefault(Return());
 
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
         // submódule inits succeed by default
         ON_CALL(*tx_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(fake_worker_task));
+        ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(fake_rx_task));
         ON_CALL(*scanner_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*heartbeat_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
@@ -298,12 +294,9 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfMutexCreateFails)
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
 
-TEST_F(EspNowManagerTest, InitCallsQueueCreateTwice)
+TEST_F(EspNowManagerTest, InitCallsQueueCreate)
 {
-    EXPECT_CALL(*hal_freertos_, queue_create(_, _))
-        .Times(2)
-        .WillOnce(Return(fake_tx_queue))
-        .WillOnce(Return(fake_worker_queue));
+    EXPECT_CALL(*hal_freertos_, queue_create(_, _)).WillOnce(Return(fake_tx_queue));
     EXPECT_EQ(sut_->init(make_valid_config()), ESP_OK);
 }
 
@@ -314,36 +307,15 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfFirstQueueCreationFails)
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
 
-TEST_F(EspNowManagerTest, InitReturnsFailIfSecondQueueCreationFails)
+TEST_F(EspNowManagerTest, InitCallsTaskCreate)
 {
-    EXPECT_CALL(*hal_freertos_, queue_create(_, _)).Times(2).WillOnce(Return(fake_tx_queue)).WillOnce(Return(nullptr));
-    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
-    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
-}
-
-TEST_F(EspNowManagerTest, InitCallsTaskCreateTwice)
-{
-    EXPECT_CALL(*hal_freertos_, task_create(_, _, _, _, _, _))
-        .Times(2)
-        .WillOnce(DoAll(SetArgPointee<5>(fake_rx_task), Return(pdPASS)))
-        .WillOnce(DoAll(SetArgPointee<5>(fake_worker_task), Return(pdPASS)));
+    EXPECT_CALL(*hal_freertos_, task_create(_, _, _, _, _, _)).WillOnce(Return(pdPASS));
     EXPECT_EQ(sut_->init(make_valid_config()), ESP_OK);
 }
 
 TEST_F(EspNowManagerTest, InitReturnsFailIfFirstTaskCreationFails)
 {
-    EXPECT_CALL(*hal_freertos_, task_create(_, _, _, _, _, _))
-        .WillOnce(DoAll(SetArgPointee<5>(fake_rx_task), Return(pdFAIL)));
-    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
-    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
-}
-
-TEST_F(EspNowManagerTest, InitReturnsFailIfSecondTaskCreationFails)
-{
-    EXPECT_CALL(*hal_freertos_, task_create(_, _, _, _, _, _))
-        .Times(2)
-        .WillOnce(DoAll(SetArgPointee<5>(fake_rx_task), Return(pdPASS)))
-        .WillOnce(DoAll(SetArgPointee<5>(fake_worker_task), Return(pdFAIL)));
+    EXPECT_CALL(*hal_freertos_, task_create(_, _, _, _, _, _)).WillOnce(Return(pdFAIL));
     EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
@@ -474,8 +446,6 @@ TEST_F(EspNowManagerTest, DeinitDoesNotDeleteNullTaskHandles)
 {
     // Init pass but task_handles are null
     EXPECT_CALL(*hal_freertos_, task_create(_, _, _, _, _, _))
-        .Times(2)
-        .WillOnce(DoAll(SetArgPointee<5>(nullptr), Return(pdPASS)))
         .WillOnce(DoAll(SetArgPointee<5>(nullptr), Return(pdPASS)));
     EXPECT_EQ(sut_->init(make_valid_config()), ESP_OK);
 
@@ -498,8 +468,8 @@ TEST_F(EspNowManagerTest, DeinitCallsAllDeleteFunctions)
 
     EXPECT_CALL(*tx_mgr_, deinit()).Times(1);
     EXPECT_CALL(*heartbeat_mgr_, deinit()).Times(1);
-    EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(2);
-    EXPECT_CALL(*hal_freertos_, queue_delete(_)).Times(2);
+    EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(1);
+    EXPECT_CALL(*hal_freertos_, queue_delete(_)).Times(1);
     EXPECT_CALL(*hal_freertos_, semaphore_delete(_)).Times(1);
     EXPECT_CALL(*hal_wifi_, hal_esp_now_del_peer(_)).Times(1);
     EXPECT_CALL(*espnow_driver_, deinit()).Times(1);
