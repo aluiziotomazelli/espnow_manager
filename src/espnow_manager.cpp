@@ -1,4 +1,3 @@
-// src/espnow_manager.cpp
 #include <cstring>
 
 #include "esp_log.h"
@@ -183,8 +182,6 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     return ret;
 }
 
-// TODO: return type is not realy used, since we not check any error, continue even if some
-// thing fails to delete all resources. Should be return void?
 esp_err_t EspNowManager::deinit()
 {
     ESP_LOGI(TAG, "Deinitializing EspNowManager...");
@@ -196,15 +193,15 @@ esp_err_t EspNowManager::deinit()
         heartbeat_manager_->deinit();
     }
 
-    if (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) {
-        // Signal rx_dispatch and transport_worker tasks to stop
+    if (rx_task_handle_ != nullptr) {
+        // Signal rx task to stop
         signal_tasks_to_stop();
         // Delete tasks if not terminated gracefully
         delete_tasks();
     }
 
     // Call cleanup_resources to delete queues and mutex
-    if (rx_dispatch_queue_ != nullptr || transport_worker_queue_ != nullptr || ack_mutex_ != nullptr) {
+    if (rx_dispatch_queue_ != nullptr || ack_mutex_ != nullptr) {
         cleanup_resources();
     }
 
@@ -238,7 +235,7 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
     }
 
     // Store timeout for use when scan completes (NOTIFY_CHANNEL_FOUND or NOTIFY_SCAN_FAILED)
-    // pairing_manager_->start()  is called from rx_dispatch_task after the correct channel is confirmed.
+    // pairing_manager_->start()  is called from rx_task after the correct channel is confirmed.
     pairing_timeout_ms_ = timeout_ms;
 
     // Force TxManager into scanning so the correct channel is discovered
@@ -380,7 +377,7 @@ void EspNowManager::esp_now_send_cb(const esp_now_send_info_t *info, esp_now_sen
 // =========================================================================================
 // Task implementations
 // =========================================================================================
-void EspNowManager::rx_dispatch_task(void *arg)
+void EspNowManager::rx_task(void *arg)
 {
     EspNowManager *self = static_cast<EspNowManager *>(arg);
 
@@ -392,18 +389,12 @@ void EspNowManager::rx_dispatch_task(void *arg)
 
         // Check for pending notifications without blocking (timeout = 0). We prioritize packet reception below
         // notifications are checked every ~100 ms as a side effect of the queue_receive timeout.
-        // Clear all bits on exit (0xFFFFFFFF) so processed bits don't retrigger on the next iteration.
-        // No bits are cleared on entry since we want to read whatever accumulated since last check.
         if (self->hal_freertos_->task_notify_wait(0, 0xFFFFFFFF, &notifications, 0) == pdTRUE) {
-            // Entered scanning state — TxManager is actively searching for the HUB. NodeState transitions to
-            // SCANNING so the rest of the system knows normal operation is suspended until the channel is
-            // rediscovered.
+            // Entered scanning state — TxManager is actively searching for the HUB.
             if ((notifications & NOTIFY_SCANNING) == NOTIFY_SCANNING) {
                 self->transition_to_state(NodeState::SCANNING);
             }
-            // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb(), which runs in the TxManager task
-            // context. All work that touches EspNowManager state (config_, peer_manager_, node_state_)
-            // is done here in the rx_dispatch_task to avoid cross-task data races.
+            // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb()
             if ((notifications & NOTIFY_CHANNEL_FOUND) == NOTIFY_CHANNEL_FOUND) {
                 uint8_t channel = self->last_found_channel_.load();
                 self->config_.wifi_channel = channel;
@@ -414,8 +405,7 @@ void EspNowManager::rx_dispatch_task(void *arg)
                     self->pairing_manager_->start(self->pairing_timeout_ms_, self->get_time_ms());
                 self->transition_to_state(NodeState::OPERATIONAL);
             }
-            // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb() when the DiscoveryManager exhausts all channels
-            // without finding the HUB. Transition to PAIRING so the node can attempt re-association.
+            // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb()
             if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
                 self->transition_to_state(NodeState::PAIRING);
             }
@@ -425,76 +415,46 @@ void EspNowManager::rx_dispatch_task(void *arg)
             }
         }
 
-        // Wait for incoming packets with a timeout to periodically check for notifications.
+        // Wait for incoming packets with a timeout to periodically check for notifications and tick managers.
         if (self->hal_freertos_->queue_receive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
             // Validate CRC
-            if (!self->message_codec_->validate_crc(packet.data, packet.len)) {
-                continue;
-            }
-            // Decode header
-            auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
-            if (!header_opt) {
-                continue;
-            }
+            if (self->message_codec_->validate_crc(packet.data, packet.len)) {
+                // Decode header
+                auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
+                if (header_opt) {
+                    decoded = {packet, header_opt.value()};
 
-            decoded = {packet, header_opt.value()};
-
-            if (decoded.header.msg_type == MessageType::DATA || decoded.header.msg_type == MessageType::COMMAND) {
-                // Application-level packets — deliver directly to app queue
-                if (decoded.header.requires_ack) {
-                    if (self->hal_freertos_->semaphore_take(self->ack_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-                        self->last_header_requiring_ack_ = decoded.header;
-                        self->hal_freertos_->semaphore_give(self->ack_mutex_);
+                    // Application-level packets — deliver directly to app queue
+                    if (decoded.header.msg_type == MessageType::DATA || decoded.header.msg_type == MessageType::COMMAND) {
+                        if (decoded.header.requires_ack) {
+                            if (self->hal_freertos_->semaphore_take(self->ack_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
+                                self->last_header_requiring_ack_ = decoded.header;
+                                self->hal_freertos_->semaphore_give(self->ack_mutex_);
+                            }
+                        }
+                        if (self->config_.app_rx_queue != nullptr) {
+                            AppMessage msg = self->build_app_message(decoded);
+                            if (self->hal_freertos_->queue_send(self->config_.app_rx_queue, &msg, 0) != pdTRUE) {
+                                ESP_LOGW(TAG, "App queue full, dropping packet");
+                            }
+                        }
+                    }
+                    else {
+                        // Protocol-internal packets — handle immediately via router
+                        self->message_router_->handle_packet(decoded);
                     }
                 }
-                if (self->config_.app_rx_queue != nullptr) {
-                    // Create AppMessage from decoded message and send it
-                    AppMessage msg = self->build_app_message(decoded);
-                    if (self->hal_freertos_->queue_send(self->config_.app_rx_queue, &msg, 0) != pdTRUE) {
-                        ESP_LOGW(TAG, "App queue full, dropping packet");
-                    }
-                }
-            }
-            else if (self->is_protocol_message(decoded.header.msg_type)) {
-                // Protocol-internal packets — send DecodedPacket to worker queue
-                self->hal_freertos_->queue_send(self->transport_worker_queue_, &decoded, 0);
-            }
-            else {
-                // Unknown type — delegate to router for logging/handling
-                self->message_router_->handle_packet(decoded);
             }
         }
-    }
 
-    // Task cleanup on exit
-    self->rx_dispatch_task_handle_ = nullptr;
-    self->hal_freertos_->task_suspend(NULL);
-    self->hal_freertos_->task_delete(NULL);
-}
-
-void EspNowManager::transport_worker_task(void *arg)
-{
-    EspNowManager *self = static_cast<EspNowManager *>(arg);
-    DecodedPacket packet{};
-    while (true) {
-        uint32_t notifications = 0;
-        // Check for stop notification without blocking (timeout = 0) to prioritize packets on queue
-        if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE &&
-            (notifications & NOTIFY_STOP)) {
-            break;
-        }
-        // Wait for incoming packets with a timeout to periodically check for notifications.
-        if (self->hal_freertos_->queue_receive(self->transport_worker_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
-            self->message_router_->handle_packet(packet);
-        }
-        // Tick pairing manager to handle timeouts, has internaly safe guards to avoid
-        // unnecessary processing when not in pairing mode, but we check on Manager too
+        // Tick pairing manager to handle timeouts
         if (self->node_state_.load() == NodeState::PAIRING) {
             self->pairing_manager_->tick(self->get_time_ms());
         }
     }
+
     // Task cleanup on exit
-    self->transport_worker_task_handle_ = nullptr;
+    self->rx_task_handle_ = nullptr;
     self->hal_freertos_->task_suspend(NULL);
     self->hal_freertos_->task_delete(NULL);
 }
@@ -506,17 +466,17 @@ void EspNowManager::transport_worker_task(void *arg)
 void EspNowManager::on_channel_found_cb(uint8_t channel)
 {
     last_found_channel_.store(channel);
-    hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_CHANNEL_FOUND, eSetBits);
+    hal_freertos_->task_notify(rx_task_handle_, NOTIFY_CHANNEL_FOUND, eSetBits);
 }
 
 void EspNowManager::on_scan_failed_cb()
 {
-    hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_SCAN_FAILED, eSetBits);
+    hal_freertos_->task_notify(rx_task_handle_, NOTIFY_SCAN_FAILED, eSetBits);
 }
 
 void EspNowManager::on_scan_started_cb()
 {
-    hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_SCANNING, eSetBits);
+    hal_freertos_->task_notify(rx_task_handle_, NOTIFY_SCANNING, eSetBits);
 }
 
 // =========================================================================================
@@ -631,11 +591,6 @@ esp_err_t EspNowManager::create_queues()
         return ESP_FAIL;
     }
 
-    transport_worker_queue_ = hal_freertos_->queue_create(config_.transport_worker_queue_length, sizeof(RxPacket));
-    if (transport_worker_queue_ == nullptr) {
-        return ESP_FAIL;
-    }
-
     return ESP_OK;
 }
 
@@ -643,24 +598,12 @@ esp_err_t EspNowManager::create_tasks()
 {
     BaseType_t ret;
     ret = hal_freertos_->task_create(
-        rx_dispatch_task,
-        "rx_dispatch",
+        rx_task,
+        "rx_task",
         config_.stack_size_rx_dispatch,
         this,
         config_.priority_rx_dispatch,
-        &rx_dispatch_task_handle_);
-
-    if (ret != pdPASS) {
-        return ESP_FAIL;
-    }
-
-    ret = hal_freertos_->task_create(
-        transport_worker_task,
-        "transport_worker",
-        config_.stack_size_transport_worker,
-        this,
-        config_.priority_transport_worker,
-        &transport_worker_task_handle_);
+        &rx_task_handle_);
 
     if (ret != pdPASS) {
         return ESP_FAIL;
@@ -744,40 +687,32 @@ esp_err_t EspNowManager::init_fail(esp_err_t ret, const char *step)
 void EspNowManager::signal_tasks_to_stop()
 {
     // Signal tasks to stop
-    if (rx_dispatch_task_handle_ != nullptr) {
-        hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
-    }
-    if (transport_worker_task_handle_ != nullptr) {
-        hal_freertos_->task_notify(transport_worker_task_handle_, NOTIFY_STOP, eSetBits);
+    if (rx_task_handle_ != nullptr) {
+        hal_freertos_->task_notify(rx_task_handle_, NOTIFY_STOP, eSetBits);
     }
 
     // Wait for tasks to exit (up to 1s).
     uint16_t timeout_ms = 1000;
     uint8_t delay_ms = 10;
     while (timeout_ms > 0) {
-        if (rx_dispatch_task_handle_ == nullptr && transport_worker_task_handle_ == nullptr) {
+        if (rx_task_handle_ == nullptr) {
             break;
         }
         hal_freertos_->task_delay(pdMS_TO_TICKS(delay_ms));
         timeout_ms -= delay_ms;
     }
 
-    if (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) {
+    if (rx_task_handle_ != nullptr) {
         ESP_LOGW(TAG, "Tasks did not terminate gracefully within timeout");
     }
 }
 
 void EspNowManager::delete_tasks()
 {
-    if (rx_dispatch_task_handle_ != nullptr) {
-        hal_freertos_->task_suspend(rx_dispatch_task_handle_);
-        hal_freertos_->task_delete(rx_dispatch_task_handle_);
-        rx_dispatch_task_handle_ = nullptr;
-    }
-    if (transport_worker_task_handle_ != nullptr) {
-        hal_freertos_->task_suspend(transport_worker_task_handle_);
-        hal_freertos_->task_delete(transport_worker_task_handle_);
-        transport_worker_task_handle_ = nullptr;
+    if (rx_task_handle_ != nullptr) {
+        hal_freertos_->task_suspend(rx_task_handle_);
+        hal_freertos_->task_delete(rx_task_handle_);
+        rx_task_handle_ = nullptr;
     }
 }
 
@@ -786,10 +721,6 @@ void EspNowManager::cleanup_resources()
     if (rx_dispatch_queue_ != nullptr) {
         hal_freertos_->queue_delete(rx_dispatch_queue_);
         rx_dispatch_queue_ = nullptr;
-    }
-    if (transport_worker_queue_ != nullptr) {
-        hal_freertos_->queue_delete(transport_worker_queue_);
-        transport_worker_queue_ = nullptr;
     }
     if (ack_mutex_ != nullptr) {
         hal_freertos_->semaphore_delete(ack_mutex_);

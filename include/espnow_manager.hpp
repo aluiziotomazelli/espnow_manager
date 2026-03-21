@@ -158,9 +158,7 @@ protected:
     std::optional<MessageHeader> last_header_requiring_ack_{};
 
     QueueHandle_t rx_dispatch_queue_ = nullptr;
-    QueueHandle_t transport_worker_queue_ = nullptr;
-    TaskHandle_t rx_dispatch_task_handle_ = nullptr;
-    TaskHandle_t transport_worker_task_handle_ = nullptr;
+    TaskHandle_t rx_task_handle_ = nullptr;
 
     /** @brief IChannelObserver implementation */
     void on_channel_found_cb(uint8_t channel) override;
@@ -200,8 +198,7 @@ protected:
     void cleanup_resources();
 
     // Task functions
-    static void rx_dispatch_task(void *arg);
-    static void transport_worker_task(void *arg);
+    static void rx_task(void *arg);
 
     bool is_protocol_message(MessageType type);
     static AppMessage build_app_message(const DecodedPacket &decoded);
