@@ -7,10 +7,12 @@ include(CTest)
 # Define the tests for CTest.
 # These commands assume that each project has been built using 'idf.py build'
 # and that CTest is being run from a 'build' subdirectory within 'host_test'.
-add_test(NAME test_espnow_driver COMMAND ../test_bootstraper/build/test_espnow_driver.elf)
+add_test(NAME test_espnow_driver COMMAND ../test_espnow_driver/build/test_espnow_driver.elf)
+add_test(NAME test_espnow_manager COMMAND ../test_espnow_manager/build/test_espnow_manager.elf)
 add_test(NAME test_discovery_manager COMMAND ../test_discovery_manager/build/test_discovery_manager.elf)
 add_test(NAME test_heartbeat_manager COMMAND ../test_heartbeat_manager/build/test_heartbeat_manager.elf)
 add_test(NAME test_message_codec COMMAND ../test_message_codec/build/test_message_codec.elf)
+add_test(NAME test_message_router COMMAND ../test_message_router/build/test_message_router.elf)
 add_test(NAME test_pairing_manager COMMAND ../test_pairing_manager/build/test_pairing_manager.elf)
 add_test(NAME test_peer_manager COMMAND ../test_peer_manager/build/test_peer_manager.elf)
 add_test(NAME test_storage_manager COMMAND ../test_storage_manager/build/test_storage_manager.elf)
@@ -27,7 +29,7 @@ set(UNIFIED_COVERAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/coverage")
 # This target aggregates coverage data (.gcda files) from all test build directories
 add_custom_target(unified_coverage
     COMMAND ${LCOV_PATH} --capture --directory .. --output-file unified_coverage.info --rc branch_coverage=1 --rc geninfo_unexecuted_blocks=1 --ignore-errors mismatch,inconsistent
-    COMMAND ${LCOV_PATH} --extract unified_coverage.info "*/espnow_manager/src/*" --output-file unified_coverage_filtered.info --rc branch_coverage=1 --ignore-errors mismatch,inconsistent,unused,empty
+    COMMAND ${LCOV_PATH} --extract unified_coverage.info "*/espnow_manager/src/*" "*/espnow_manager/include/*" --output-file unified_coverage_filtered.info --rc branch_coverage=1 --ignore-errors mismatch,inconsistent,unused,empty
     COMMAND ${LCOV_PATH} --remove unified_coverage_filtered.info "*/espnow_manager/include/interfaces/*" --output-file unified_coverage_filtered.info --rc branch_coverage=1 --ignore-errors mismatch,inconsistent,unused,empty
     COMMAND ${GENHTML_PATH} unified_coverage_filtered.info --output-directory ${UNIFIED_COVERAGE_DIR} --title "ESP-NOW Manager Unified Coverage" --rc branch_coverage=1 --ignore-errors mismatch,inconsistent,unused
     COMMAND ${LCOV_PATH} --list unified_coverage_filtered.info --rc branch_coverage=1 --ignore-errors mismatch,inconsistent,unused,empty
@@ -46,9 +48,11 @@ add_custom_target(coverage_clean
 # Helper target to build all tests at once (requires idf.py to be in your PATH)
 add_custom_target(build_all_tests
     COMMAND idf.py -C ../test_espnow_driver build
+    COMMAND idf.py -C ../test_espnow_manager build
     COMMAND idf.py -C ../test_discovery_manager build
     COMMAND idf.py -C ../test_heartbeat_manager build
     COMMAND idf.py -C ../test_message_codec build
+    COMMAND idf.py -C ../test_message_router build
     COMMAND idf.py -C ../test_pairing_manager build
     COMMAND idf.py -C ../test_peer_manager build
     COMMAND idf.py -C ../test_storage_manager build
