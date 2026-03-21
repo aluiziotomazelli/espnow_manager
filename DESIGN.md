@@ -141,7 +141,7 @@ sequenceDiagram
 ## 4. Design Decisions
 
 ### Structured Data vs. Raw Buffers
-**Decision:** Pass `DecodedPacket` (RX) and `DecodedTxPacket` (TX) between components instead of raw byte buffers.
+**Decision:** Pass `DecodedRxPacket` (RX) and `DecodedTxPacket` (TX) between components instead of raw byte buffers.
 -   **Reason:** Eliminates redundant decoding steps. Previously, the `rx_task` decoded the header, but passed the raw buffer to managers, which had to decode it *again*. Now, decoding happens once at ingress (`rx_task`), and encoding happens once at egress (`TxManager`).
 -   **Benefit:** Improved CPU efficiency and type safety. Managers operate on structs, not bytes.
 
