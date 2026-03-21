@@ -153,11 +153,11 @@ protected:
     std::unique_ptr<IPairingManager> pairing_manager_;     ///< Pointer to pairing manager
     std::unique_ptr<IMessageRouter> message_router_;       ///< Pointer to message router
 
-    SemaphoreHandle_t ack_mutex_ = nullptr;
     bool esp_now_initialized_ = false;
     std::optional<MessageHeader> last_header_requiring_ack_{};
 
-    QueueHandle_t rx_dispatch_queue_ = nullptr;
+    SemaphoreHandle_t ack_mutex_ = nullptr;
+    QueueHandle_t rx_queue_handle_ = nullptr;
     TaskHandle_t rx_task_handle_ = nullptr;
 
     /** @brief IChannelObserver implementation */

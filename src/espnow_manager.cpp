@@ -201,7 +201,7 @@ esp_err_t EspNowManager::deinit()
     }
 
     // Call cleanup_resources to delete queues and mutex
-    if (rx_dispatch_queue_ != nullptr || ack_mutex_ != nullptr) {
+    if (rx_queue_handle_ != nullptr || ack_mutex_ != nullptr) {
         cleanup_resources();
     }
 
@@ -364,7 +364,7 @@ void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8
     packet.len = len;
     packet.rssi = static_cast<int8_t>(info->rx_ctrl->rssi);
     packet.timestamp_us = instance().hal_timer_->get_time_us();
-    instance().hal_freertos_->queue_send_fromISR(instance().rx_dispatch_queue_, &packet, 0);
+    instance().hal_freertos_->queue_send_fromISR(instance().rx_queue_handle_, &packet, 0);
 }
 
 void EspNowManager::esp_now_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status)
@@ -399,7 +399,7 @@ void EspNowManager::rx_task(void *arg)
         }
 
         // Wait for incoming packets with a timeout to periodically check for notifications and tick managers.
-        if (self->hal_freertos_->queue_receive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (self->hal_freertos_->queue_receive(self->rx_queue_handle_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
             // Validate CRC
             if (self->message_codec_->validate_crc(packet.data, packet.len)) {
                 // Decode header
@@ -601,8 +601,8 @@ esp_err_t EspNowManager::create_mutex()
 
 esp_err_t EspNowManager::create_queues()
 {
-    rx_dispatch_queue_ = hal_freertos_->queue_create(config_.rx_dispatch_queue_length, sizeof(RxPacket));
-    if (rx_dispatch_queue_ == nullptr) {
+    rx_queue_handle_ = hal_freertos_->queue_create(config_.rx_queue_length, sizeof(RxPacket));
+    if (rx_queue_handle_ == nullptr) {
         return ESP_FAIL;
     }
 
@@ -613,7 +613,7 @@ esp_err_t EspNowManager::create_tasks()
 {
     BaseType_t ret;
     ret = hal_freertos_->task_create(
-        rx_task, "rx_task", config_.stack_size_rx_dispatch, this, config_.priority_rx_dispatch, &rx_task_handle_);
+        rx_task, "rx_task", config_.stack_size_rx_task, this, config_.priority_rx_task, &rx_task_handle_);
 
     if (ret != pdPASS) {
         return ESP_FAIL;
@@ -627,7 +627,7 @@ esp_err_t EspNowManager::init_tx_manager()
     if (tx_manager_ == nullptr) {
         return ESP_FAIL;
     }
-    return tx_manager_->init(config_.stack_size_tx_manager, 9);
+    return tx_manager_->init(config_.stack_size_tx_task, 9);
 }
 
 esp_err_t EspNowManager::init_discovery_manager()
@@ -728,9 +728,9 @@ void EspNowManager::delete_tasks()
 
 void EspNowManager::cleanup_resources()
 {
-    if (rx_dispatch_queue_ != nullptr) {
-        hal_freertos_->queue_delete(rx_dispatch_queue_);
-        rx_dispatch_queue_ = nullptr;
+    if (rx_queue_handle_ != nullptr) {
+        hal_freertos_->queue_delete(rx_queue_handle_);
+        rx_queue_handle_ = nullptr;
     }
     if (ack_mutex_ != nullptr) {
         hal_freertos_->semaphore_delete(ack_mutex_);
