@@ -41,12 +41,6 @@ void PairingManager::tick(uint64_t now_ms)
     }
 }
 
-// TODO: verify if channel is needed
-void PairingManager::set_channel(uint8_t channel)
-{
-    current_channel_ = channel;
-}
-
 esp_err_t PairingManager::start(uint32_t timeout_ms, uint64_t now_ms)
 {
     if (!is_initialized_ || is_active_) {
@@ -101,7 +95,6 @@ void PairingManager::handle_request(const DecodedPacket &decoded)
 
     PairResponse resp{};
     resp.status = status;
-    resp.wifi_channel = current_channel_;
     // assigned_id, heartbeat_interval_ms, report_interval_ms remain zero for now
 
     // Copy only the payload portion of PairResponse, skipping MessageHeader.
@@ -125,7 +118,7 @@ void PairingManager::handle_response(const DecodedPacket &decoded)
 
     const PairResponse *resp = reinterpret_cast<const PairResponse *>(decoded.raw.data);
     if (resp->status == PairStatus::ACCEPTED) {
-        ESP_LOGI(TAG, "Pairing accepted by Hub on channel %d.", (int)resp->wifi_channel);
+        ESP_LOGI(TAG, "Pairing accepted by Hub");
         peer_mgr_.add(decoded.header.sender_node_id, decoded.raw.src_mac, decoded.header.sender_type);
         is_active_ = false;
     }

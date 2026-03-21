@@ -9,7 +9,6 @@ class MockPairingManager : public IPairingManager
 public:
     MOCK_METHOD(esp_err_t, init, (NodeId id, NodeType type), (override));
     MOCK_METHOD(esp_err_t, start, (uint32_t timeout_ms, uint64_t now_ms), (override));
-    MOCK_METHOD(void, set_channel, (uint8_t channel), (override));
     MOCK_METHOD(bool, is_active, (), (const, override));
     MOCK_METHOD(void, tick, (const uint64_t now_ms), (override));
     MOCK_METHOD(void, handle_request, (const DecodedPacket &decoded), (override));

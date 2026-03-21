@@ -30,8 +30,7 @@ PeerManager::~PeerManager()
     }
 }
 
-esp_err_t
-PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms) // TODO: Verify channel
+esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms)
 {
     if (mac == nullptr) {
         return ESP_ERR_INVALID_ARG;

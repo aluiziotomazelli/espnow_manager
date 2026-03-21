@@ -55,7 +55,6 @@ struct PairResponse
     // TODO: not in use, verify if it can be used
     uint32_t heartbeat_interval_ms; /**< Heartbeat interval authorized by the Hub */
     uint32_t report_interval_ms;    /**< Suggested reporting interval for application data TODO: not in use */
-    uint8_t wifi_channel;           /**< WiFi channel the Hub is operating on */
 };
 
 /**

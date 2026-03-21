@@ -30,7 +30,7 @@ static constexpr uint64_t kT0 = 1000; // arbitrary start timestamp
 //
 // NiceMock rationale: codec_.encode() and tx_mgr_.queue_packet() are called
 // inside send_pair_request(), which fires on start() and on every tick()
-// interval. Tests focused on state transitions (is_active_, timeout, channel)
+// interval. Tests focused on state transitions (is_active_, timeout)
 // should not fail on those incidental transmissions — NiceMock silences them.
 // Tests that explicitly verify transmission behaviour use EXPECT_CALL directly.
 // ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ protected:
     // -----------------------------------------------------------------------
     // Helper: DecodedPacket carrying a PairResponse from the HUB.
     // -----------------------------------------------------------------------
-    static DecodedPacket make_decoded_pair_response(uint8_t channel, PairStatus status = PairStatus::ACCEPTED)
+    static DecodedPacket make_decoded_pair_response(PairStatus status = PairStatus::ACCEPTED)
     {
         DecodedPacket decoded{};
         auto *resp = reinterpret_cast<PairResponse *>(decoded.raw.data);
@@ -62,7 +62,6 @@ protected:
         resp->header.dest_node_id = kNodeId;
         resp->header.sequence_number = 0;
         resp->status = status;
-        resp->wifi_channel = channel;
         decoded.raw.len = sizeof(PairResponse);
 
         decoded.header = resp->header;
@@ -262,7 +261,7 @@ TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotActive)
     // Pairing not started — response must be ignored
     EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
 
-    auto decoded = make_decoded_pair_response(6);
+    auto decoded = make_decoded_pair_response();
     sut_->handle_response(decoded);
 }
 
@@ -270,7 +269,7 @@ TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotInitialized)
 {
     PairingManager pm(tx_mgr_, peer_mgr_);
     // In actual implementation, it returns early before any logic if not initialized
-    auto decoded = make_decoded_pair_response(6);
+    auto decoded = make_decoded_pair_response();
     pm.handle_response(decoded);
 }
 
@@ -278,7 +277,7 @@ TEST_F(PairingManagerTest, HandleResponseAcceptedDeactivatesPairing)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    auto decoded = make_decoded_pair_response(6, PairStatus::ACCEPTED);
+    auto decoded = make_decoded_pair_response(PairStatus::ACCEPTED);
     sut_->handle_response(decoded);
 
     EXPECT_FALSE(sut_->is_active());
@@ -290,7 +289,7 @@ TEST_F(PairingManagerTest, HandleResponseAcceptedAddsPeer)
 
     EXPECT_CALL(peer_mgr_, add(kHubId, _, kHubType, _)).Times(1);
 
-    auto decoded = make_decoded_pair_response(6, PairStatus::ACCEPTED);
+    auto decoded = make_decoded_pair_response(PairStatus::ACCEPTED);
     sut_->handle_response(decoded);
 }
 
@@ -298,7 +297,7 @@ TEST_F(PairingManagerTest, HandleResponseRejectedKeepsPairingActive)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    auto decoded = make_decoded_pair_response(6, PairStatus::REJECTED_NOT_ALLOWED);
+    auto decoded = make_decoded_pair_response(PairStatus::REJECTED_NOT_ALLOWED);
     sut_->handle_response(decoded);
 
     EXPECT_TRUE(sut_->is_active());
@@ -311,7 +310,8 @@ TEST_F(PairingManagerHubTest, HandleResponseIgnoredByHub)
 
     EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
 
-    auto decoded = make_decoded_pair_request(kNodeId, kNodeType); // Wrong type for response but HUB should ignore anyway
+    auto decoded =
+        make_decoded_pair_request(kNodeId, kNodeType); // Wrong type for response but HUB should ignore anyway
     sut_->handle_response(decoded);
     EXPECT_TRUE(sut_->is_active());
 }

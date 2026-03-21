@@ -509,7 +509,6 @@ uint64_t EspNowManager::get_time_ms() const
 
 void EspNowManager::propagate_channel()
 {
-    pairing_manager_->set_channel(config_.wifi_channel);
     scanner_->set_channel(config_.wifi_channel);
     peer_manager_->set_channel(config_.wifi_channel);
 }
