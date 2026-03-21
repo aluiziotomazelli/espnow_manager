@@ -2,7 +2,6 @@
 
 #include "esp_log.h"
 
-#include "i_message_codec.hpp"
 #include "i_peer_manager.hpp"
 #include "i_tx_manager.hpp"
 
@@ -11,11 +10,9 @@
 
 static const char *TAG = "PairingMgr";
 
-PairingManager::PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec)
+PairingManager::PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr)
     : tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
-    , codec_(codec)
-
 {
 }
 

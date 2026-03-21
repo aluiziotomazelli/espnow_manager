@@ -47,7 +47,7 @@ EspNowManager &EspNowManager::instance()
         std::make_unique<TxManager>(*tx_fsm, *scanner, *hal_wifi, *hal_freertos, *message_codec, 500);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(
         ReservedIds::HUB, *tx_manager, *peer_manager, *hal_freertos, *hal_timer);
-    static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec);
+    static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager);
     static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
 
     static EspNowManager instance(

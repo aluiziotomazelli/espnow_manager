@@ -39,13 +39,13 @@ class PairingManagerTest : public ::testing::Test
 protected:
     NiceMock<MockTxManager> tx_mgr_;
     NiceMock<MockPeerManager> peer_mgr_;
-    NiceMock<MockMessageCodec> codec_;
+    NiceMock<MockMessageCodec> codec_; // Kept for Mock setup if needed by helper
 
     std::unique_ptr<PairingManager> sut_;
 
     void SetUp() override
     {
-        sut_ = std::make_unique<PairingManager>(tx_mgr_, peer_mgr_, codec_);
+        sut_ = std::make_unique<PairingManager>(tx_mgr_, peer_mgr_);
         sut_->init(kNodeId, kNodeType);
     }
 
@@ -105,7 +105,7 @@ protected:
 
     void SetUp() override
     {
-        sut_ = std::make_unique<PairingManager>(tx_mgr_, peer_mgr_, codec_);
+        sut_ = std::make_unique<PairingManager>(tx_mgr_, peer_mgr_);
         sut_->init(kHubId, kHubType);
     }
 
@@ -132,9 +132,7 @@ protected:
 
 TEST_F(PairingManagerTest, InitReturnsOk)
 {
-    // A fresh instance — init() already called in SetUp(), construct another
-    // to test the return value explicitly
-    PairingManager pm(tx_mgr_, peer_mgr_, codec_);
+    PairingManager pm(tx_mgr_, peer_mgr_);
     EXPECT_EQ(pm.init(kNodeId, kNodeType), ESP_OK);
 }
 
@@ -149,7 +147,7 @@ TEST_F(PairingManagerTest, NotActiveAfterInit)
 
 TEST_F(PairingManagerTest, StartFailsIfNotInitialized)
 {
-    PairingManager pm(tx_mgr_, peer_mgr_, codec_);
+    PairingManager pm(tx_mgr_, peer_mgr_);
     // init() not called — is_initialized_ is false
     EXPECT_EQ(pm.start(PAIRING_TIMEOUT_MS, kT0), ESP_ERR_INVALID_STATE);
 }
@@ -169,17 +167,7 @@ TEST_F(PairingManagerTest, StartActivatesPairing)
 TEST_F(PairingManagerTest, StartSendsInitialPairRequest)
 {
     // Non-HUB node must send a pair request immediately on start()
-    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
-
-    sut_->start(PAIRING_TIMEOUT_MS, kT0);
-}
-
-TEST_F(PairingManagerTest, StartDoesNotSendIfEncodeReturnsZero)
-{
-    // encode() returning 0 means nothing should be queued
-    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(0));
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
 
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 }
@@ -207,7 +195,7 @@ TEST_F(PairingManagerTest, TickDoesNothingIfNotActive)
 
 TEST_F(PairingManagerTest, TickDoesNothingIfNotInitialized)
 {
-    PairingManager pm(tx_mgr_, peer_mgr_, codec_);
+    PairingManager pm(tx_mgr_, peer_mgr_);
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
     pm.tick(kT0 + PAIRING_TIMEOUT_MS + 1);
 }
@@ -234,7 +222,6 @@ TEST_F(PairingManagerTest, TickSendsPeriodicRequestAfterInterval)
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     // Expect one periodic send after interval elapses
-    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
 
     sut_->tick(kT0 + PAIRING_PERIODIC_INTERVAL_MS);
@@ -250,9 +237,6 @@ TEST_F(PairingManagerTest, TickDoesNotSendBeforeInterval)
 
 TEST_F(PairingManagerTest, TickUpdatesLastRequestTimeAfterPeriodicSend)
 {
-    // After a periodic send, the next tick just below 2x interval should NOT send again
-    ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault(Return(10));
-
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
     sut_->tick(kT0 + PAIRING_PERIODIC_INTERVAL_MS); // first periodic send
 
@@ -284,7 +268,7 @@ TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotActive)
 
 TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotInitialized)
 {
-    PairingManager pm(tx_mgr_, peer_mgr_, codec_);
+    PairingManager pm(tx_mgr_, peer_mgr_);
     // In actual implementation, it returns early before any logic if not initialized
     auto decoded = make_decoded_pair_response(6);
     pm.handle_response(decoded);
@@ -344,7 +328,7 @@ TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotActive)
 
 TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotInitialized)
 {
-    PairingManager pm(tx_mgr_, peer_mgr_, codec_);
+    PairingManager pm(tx_mgr_, peer_mgr_);
     auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
     pm.handle_request(decoded);
 }
@@ -354,7 +338,6 @@ TEST_F(PairingManagerHubTest, HandleRequestFromNodeAddsPeerAndResponds)
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     EXPECT_CALL(peer_mgr_, add(kNodeId, _, kNodeType, _)).Times(1);
-    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
 
     auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
@@ -369,21 +352,9 @@ TEST_F(PairingManagerHubTest, HandleRequestFromHubIsRejected)
     EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
 
     // Response is still sent (REJECTED_NOT_ALLOWED)
-    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
 
     auto decoded = make_decoded_pair_request(kHubId, kHubType);
-    sut_->handle_request(decoded);
-}
-
-TEST_F(PairingManagerHubTest, HandleRequestEncodeFailureDoesNotQueue)
-{
-    sut_->start(PAIRING_TIMEOUT_MS, kT0);
-
-    EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(0));
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
-
-    auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
     sut_->handle_request(decoded);
 }
 

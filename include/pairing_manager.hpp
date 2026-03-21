@@ -3,13 +3,12 @@
 #include "i_pairing_manager.hpp"
 #include "i_tx_manager.hpp"
 #include "i_peer_manager.hpp"
-#include "i_message_codec.hpp"
 #include "i_hal_freertos.hpp"
 
 class PairingManager : public IPairingManager
 {
 public:
-    PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, IMessageCodec &codec);
+    PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr);
 
     ~PairingManager() = default;
 
@@ -32,7 +31,6 @@ protected:
 private:
     ITxManager &tx_mgr_;
     IPeerManager &peer_mgr_;
-    IMessageCodec &codec_;
 
     NodeType my_type_;
     NodeId my_id_;
