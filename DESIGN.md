@@ -57,7 +57,7 @@ graph TD
 | `PairingManager` | Node registration and channel sync | `MessageRouter` |
 | `PeerManager` | Peer database and MAC-to-Channel mapping | Various Managers |
 | `StorageManager` | High-level data persistence logic | `PeerManager` |
-| `MessageCodec` | Protocol serialization and CRC validation | `TxManager` (Encode), `EspNowManager` (Decode) |
+| `MessageCodec` | Protocol serialization and CRC validation | `TxManager` (Encode), `EspNowManager` (Decode), `DiscoveryManager` (Encode) |
 
 ### EspNowManager (The Facade & RX)
 The orchestrator. It owns all manager instances and ensures they are correctly wired together. Crucially, it now owns the single **`rx_task`**, which handles:
@@ -80,7 +80,7 @@ A pure logic router. It receives fully decoded packets (`DecodedPacket`) from th
 These managers contain the business logic for their respective protocols.
 -   **Input:** `DecodedPacket` (from Router).
 -   **Output:** `DecodedTxPacket` (queued to `TxManager`).
--   They no longer depend on `IMessageCodec` directly, decoupling them from wire format details.
+-   They generally do not depend on `IMessageCodec` directly, with the notable exception of `DiscoveryManager` which needs it for its synchronous scan loop.
 
 ---
 
@@ -158,7 +158,7 @@ sequenceDiagram
 ### DiscoveryManager Scan Exception
 **Decision:** `DiscoveryManager::scan()` calls `hal_esp_now_send` directly, bypassing the `TxManager` queue.
 -   **Reason:** Scanning is a synchronous, blocking operation driven by the `TxManager` state machine (`SCANNING` state). Queueing a probe packet back to `TxManager` while `TxManager` is waiting for the scan to complete would cause a deadlock.
--   **Trade-off:** Accepted deviation for the specific "Scan and Wait" pattern.
+-   **Trade-off:** Accepted deviation for the specific "Scan and Wait" pattern. Consequently, `DiscoveryManager` retains a dependency on `IMessageCodec` to encode these probe packets locally.
 
 ---
 
