@@ -66,7 +66,7 @@ public:
     esp_err_t init(const EspNowConfig &config) override;
 
     /** @copydoc IEspNowManager::deinit */
-    esp_err_t deinit() override;
+    void deinit() override;
 
     // ========================================
     // Data Communication
@@ -173,8 +173,8 @@ protected:
 
     // Init helpers
     esp_err_t create_mutex();
-    esp_err_t create_queues();
-    esp_err_t create_tasks();
+    esp_err_t create_queue();
+    esp_err_t create_task();
     esp_err_t init_tx_manager();
     esp_err_t init_discovery_manager();
     esp_err_t init_heartbeat_manager();
@@ -190,7 +190,6 @@ protected:
     // Task functions
     static void rx_task(void *arg);
 
-    bool is_protocol_message(MessageType type);
     void handle_notifications(uint32_t notifications, bool &should_stop);
     static AppMessage build_app_message(const DecodedPacket &decoded);
 

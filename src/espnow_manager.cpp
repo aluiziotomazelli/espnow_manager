@@ -136,12 +136,12 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
         return init_fail(ret, "mutex");
     }
 
-    ret = create_queues();
+    ret = create_queue();
     if (ret != ESP_OK) {
         return init_fail(ret, "queues");
     }
 
-    ret = create_tasks();
+    ret = create_task();
     if (ret != ESP_OK) {
         return init_fail(ret, "tasks");
     }
@@ -181,7 +181,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     return ret;
 }
 
-esp_err_t EspNowManager::deinit()
+void EspNowManager::deinit()
 {
     ESP_LOGI(TAG, "Deinitializing EspNowManager...");
 
@@ -224,7 +224,6 @@ esp_err_t EspNowManager::deinit()
     transition_to_state(NodeState::UNINITIALIZED);
 
     ESP_LOGI(TAG, "EspNow component deinitialized.");
-    return ESP_OK;
 }
 
 esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
@@ -521,22 +520,6 @@ void EspNowManager::transition_to_state(NodeState new_state)
     node_state_.store(new_state);
 }
 
-bool EspNowManager::is_protocol_message(MessageType type)
-{
-    switch (type) {
-    case MessageType::PAIR_REQUEST:
-    case MessageType::PAIR_RESPONSE:
-    case MessageType::HEARTBEAT:
-    case MessageType::HEARTBEAT_RESPONSE:
-    case MessageType::ACK:
-    case MessageType::CHANNEL_SCAN_PROBE:
-    case MessageType::CHANNEL_SCAN_RESPONSE:
-        return true;
-    default:
-        return false;
-    }
-}
-
 // Helper to build AppMessage from DecodedPacket
 AppMessage EspNowManager::build_app_message(const DecodedPacket &decoded)
 {
@@ -594,7 +577,7 @@ esp_err_t EspNowManager::create_mutex()
     return ESP_OK;
 }
 
-esp_err_t EspNowManager::create_queues()
+esp_err_t EspNowManager::create_queue()
 {
     rx_queue_handle_ = hal_freertos_->queue_create(config_.rx_queue_length, sizeof(RxPacket));
     if (rx_queue_handle_ == nullptr) {
@@ -604,7 +587,7 @@ esp_err_t EspNowManager::create_queues()
     return ESP_OK;
 }
 
-esp_err_t EspNowManager::create_tasks()
+esp_err_t EspNowManager::create_task()
 {
     BaseType_t ret;
     ret = hal_freertos_->task_create(

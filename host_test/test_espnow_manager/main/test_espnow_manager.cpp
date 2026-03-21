@@ -423,7 +423,7 @@ TEST_F(EspNowManagerTest, DeinitDoesNotCleanResourcesWhenNotInitialized)
     EXPECT_CALL(*hal_freertos_, semaphore_delete(_)).Times(0);
     EXPECT_CALL(*hal_wifi_, hal_esp_now_del_peer(_)).Times(0);
 
-    EXPECT_EQ(sut_->deinit(), ESP_OK);
+    sut_->deinit();
 }
 
 TEST_F(EspNowManagerTest, DeinitDoesNotDeleteNullTaskHandles)

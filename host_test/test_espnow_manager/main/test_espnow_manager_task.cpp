@@ -67,7 +67,7 @@ public:
 // Fixture
 //
 // RealFreeRTOSHAL is injected so EspNowManager::init() creates real tasks,
-// queues and mutex via create_tasks(), create_queues(), create_mutex().
+// queues and mutex via create_task(), create_queue(), create_mutex().
 // All other dependencies remain mocked.
 //
 // TearDown calls deinit() which signals tasks to stop and waits up to 1s

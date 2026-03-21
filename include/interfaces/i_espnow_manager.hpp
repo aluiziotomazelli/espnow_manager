@@ -60,11 +60,10 @@ public:
      *
      * Stops all background tasks, releases memory, and deinitializes the ESP-NOW driver.
      *
-     * @return ESP_OK on success.
      *
      * @note Idempotent if is already deinitialized.
      */
-    virtual esp_err_t deinit() = 0;
+    virtual void deinit() = 0;
 
     // ========================================
     // Data Communication
