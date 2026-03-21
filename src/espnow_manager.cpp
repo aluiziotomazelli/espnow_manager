@@ -383,34 +383,17 @@ void EspNowManager::rx_task(void *arg)
 
     RxPacket packet{};
     DecodedPacket decoded{};
+    bool should_stop = false;
+    uint32_t notifications = 0;
 
     while (true) {
-        uint32_t notifications = 0;
-
         // Check for pending notifications without blocking (timeout = 0). We prioritize packet reception below
         // notifications are checked every ~100 ms as a side effect of the queue_receive timeout.
         if (self->hal_freertos_->task_notify_wait(0, 0xFFFFFFFF, &notifications, 0) == pdTRUE) {
-            // Entered scanning state — TxManager is actively searching for the HUB.
-            if ((notifications & NOTIFY_SCANNING) == NOTIFY_SCANNING) {
-                self->transition_to_state(NodeState::SCANNING);
-            }
-            // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb()
-            if ((notifications & NOTIFY_CHANNEL_FOUND) == NOTIFY_CHANNEL_FOUND) {
-                uint8_t channel = self->last_found_channel_.load();
-                self->config_.wifi_channel = channel;
-                self->propagate_channel();
-                self->peer_manager_->persist();
-                // Channel confirmed now safe to start pairing if NodeState::PAIRING
-                if (self->node_state_.load() == NodeState::PAIRING)
-                    self->pairing_manager_->start(self->pairing_timeout_ms_, self->get_time_ms());
-                self->transition_to_state(NodeState::OPERATIONAL);
-            }
-            // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb()
-            if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
-                self->transition_to_state(NodeState::PAIRING);
-            }
-            // If NOTIFY_STOP is set, we break the loop and exit the task.
-            if (notifications & NOTIFY_STOP) {
+            // Verify notifications and if should stop
+            self->handle_notifications(notifications, should_stop);
+            // If should_stop is true, we break from loop to cleanup the task at the end
+            if (should_stop) {
                 break;
             }
         }
@@ -425,7 +408,8 @@ void EspNowManager::rx_task(void *arg)
                     decoded = {packet, header_opt.value()};
 
                     // Application-level packets — deliver directly to app queue
-                    if (decoded.header.msg_type == MessageType::DATA || decoded.header.msg_type == MessageType::COMMAND) {
+                    if (decoded.header.msg_type == MessageType::DATA ||
+                        decoded.header.msg_type == MessageType::COMMAND) {
                         if (decoded.header.requires_ack) {
                             if (self->hal_freertos_->semaphore_take(self->ack_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
                                 self->last_header_requiring_ack_ = decoded.header;
@@ -571,6 +555,37 @@ AppMessage EspNowManager::build_app_message(const DecodedPacket &decoded)
     return msg;
 }
 
+// Helper to handle task notifications
+void EspNowManager::handle_notifications(uint32_t notifications, bool &should_stop)
+{
+    // Multiple notification bits can arrive simultaneously and must all be
+    // processed. else-if would silently drop bits after the first match.
+
+    // Entered scanning state — TxManager is actively searching for the HUB.
+    if ((notifications & NOTIFY_SCANNING) == NOTIFY_SCANNING) {
+        transition_to_state(NodeState::SCANNING);
+    }
+    // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb()
+    if ((notifications & NOTIFY_CHANNEL_FOUND) == NOTIFY_CHANNEL_FOUND) {
+        uint8_t channel = last_found_channel_.load();
+        config_.wifi_channel = channel;
+        propagate_channel();
+        peer_manager_->persist();
+        // Channel confirmed now safe to start pairing if NodeState::PAIRING
+        if (node_state_.load() == NodeState::PAIRING)
+            pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
+        transition_to_state(NodeState::OPERATIONAL);
+    }
+    // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb()
+    if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
+        transition_to_state(NodeState::PAIRING);
+    }
+    // If NOTIFY_STOP is set, perform a task cleanup
+    if (notifications & NOTIFY_STOP) {
+        should_stop = true;
+    }
+}
+
 // ==================================================================
 // Init helpers
 // ==================================================================
@@ -598,12 +613,7 @@ esp_err_t EspNowManager::create_tasks()
 {
     BaseType_t ret;
     ret = hal_freertos_->task_create(
-        rx_task,
-        "rx_task",
-        config_.stack_size_rx_dispatch,
-        this,
-        config_.priority_rx_dispatch,
-        &rx_task_handle_);
+        rx_task, "rx_task", config_.stack_size_rx_dispatch, this, config_.priority_rx_dispatch, &rx_task_handle_);
 
     if (ret != pdPASS) {
         return ESP_FAIL;

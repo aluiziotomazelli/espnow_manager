@@ -201,6 +201,7 @@ protected:
     static void rx_task(void *arg);
 
     bool is_protocol_message(MessageType type);
+    void handle_notifications(uint32_t notifications, bool &should_stop);
     static AppMessage build_app_message(const DecodedPacket &decoded);
 
     // Static ESP-NOW callbacks (ISR context)
