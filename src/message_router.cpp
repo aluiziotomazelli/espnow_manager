@@ -50,7 +50,7 @@ void MessageRouter::handle_packet(const DecodedPacket &decoded)
                 TAG, "Malformed HEARTBEAT_RESPONSE: len %d < %d", (int)decoded.raw.len, (int)sizeof(HeartbeatResponse));
             return;
         }
-        // MessageRouter just passes header.sender_node_id, resp->wifi_channel is ignored
+        // TODO: delete this entire case after target tests
         heartbeat_manager_.handle_response();
         break;
     }
