@@ -178,7 +178,7 @@ TEST_F(MessageRouterTest, UnknownMessageTypeDoesNotCallAnyManager)
     EXPECT_CALL(discovery_manager, handle_probe(_)).Times(0);
     EXPECT_CALL(tx_manager, notify_logical_ack()).Times(0);
     EXPECT_CALL(heartbeat_manager, handle_request(_)).Times(0);
-    EXPECT_CALL(heartbeat_manager, handle_response(_)).Times(0);
+    EXPECT_CALL(heartbeat_manager, handle_response()).Times(0);
     EXPECT_CALL(pairing_manager, handle_request(_)).Times(0);
     EXPECT_CALL(pairing_manager, handle_response(_)).Times(0);
     router.handle_packet(packet);

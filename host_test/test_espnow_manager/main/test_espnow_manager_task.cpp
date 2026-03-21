@@ -128,7 +128,7 @@ protected:
         // submódule inits succeed by default
         ON_CALL(*tx_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*scanner_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*heartbeat_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
+        // ON_CALL(*heartbeat_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(nullptr));
 

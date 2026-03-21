@@ -183,7 +183,6 @@ protected:
         ON_CALL(*tx_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(fake_rx_task));
         ON_CALL(*scanner_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*heartbeat_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
 
         // hal_freertos: semaphore used by confirm_reception ack_mutex_
@@ -376,19 +375,6 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfDiscoveryManagerInitFails)
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
 
-TEST_F(EspNowManagerTest, InitCallsHeartbeatManagerInit)
-{
-    EXPECT_CALL(*heartbeat_mgr_, init(_, _)).WillOnce(Return(ESP_OK));
-    sut_->init(make_valid_config());
-}
-
-TEST_F(EspNowManagerTest, InitReturnsFailIfHeartbeatManagerInitFails)
-{
-    ON_CALL(*heartbeat_mgr_, init(_, _)).WillByDefault(Return(ESP_FAIL));
-    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
-    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
-}
-
 TEST_F(EspNowManagerTest, InitCallsPairingManagerInit)
 {
     EXPECT_CALL(*pairing_mgr_, init(_, _)).WillOnce(Return(ESP_OK));
@@ -422,15 +408,8 @@ TEST_F(EspNowManagerTest, InitPropagatesCorrectIntervalAndTypeToHeartbeatManager
     cfg.heartbeat_interval_ms = 5000;
 
     // heartbeat_manager::init(interval_ms, node_type) — order matters
-    EXPECT_CALL(*heartbeat_mgr_, init(cfg.heartbeat_interval_ms, kNodeType)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*heartbeat_mgr_, init(kNodeId, kNodeType, cfg.heartbeat_interval_ms)).Times(1);
     sut_->init(cfg);
-}
-
-TEST_F(EspNowManagerTest, InitCallsHeartbeatManagerUpdateNodeId)
-{
-    // update_node_id() is called after init() succeeds — must carry kNodeId
-    EXPECT_CALL(*heartbeat_mgr_, update_node_id(kNodeId)).Times(1);
-    sut_->init(make_valid_config());
 }
 
 // ===========================================================================
@@ -470,7 +449,6 @@ TEST_F(EspNowManagerTest, DeinitCallsAllDeleteFunctions)
     init_operational_sut();
 
     EXPECT_CALL(*tx_mgr_, deinit()).Times(1);
-    EXPECT_CALL(*heartbeat_mgr_, deinit()).Times(1);
     EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(1);
     EXPECT_CALL(*hal_freertos_, queue_delete(_)).Times(1);
     EXPECT_CALL(*hal_freertos_, semaphore_delete(_)).Times(1);
@@ -500,13 +478,6 @@ TEST_F(EspNowManagerTest, DeinitCallsTxManagerDeinit)
 {
     init_sut();
     EXPECT_CALL(*tx_mgr_, deinit()).WillOnce(Return(ESP_OK));
-    sut_->deinit();
-}
-
-TEST_F(EspNowManagerTest, DeinitCallsHeartbeatManagerDeinit)
-{
-    init_sut();
-    EXPECT_CALL(*heartbeat_mgr_, deinit()).WillOnce(Return(ESP_OK));
     sut_->deinit();
 }
 
@@ -556,7 +527,7 @@ TEST_F(EspNowManagerTest, SendToExistentPeerCallsQueuePacket)
 {
     init_operational_sut();
 
-    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));   // Peer is found, find_mac returns true
+    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true)); // Peer is found, find_mac returns true
 
     EXPECT_CALL(*tx_mgr_, queue_packet(_)).Times(2).WillRepeatedly(Return(ESP_OK)); // Queue packet
     EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, nullptr, 0), ESP_OK);
@@ -567,7 +538,7 @@ TEST_F(EspNowManagerTest, FailureToQueuePacketReturnsFail)
 {
     init_operational_sut();
 
-    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));   // Peer is found, find_mac returns true
+    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true)); // Peer is found, find_mac returns true
 
     EXPECT_CALL(*tx_mgr_, queue_packet(_)).Times(2).WillRepeatedly(Return(ESP_FAIL)); // Fail to queue packet
     EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, nullptr, 0), ESP_FAIL);
@@ -641,9 +612,9 @@ TEST_F(EspNowManagerTest, ConfirmReceptionSuccess)
     header.sequence_number = 42;
     sut_->set_last_header(header);
 
-    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));   // Peer is found, find_mac returns true
-    ON_CALL(*tx_mgr_, queue_packet(_)).WillByDefault(Return(ESP_OK));  // No failure in queueing packet
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_OK);            // Return ok
+    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));  // Peer is found, find_mac returns true
+    ON_CALL(*tx_mgr_, queue_packet(_)).WillByDefault(Return(ESP_OK)); // No failure in queueing packet
+    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_OK);           // Return ok
 }
 
 // ===========================================================================
