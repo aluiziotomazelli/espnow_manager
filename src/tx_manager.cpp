@@ -40,7 +40,7 @@ void TxManager::ack_timeout_callback(TimerHandle_t xTimer)
 
 esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
 {
-    tx_queue_ = freertos_hal_.queue_create(20, sizeof(TxPacket));
+    tx_queue_ = freertos_hal_.queue_create(20, sizeof(DecodedTxPacket));
     if (tx_queue_ == nullptr) {
         return ESP_ERR_NO_MEM;
     }
@@ -74,8 +74,8 @@ esp_err_t TxManager::deinit()
         // Notify task to stop
         freertos_hal_.task_notify(task_handle_, NOTIFY_STOP, eSetBits);
 
-        // Send packet to weakup task
-        TxPacket stop_packet = {};
+        // Send dummy packet to wakeup task
+        DecodedTxPacket stop_packet = {};
         if (tx_queue_ != nullptr) {
             freertos_hal_.queue_send(tx_queue_, &stop_packet, 0);
         }
@@ -112,7 +112,7 @@ esp_err_t TxManager::deinit()
     return ESP_OK;
 }
 
-esp_err_t TxManager::queue_packet(const TxPacket &packet)
+esp_err_t TxManager::queue_packet(const DecodedTxPacket &packet)
 {
     if (tx_queue_ == nullptr) {
         return ESP_ERR_INVALID_STATE;
@@ -213,7 +213,8 @@ void TxManager::handle_notifications(uint32_t notifications)
 
 void TxManager::run()
 {
-    TxPacket packet_to_send;
+    DecodedTxPacket structured_packet;
+    TxPacket raw_packet;
     ESP_LOGI(TAG, "TX Manager task started.");
 
     while (true) {
@@ -223,26 +224,37 @@ void TxManager::run()
         switch (current_state) {
         case TxState::IDLE:
         {
-            if (freertos_hal_.queue_receive(tx_queue_, &packet_to_send, 0) == pdTRUE) {
-                // Update sequence number
-                MessageHeader *header = reinterpret_cast<MessageHeader *>(packet_to_send.data);
-                header->sequence_number = sequence_counter_++;
-                // Update CRC
-                packet_to_send.data[packet_to_send.len - CRC_SIZE] =
-                    codec_.calculate_crc(packet_to_send.data, packet_to_send.len - CRC_SIZE);
+            if (freertos_hal_.queue_receive(tx_queue_, &structured_packet, 0) == pdTRUE) {
+                // Update sequence number in header before encoding
+                structured_packet.header.sequence_number = sequence_counter_++;
 
-                esp_err_t send_result =
-                    hal_.hal_esp_now_send(packet_to_send.dest_mac, packet_to_send.data, packet_to_send.len);
+                // Encode the packet into raw wire format
+                raw_packet.len = codec_.encode(
+                    structured_packet.header,
+                    structured_packet.payload,
+                    structured_packet.payload_len,
+                    raw_packet.data,
+                    sizeof(raw_packet.data));
+
+                if (raw_packet.len == 0) {
+                    ESP_LOGE(TAG, "Failed to encode packet");
+                    break;
+                }
+
+                memcpy(raw_packet.dest_mac, structured_packet.dest_mac, 6);
+                raw_packet.requires_ack = structured_packet.header.requires_ack;
+
+                esp_err_t send_result = hal_.hal_esp_now_send(raw_packet.dest_mac, raw_packet.data, raw_packet.len);
 
                 if (send_result == ESP_OK) {
-                    TxState next = fsm_.on_tx_success(packet_to_send.requires_ack);
+                    TxState next = fsm_.on_tx_success(raw_packet.requires_ack);
                     if (next == TxState::WAITING_FOR_ACK) {
                         PendingAck pending = {
-                            .sequence_number = header->sequence_number,
+                            .sequence_number = structured_packet.header.sequence_number,
                             .timestamp_ms = 0,
                             .retries_left = 3,
-                            .packet = packet_to_send,
-                            .node_id = header->dest_node_id};
+                            .packet = raw_packet,
+                            .node_id = structured_packet.header.dest_node_id};
                         fsm_.set_pending_ack(pending);
                         freertos_hal_.timer_start(ack_timeout_timer_, pdMS_TO_TICKS(10));
                     }

@@ -117,10 +117,20 @@ struct PersistentPeer
     bool operator!=(const PersistentPeer &other) const { return !(*this == other); }
 };
 
-// --- FSM and TX Task Structures ---
+/**
+ * @brief Structure for packets that are structured for transmission.
+ * Allows TxManager to handle encoding, sequence numbers, and CRC.
+ */
+struct DecodedTxPacket
+{
+    uint8_t dest_mac[6];               ///< Destination MAC address
+    MessageHeader header;              ///< Header to be encoded
+    uint8_t payload[MAX_PAYLOAD_SIZE]; ///< Raw payload bytes
+    size_t payload_len;                ///< Number of valid bytes in payload
+};
 
 /**
- * @brief Structure for packets queued for transmission.
+ * @brief Structure for packets queued for transmission (wire format).
  */
 struct TxPacket
 {

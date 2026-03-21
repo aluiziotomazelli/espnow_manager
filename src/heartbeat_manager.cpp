@@ -10,13 +10,11 @@ HeartbeatManager::HeartbeatManager(
     NodeId my_id,
     ITxManager &tx_mgr,
     IPeerManager &peer_mgr,
-    IMessageCodec &codec,
     IFreeRTOSHAL &hal_freertos,
     ITimerHAL &hal_timer)
     : my_id_(my_id)
     , tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
-    , codec_(codec)
     , hal_freertos_(hal_freertos)
     , hal_timer_(hal_timer)
 {
@@ -87,61 +85,56 @@ void HeartbeatManager::handle_request(const DecodedPacket &decoded)
         return;
     }
 
-    // We only need the header for now
     uint64_t now_ms = hal_timer_.get_time_us() / 1000;
 
     peer_mgr_.update_last_seen(header.sender_node_id, now_ms);
     ESP_LOGI(TAG, "Heartbeat received from Node ID %d.", (int)header.sender_node_id);
 
-    HeartbeatResponse response;
-    response.header.msg_type = MessageType::HEARTBEAT_RESPONSE;
-    response.header.sender_node_id = my_id_;
-    response.header.sender_type = my_type_;
-    response.header.dest_node_id = header.sender_node_id;
-    response.header.sequence_number = 0;
-    response.server_time_ms = now_ms;
-    response.wifi_channel = current_channel_;
-
-    TxPacket tx_packet;
+    DecodedTxPacket tx_packet;
     memcpy(tx_packet.dest_mac, decoded.raw.src_mac, 6);
-    tx_packet.len = codec_.encode(
-        response.header,
-        &response.server_time_ms,
-        sizeof(HeartbeatResponse) - sizeof(MessageHeader),
-        tx_packet.data,
-        sizeof(tx_packet.data));
-    if (tx_packet.len > 0) {
-        tx_packet.requires_ack = false;
-        tx_mgr_.queue_packet(tx_packet);
-    }
+
+    tx_packet.header.msg_type = MessageType::HEARTBEAT_RESPONSE;
+    tx_packet.header.sender_node_id = my_id_;
+    tx_packet.header.sender_type = my_type_;
+    tx_packet.header.dest_node_id = header.sender_node_id;
+    tx_packet.header.sequence_number = 0;
+    tx_packet.header.requires_ack = false;
+    tx_packet.header.payload_type = 0;
+    tx_packet.header.timestamp_ms = 0;
+
+    // HeartbeatResponse layout: uint64_t server_time_ms (8), uint8_t wifi_channel (1)
+    tx_packet.payload_len = sizeof(HeartbeatResponse) - sizeof(MessageHeader);
+    memcpy(tx_packet.payload, &now_ms, 8);
+    tx_packet.payload[8] = current_channel_;
+
+    tx_mgr_.queue_packet(tx_packet);
 }
 
 void HeartbeatManager::send_heartbeat()
 {
-    TxPacket tx_packet;
+    DecodedTxPacket tx_packet;
     if (!peer_mgr_.find_mac(ReservedIds::HUB, tx_packet.dest_mac)) {
-        const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-        memcpy(tx_packet.dest_mac, broadcast_mac, 6);
+        memcpy(tx_packet.dest_mac, BROADCAST_MAC, 6);
     }
 
-    HeartbeatMessage heartbeat;
-    heartbeat.header.msg_type = MessageType::HEARTBEAT;
-    heartbeat.header.sender_node_id = my_id_;
-    heartbeat.header.sender_type = my_type_;
-    heartbeat.header.dest_node_id = ReservedIds::HUB;
-    heartbeat.header.sequence_number = 0;
-    heartbeat.uptime_ms = hal_timer_.get_time_us() / 1000;
+    tx_packet.header.msg_type = MessageType::HEARTBEAT;
+    tx_packet.header.sender_node_id = my_id_;
+    tx_packet.header.sender_type = my_type_;
+    tx_packet.header.dest_node_id = ReservedIds::HUB;
+    tx_packet.header.sequence_number = 0;
+    tx_packet.header.requires_ack = false;
+    tx_packet.header.payload_type = 0;
+    tx_packet.header.timestamp_ms = 0;
 
-    tx_packet.len = codec_.encode(
-        heartbeat.header,
-        &heartbeat.battery_mv,
-        sizeof(HeartbeatMessage) - sizeof(MessageHeader),
-        tx_packet.data,
-        sizeof(tx_packet.data));
-    if (tx_packet.len > 0) {
-        tx_packet.requires_ack = false;
-        tx_mgr_.queue_packet(tx_packet);
-    }
+    uint64_t uptime = hal_timer_.get_time_us() / 1000;
+
+    // HeartbeatMessage layout: uint16_t battery_mv (2), int8_t rssi (1), uint64_t uptime_ms (8)
+    tx_packet.payload_len = sizeof(HeartbeatMessage) - sizeof(MessageHeader);
+    memset(tx_packet.payload, 0, tx_packet.payload_len);
+    // battery_mv and rssi are 0 for now
+    memcpy(tx_packet.payload + 2 + 1, &uptime, 8);
+
+    tx_mgr_.queue_packet(tx_packet);
 }
 
 void HeartbeatManager::timer_cb(TimerHandle_t xTimer)

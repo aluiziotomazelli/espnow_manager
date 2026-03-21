@@ -26,7 +26,7 @@ public:
     virtual esp_err_t deinit() = 0;
 
     /** @internal */
-    virtual esp_err_t queue_packet(const TxPacket &packet) = 0;
+    virtual esp_err_t queue_packet(const DecodedTxPacket &packet) = 0;
 
     /** @internal */
     virtual void notify_physical_fail() = 0;

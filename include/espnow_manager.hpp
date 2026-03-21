@@ -6,11 +6,6 @@
 
 #include "etl/vector.h"
 
-// #include "freertos/FreeRTOS.h"
-// #include "freertos/queue.h"
-// #include "freertos/semphr.h"
-// #include "freertos/task.h"
-
 #include "i_discovery_manager.hpp"
 #include "i_espnow_manager.hpp"
 #include "i_heartbeat_manager.hpp"
@@ -21,11 +16,9 @@
 #include "i_hal_timer.hpp"
 #include "i_tx_manager.hpp"
 #include "i_tx_state_machine.hpp"
-// #include "i_hal_nvs.hpp"
 #include "i_hal_wifi.hpp"
 #include "i_espnow_driver.hpp"
 #include "i_hal_freertos.hpp"
-// #include "storage_manager.hpp"
 
 // ========================================
 // ESP-NOW Manager Implementation
@@ -133,9 +126,6 @@ public:
     NodeState get_node_state() const override;
 
 protected:
-    // --- Notification Bits ---
-    // static constexpr uint32_t NOTIFY_STOP = 0x100;
-
     // --- Private Members ---
     EspNowConfig config_{};
 
@@ -157,7 +147,7 @@ protected:
     std::optional<MessageHeader> last_header_requiring_ack_{};
 
     SemaphoreHandle_t ack_mutex_ = nullptr;
-    QueueHandle_t rx_queue_handle_ = nullptr;
+    QueueHandle_t rx_dispatch_queue_ = nullptr;
     TaskHandle_t rx_task_handle_ = nullptr;
 
     /** @brief IChannelObserver implementation */

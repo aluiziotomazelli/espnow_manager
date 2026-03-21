@@ -109,23 +109,20 @@ void DiscoveryManager::handle_probe(const DecodedPacket &decoded)
         return;
     }
 
-    TxPacket tx_packet;
+    DecodedTxPacket tx_packet;
     memcpy(tx_packet.dest_mac, decoded.raw.src_mac, 6);
-    MessageHeader resp;
-    resp.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
-    resp.sender_node_id = my_node_id_;
-    resp.sender_type = my_node_type_;
-    resp.dest_node_id = decoded.header.sender_node_id;
-    resp.payload_type = 0;
-    resp.sequence_number = 0;
-    resp.requires_ack = false;
-    resp.timestamp_ms = 0; // Fixed timestamp for control messages if not used
+    
+    tx_packet.header.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
+    tx_packet.header.sender_node_id = my_node_id_;
+    tx_packet.header.sender_type = my_node_type_;
+    tx_packet.header.dest_node_id = decoded.header.sender_node_id;
+    tx_packet.header.payload_type = 0;
+    tx_packet.header.sequence_number = 0;
+    tx_packet.header.requires_ack = false;
+    tx_packet.header.timestamp_ms = 0;
 
-    tx_packet.len = message_codec_.encode(resp, nullptr, 0, tx_packet.data, sizeof(tx_packet.data));
-    if (tx_packet.len == 0)
-        return;
+    tx_packet.payload_len = 0;
 
-    tx_packet.requires_ack = false;
     tx_mgr_->queue_packet(tx_packet);
 }
 

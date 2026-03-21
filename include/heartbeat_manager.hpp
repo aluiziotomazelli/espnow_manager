@@ -1,7 +1,6 @@
 #pragma once
 
 #include "i_heartbeat_manager.hpp"
-#include "i_message_codec.hpp"
 #include "i_peer_manager.hpp"
 #include "i_tx_manager.hpp"
 #include "i_hal_freertos.hpp"
@@ -14,7 +13,6 @@ public:
         NodeId my_id,
         ITxManager &tx_mgr,
         IPeerManager &peer_mgr,
-        IMessageCodec &codec,
         IFreeRTOSHAL &hal_freertos,
         ITimerHAL &hal_timer);
     ~HeartbeatManager();
@@ -39,7 +37,6 @@ private:
 
     ITxManager &tx_mgr_;
     IPeerManager &peer_mgr_;
-    IMessageCodec &codec_;
     IFreeRTOSHAL &hal_freertos_;
     ITimerHAL &hal_timer_;
 

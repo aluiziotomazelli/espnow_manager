@@ -1,13 +1,6 @@
 // include/tx_manager.hpp
 #pragma once
 
-// #include <memory>
-
-// #include "freertos/FreeRTOS.h"
-// #include "freertos/queue.h"
-// #include "freertos/task.h"
-// #include "freertos/timers.h"
-
 #include "i_discovery_manager.hpp"
 #include "i_hal_wifi.hpp"
 #include "i_hal_freertos.hpp"
@@ -31,7 +24,7 @@ public:
     esp_err_t init(uint32_t stack_size, UBaseType_t priority) override;
     esp_err_t deinit() override;
 
-    esp_err_t queue_packet(const TxPacket &packet) override;
+    esp_err_t queue_packet(const DecodedTxPacket &packet) override;
 
     // Notifications from outside (ISRs or other tasks)
     void notify_physical_fail() override;
