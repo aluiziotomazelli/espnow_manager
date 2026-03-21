@@ -147,7 +147,7 @@ protected:
     std::optional<MessageHeader> last_header_requiring_ack_{};
 
     SemaphoreHandle_t ack_mutex_ = nullptr;
-    QueueHandle_t rx_dispatch_queue_ = nullptr;
+    QueueHandle_t rx_queue_handle_ = nullptr;
     TaskHandle_t rx_task_handle_ = nullptr;
 
     /** @brief IChannelObserver implementation */
@@ -183,8 +183,8 @@ protected:
     void add_peers_to_espnow(etl::ivector<PeerInfo> &peers);
     esp_err_t init_fail(esp_err_t ret, const char *step);
 
-    void signal_tasks_to_stop();
-    void delete_tasks();
+    void signal_task_to_stop();
+    void delete_task();
     void cleanup_resources();
 
     // Task functions

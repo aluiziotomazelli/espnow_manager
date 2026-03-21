@@ -21,9 +21,6 @@ MessageRouter::MessageRouter(
 
 void MessageRouter::handle_packet(const DecodedPacket &decoded)
 {
-    // TODO: update last seen here or on manager rx_dispatch_task
-    tx_manager_.notify_link_alive();
-
     switch (decoded.header.msg_type) {
     case MessageType::PAIR_REQUEST:
         if (decoded.raw.len < sizeof(PairRequest)) {
@@ -40,6 +37,10 @@ void MessageRouter::handle_packet(const DecodedPacket &decoded)
         pairing_manager_.handle_response(decoded);
         break;
     case MessageType::HEARTBEAT:
+        if (decoded.raw.len < sizeof(HeartbeatMessage)) {
+            ESP_LOGW(TAG, "Malformed HEARTBEAT: len %d < %d", (int)decoded.raw.len, (int)sizeof(HeartbeatMessage));
+            return;
+        }
         heartbeat_manager_.handle_request(decoded);
         break;
     case MessageType::HEARTBEAT_RESPONSE:
@@ -54,17 +55,21 @@ void MessageRouter::handle_packet(const DecodedPacket &decoded)
         break;
     }
     case MessageType::ACK:
+        if (decoded.raw.len < sizeof(AckMessage)) {
+            ESP_LOGW(TAG, "Malformed ACK: len %d < %d", (int)decoded.raw.len, (int)sizeof(AckMessage));
+            return;
+        }
         tx_manager_.notify_logical_ack();
         break;
     case MessageType::CHANNEL_SCAN_PROBE:
+        if (decoded.raw.len < sizeof(MessageHeader)) {
+            ESP_LOGW(
+                TAG, "Malformed CHANNEL_SCAN_PROBE: len %d < %d", (int)decoded.raw.len, (int)sizeof(MessageHeader));
+            return;
+        }
         discovery_manager_.handle_probe(decoded);
         break;
-    case MessageType::CHANNEL_SCAN_RESPONSE:
-    {
-        // Hub found response, notify link alive to resume TX
-        tx_manager_.notify_link_alive();
-        break;
-    }
+
     default:
         break;
     }
