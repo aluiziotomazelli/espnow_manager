@@ -242,19 +242,6 @@ TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfNotHub)
     scanner->handle_probe(decoded);
 }
 
-TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfEncodeFails)
-{
-    // Setup scanner as Hub
-    scanner->init(MY_ID, ReservedTypes::HUB, &tx_manager, nullptr);
-
-    DecodedPacket decoded = make_decoded_probe_packet(5, 0x02);
-
-    EXPECT_CALL(codec, encode(_, _, _, _, _)).WillOnce(Return(0));
-    EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
-
-    scanner->handle_probe(decoded);
-}
-
 TEST_F(DiscoveryManagerTest, HandleProbeSendsResponseIfHub)
 {
     // Setup scanner as Hub
@@ -262,16 +249,15 @@ TEST_F(DiscoveryManagerTest, HandleProbeSendsResponseIfHub)
 
     DecodedPacket decoded = make_decoded_probe_packet(5, 0x02);
 
-    // Send a valid header to trigger response
-    MessageHeader captured_header;
-
-    EXPECT_CALL(codec, encode(_, _, _, _, _)).WillOnce(DoAll(testing::SaveArg<0>(&captured_header), Return(2)));
-    EXPECT_CALL(tx_manager, queue_packet(_)).Times(1); // Must be called to send response
+    DecodedTxPacket captured_packet;
+    EXPECT_CALL(tx_manager, queue_packet(_))
+        .Times(1)
+        .WillOnce(DoAll(testing::SaveArg<0>(&captured_packet), Return(ESP_OK)));
 
     scanner->handle_probe(decoded);
 
-    EXPECT_EQ(captured_header.msg_type, MessageType::CHANNEL_SCAN_RESPONSE);
-    EXPECT_EQ(captured_header.dest_node_id, 5);
+    EXPECT_EQ(captured_packet.header.msg_type, MessageType::CHANNEL_SCAN_RESPONSE);
+    EXPECT_EQ(captured_packet.header.dest_node_id, 5);
 }
 
 TEST_F(DiscoveryManagerTest, ScanFailsIfNotInitialized)
