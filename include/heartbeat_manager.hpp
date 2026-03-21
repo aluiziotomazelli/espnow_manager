@@ -9,25 +9,18 @@
 class HeartbeatManager : public IHeartbeatManager
 {
 public:
-    HeartbeatManager(
-        NodeId my_id,
-        ITxManager &tx_mgr,
-        IPeerManager &peer_mgr,
-        IFreeRTOSHAL &hal_freertos,
-        ITimerHAL &hal_timer);
-    ~HeartbeatManager();
+    HeartbeatManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, ITimerHAL &hal_timer);
+    ~HeartbeatManager() = default;
 
     using IHeartbeatManager::handle_request;
     using IHeartbeatManager::handle_response;
     using IHeartbeatManager::init;
-    using IHeartbeatManager::update_node_id;
 
-    esp_err_t init(uint32_t interval_ms, NodeType type) override;
-    void update_node_id(NodeId id) override;
-    void set_channel(uint8_t channel) override;
-    void handle_response(NodeId hub_id) override;
+    void init(NodeId id, NodeType type, uint32_t interval_ms) override;
+    void tick(uint64_t now_ms) override;
+    void set_interval_ms(uint32_t heartbeat_interval_ms) override;
+    void handle_response() override;
     void handle_request(const DecodedPacket &decoded) override;
-    esp_err_t deinit() override;
 
 protected:
     void send_heartbeat();
@@ -37,13 +30,11 @@ private:
 
     ITxManager &tx_mgr_;
     IPeerManager &peer_mgr_;
-    IFreeRTOSHAL &hal_freertos_;
     ITimerHAL &hal_timer_;
 
     NodeType my_type_;
     uint32_t interval_ms_;
-    uint8_t current_channel_ = 1;
-    TimerHandle_t timer_ = nullptr;
 
-    static void timer_cb(TimerHandle_t xTimer);
+    bool is_initialized_ = false;
+    uint64_t last_heartbeat_ms_ = 0;
 };

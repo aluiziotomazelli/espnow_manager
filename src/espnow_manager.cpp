@@ -45,8 +45,7 @@ EspNowManager &EspNowManager::instance()
     static auto tx_fsm = std::make_unique<TxStateMachine>();
     static auto tx_manager =
         std::make_unique<TxManager>(*tx_fsm, *scanner, *hal_wifi, *hal_freertos, *message_codec, 500);
-    static auto heartbeat_mgr =
-        std::make_unique<HeartbeatManager>(ReservedIds::HUB, *tx_manager, *peer_manager, *hal_freertos, *hal_timer);
+    static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *hal_timer);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager);
     static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
 
@@ -190,7 +189,7 @@ esp_err_t EspNowManager::deinit()
         tx_manager_->deinit();
     }
     if (heartbeat_manager_ != nullptr) {
-        heartbeat_manager_->deinit();
+        // heartbeat_manager_->deinit();
     }
 
     if (rx_task_handle_ != nullptr) {
@@ -432,6 +431,9 @@ void EspNowManager::rx_task(void *arg)
         if (self->node_state_.load() == NodeState::PAIRING) {
             self->pairing_manager_->tick(self->get_time_ms());
         }
+        else if (self->node_state_.load() == NodeState::OPERATIONAL) {
+            self->heartbeat_manager_->tick(self->get_time_ms());
+        }
     }
 
     // Task cleanup on exit
@@ -508,7 +510,6 @@ uint64_t EspNowManager::get_time_ms() const
 
 void EspNowManager::propagate_channel()
 {
-    heartbeat_manager_->set_channel(config_.wifi_channel);
     pairing_manager_->set_channel(config_.wifi_channel);
     scanner_->set_channel(config_.wifi_channel);
     peer_manager_->set_channel(config_.wifi_channel);
@@ -644,11 +645,8 @@ esp_err_t EspNowManager::init_heartbeat_manager()
     if (heartbeat_manager_ == nullptr) {
         return ESP_FAIL;
     }
-    esp_err_t ret = heartbeat_manager_->init(config_.heartbeat_interval_ms, config_.node_type);
-    if (ret == ESP_OK) {
-        heartbeat_manager_->update_node_id(config_.node_id);
-    }
-    return ret;
+    heartbeat_manager_->init(config_.node_id, config_.node_type, config_.heartbeat_interval_ms);
+    return ESP_OK;
 }
 
 esp_err_t EspNowManager::init_pairing_manager()

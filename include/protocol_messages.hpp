@@ -76,8 +76,6 @@ struct HeartbeatResponse
 {
     MessageHeader header;    /**< Universal message header */
     uint64_t server_time_ms; /**< Current Unix epoch or relative server time in milliseconds */
-    // TODO: verify if channel is still necessary
-    uint8_t wifi_channel; /**< Current WiFi channel of the Hub (for channel synchronization) */
 };
 
 // ========== APPLICATION LAYER ==========

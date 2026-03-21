@@ -51,7 +51,7 @@ void MessageRouter::handle_packet(const DecodedPacket &decoded)
             return;
         }
         // MessageRouter just passes header.sender_node_id, resp->wifi_channel is ignored
-        heartbeat_manager_.handle_response(decoded.header.sender_node_id);
+        heartbeat_manager_.handle_response();
         break;
     }
     case MessageType::ACK:
