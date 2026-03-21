@@ -6,15 +6,15 @@ This document explains the internal architecture, component responsibilities, me
 
 ## 1. Architecture Overview
 
-The `espnow_manager` component follows a **Facade + Decentralized Managers** pattern. `EspNowManager` serves as the public entry point, while logic is distributed among specialized managers that adhere to the Single Responsibility Principle (SRP).
+The `espnow_manager` component follows a **Facade + Decentralized Managers** pattern. `EspNowManager` serves as the public entry point and orchestrates specialized managers. The architecture has evolved to centralize transmission logic and structured data handling.
 
 ```mermaid
 graph TD
-    App["Application"] --> EM["EspNowManager\n(Facade)"]
+    App["Application"] --> EM["EspNowManager\n(Facade / RxTask)"]
 
-    EM --> BS["EspNowDriver\n(Init / Task Creation)"]
-    EM --> MR["MessageRouter\n(Control Dispatch)"]
-    EM --> TM["TxManager\n(Transmission + FSM)"]
+    EM --> BS["EspNowDriver\n(Init / Callbacks)"]
+    EM --> MR["MessageRouter\n(Protocol Dispatch)"]
+    EM --> TM["TxManager\n(Transmission + Encoding + FSM)"]
     EM --> PM["PeerManager\n(Peer List / Channel Tracking)"]
     EM --> SM["StorageManager\n(RTC + NVS Persistence)"]
 
@@ -23,9 +23,22 @@ graph TD
     MR --> PR["PairingManager\n(Registration)"]
 
     TM --> TS["TxStateMachine\n(SCANNING / READY)"]
-    TM --> MR
     
     DM -.->|IChannelObserver| TM
+    
+    subgraph "Data Flow"
+        RX[("RX Task")] -->|DecodedPacket| MR
+        MR -->|DecodedPacket| DM
+        MR -->|DecodedPacket| HM
+        MR -->|DecodedPacket| PR
+        
+        DM -->|DecodedTxPacket| TM
+        HM -->|DecodedTxPacket| TM
+        PR -->|DecodedTxPacket| TM
+        EM -->|DecodedTxPacket| TM
+        
+        TM -->|TxPacket (Encoded)| BS
+    end
 ```
 
 ---
@@ -34,94 +47,130 @@ graph TD
 
 | Component | Role | Driven By |
 |---|---|---|
-| `EspNowManager` | Public API, Singleton Orchestrator | Application |
-| `EspNowDriver` | ESP-NOW init, Task & Queue creation | `EspNowManager` |
-| `MessageRouter` | Pure delegator for control messages | `rx_dispatch_task` |
-| `TxManager` | Packet queueing and retry logic | `transport_worker_task` |
+| `EspNowManager` | Public API, Singleton Orchestrator, **RX Task Owner** | Application |
+| `EspNowDriver` | ESP-NOW init, ESP-IDF callback registration | `EspNowManager` |
+| `MessageRouter` | Dispatches `DecodedPacket` to specific managers | `rx_task` |
+| `TxManager` | **Centralized Encoding**, Packet queueing, retry logic, FSM | `tx_task` |
 | `TxStateMachine` | Manages transmission states (READY / SCANNING) | `TxManager` |
 | `DiscoveryManager` | Multi-channel probing and channel discovery | `MessageRouter` |
 | `HeartbeatManager` | Link monitoring and offline detection | `MessageRouter` |
 | `PairingManager` | Node registration and channel sync | `MessageRouter` |
 | `PeerManager` | Peer database and MAC-to-Channel mapping | Various Managers |
 | `StorageManager` | High-level data persistence logic | `PeerManager` |
-| `RtcBackend` | RTC memory persistence (Deep Sleep survivors) | `StorageManager` |
-| `NvsBackend` | NVS flash persistence (Long-term storage) | `StorageManager` |
-| `MessageCodec` | Protocol serialization and CRC validation | `MessageRouter`, `TxManager` |
+| `MessageCodec` | Protocol serialization and CRC validation | `TxManager` (Encode), `EspNowManager` (Decode) |
 
----
+### EspNowManager (The Facade & RX)
+The orchestrator. It owns all manager instances and ensures they are correctly wired together. Crucially, it now owns the single **`rx_task`**, which handles:
+1.  Receiving raw packets from the ISR queue.
+2.  Validating CRC and decoding headers.
+3.  Delivering application data directly to the user queue (`AppMessage`).
+4.  Delegating protocol messages to `MessageRouter` via `DecodedPacket`.
 
-## 3. High-Level Logic
-
-### EspNowManager (The Facade)
-The orchestrator. It owns all manager instances and ensures they are correctly wired together (Dependency Injection). It propagates system-wide events, such as WiFi channel updates, to all sub-components.
-
-### EspNowDriver
-Encapsulates the complexity of ESP-NOW initialization, callback registration, and FreeRTOS resource allocation (Queues, Tasks, Mutexes). It abstracts the low-level lifecycle from the business logic.
+### TxManager (The Transmitter)
+The core of outbound reliability. It now strictly owns the **Encoding** responsibility.
+-   **Input:** `DecodedTxPacket` (Structured data: header + payload + destination).
+-   **Process:** Encodes structure to wire format (`TxPacket`), calculates CRC, assigns sequence numbers.
+-   **Output:** Calls `hal_esp_now_send`.
+-   **Logic:** Handles retries, ACK timeouts, and triggers the `DiscoveryManager` when the link is lost (`SCANNING` state).
 
 ### MessageRouter
-Acts as the central dispatcher for control messages. It avoids redundant decoding by passing a pre-decoded `MessageHeader` to specialized managers (`DiscoveryManager`, `HeartbeatManager`, `PairingManager`). It is stateless and does not create packets.
+A pure logic router. It receives fully decoded packets (`DecodedPacket`) from the `rx_task` and dispatches them to the appropriate manager (`Pairing`, `Heartbeat`, `Discovery`) based on `MessageType`. It is stateless and does not decode data.
 
-### TxManager & TxStateMachine
-The core of the transmission reliability. When a packet fails to reach its destination (No ACK), the `TxStateMachine` transitions to `SCANNING`. In this state, the `DiscoveryManager` is triggered to find the peer's current channel. Once discovered, the `TxManager` updates the peer information and resumes transmission.
-
-### DiscoveryManager
-Specializes in finding peers on different WiFi channels. It sends `PROBE_REQUEST` packets and listens for `PROBE_RESPONSE`. It implements an observer pattern to notify the `TxManager` when a peer is found on a new channel.
-
-### HeartbeatManager
-Maintains the "alive" status of nodes. It periodically sends `HEARTBEAT_REQUEST` and expects `HEARTBEAT_RESPONSE`. It uses an internal timer and a configurable interval to track and report offline nodes to the upper layers.
-
-### PairingManager
-Handles the initial link between a HUB and a SENSOR. It negotiates node IDs and synchronizes the initial WiFi channel. It uses the `IPersistenceBackend` to ensure paired information is available immediately after a reboot.
-
-### PeerManager & Storage
-Manages the list of known nodes. It decouples the "where to store" (Backends) from the "when to store" (Manager). It uses `RTC_DATA_ATTR` via `RtcBackend` to preserve peer lists through deep sleep cycles.
+### Specialized Managers (Discovery, Heartbeat, Pairing)
+These managers contain the business logic for their respective protocols.
+-   **Input:** `DecodedPacket` (from Router).
+-   **Output:** `DecodedTxPacket` (queued to `TxManager`).
+-   They no longer depend on `IMessageCodec` directly, decoupling them from wire format details.
 
 ---
 
-## 4. Message Flows
+## 3. Key Workflows
 
-### Channel Discovery Flow
-When a node moves to a different channel, the sender must find it.
+### 3.1. Reception Flow (Unified RX Task)
+
+The `rx_dispatch_task` and `transport_worker_task` have been merged into a single `rx_task` for efficiency.
 
 ```mermaid
 sequenceDiagram
+    participant ISR as ESP-NOW ISR
+    participant RX as rx_task
+    participant MR as MessageRouter
+    participant HM as HeartbeatManager
+    participant App as App Queue
+
+    ISR->>RX: Queue Raw Packet
+    RX->>RX: Validate CRC
+    RX->>RX: Decode Header
+    
+    alt is Data/Command
+        RX->>App: Send AppMessage (Struct)
+    else is Protocol Message
+        RX->>MR: handle_packet(DecodedPacket)
+        MR->>HM: handle_request(DecodedPacket)
+    end
+```
+
+### 3.2. Transmission Flow (Structured TX)
+
+Transmission logic is centralized. Managers "fire and forget" structured data.
+
+```mermaid
+sequenceDiagram
+    participant HM as HeartbeatManager
     participant TM as TxManager
-    participant DM as DiscoveryManager
+    participant CD as MessageCodec
     participant HAL as WiFiHAL
 
-    Note over TM: Packet Transmission Fails (No ACK)
-    TM->>TM: Transition to SCANNING
-    TM->>DM: start_discovery(PeerID)
+    Note over HM: Needs to send heartbeat
+    HM->>TM: queue_packet(DecodedTxPacket)
     
-    loop Every Channel
-        DM->>HAL: wifi_set_channel(N)
-        DM->>HAL: send_probe_request()
-        Note right of DM: Wait for PROBE_RESPONSE
+    Note over TM: Tx Task Loop
+    TM->>TM: Dequeue DecodedTxPacket
+    TM->>TM: Assign Sequence Number
+    TM->>CD: encode(Header + Payload)
+    CD-->>TM: TxPacket (Wire Format)
+    TM->>HAL: esp_now_send(TxPacket)
+    
+    alt Requires ACK
+        TM->>TM: Start ACK Timeout
     end
-
-    DM-->>TM: on_channel_found(PeerID, Channel)
-    TM->>TM: Update Peer Channel
-    TM->>TM: Transition to READY
-    TM->>TM: Retry Packet
 ```
 
 ---
 
-## 5. Design Decisions
+## 4. Design Decisions
 
-### Dependency Injection & Interface-Based Design
-Every manager depends on interfaces (`IFreeRTOSHAL`, `IWiFiHAL`, `ITxManager`, etc.) rather than concrete implementations. This allows 100% testability on host (Linux) by injecting Mocks using GoogleMock, without needing real hardware or FreeRTOS binaries.
+### Structured Data vs. Raw Buffers
+**Decision:** Pass `DecodedPacket` (RX) and `DecodedTxPacket` (TX) between components instead of raw byte buffers.
+-   **Reason:** Eliminates redundant decoding steps. Previously, the `rx_task` decoded the header, but passed the raw buffer to managers, which had to decode it *again*. Now, decoding happens once at ingress (`rx_task`), and encoding happens once at egress (`TxManager`).
+-   **Benefit:** Improved CPU efficiency and type safety. Managers operate on structs, not bytes.
 
-### Single Responsibility Principle (SRP)
-Logic is strictly partitioned:
-- `MessageRouter` only **routes**.
-- `DiscoveryManager` only **discovers**.
-- `TxManager` only **transmits**.
-- `StorageManager` only **persists**.
-This prevents the "Big Manager" anti-pattern and makes the codebase easier to maintain and extend.
+### Unified RX Task
+**Decision:** Merge the dispatch and worker tasks.
+-   **Reason:** The original split was to prevent slow protocol logic from blocking the ISR queue. However, current protocol handlers are non-blocking (state updates + queueing a TX packet).
+-   **Benefit:** Saves ~2-4KB of RAM (stack + queue overhead) and reduces context switching.
 
-### HAL Abstraction (FreeRTOS & WiFi)
-Direct calls to FreeRTOS (`xTaskCreate`, `xSemaphoreTake`) and ESP-IDF (`esp_now_send`, `esp_wifi_set_channel`) are forbidden inside business logic managers. They must go through the respective HAL interfaces. This is the cornerstone of the project's portability and testability.
+### Centralized Encoding in TxManager
+**Decision:** Move `MessageCodec::encode` usage exclusively to `TxManager`.
+-   **Reason:** Ensures a single point of truth for Sequence Numbers and CRC generation. Managers no longer need to know *how* to serialize data, only *what* to send.
+-   **Benefit:** Simplifies unit tests for managers (no need to mock Codec) and enforces protocol consistency.
 
-### RTC Memory Persistence
-The use of `RTC_DATA_ATTR` via `RtcBackend` is a strategic decision for IoT devices. It allows the `EspNowManager` to enter Deep Sleep and wake up with its peer list ready in microseconds, without the power cost or latency of reading from flash (NVS). It relies on CRC validation to ensure data integrity.
+### DiscoveryManager Scan Exception
+**Decision:** `DiscoveryManager::scan()` calls `hal_esp_now_send` directly, bypassing the `TxManager` queue.
+-   **Reason:** Scanning is a synchronous, blocking operation driven by the `TxManager` state machine (`SCANNING` state). Queueing a probe packet back to `TxManager` while `TxManager` is waiting for the scan to complete would cause a deadlock.
+-   **Trade-off:** Accepted deviation for the specific "Scan and Wait" pattern.
+
+---
+
+## 5. Persistence Strategy
+
+-   **RTC RAM:** Used for the peer list. Allows the device to wake from Deep Sleep and resume ESP-NOW communication immediately without NVS latency.
+-   **NVS:** Used as long-term backup. The `StorageManager` syncs RTC to NVS periodically or on critical updates (pairing).
+
+---
+
+## 6. Testing Strategy
+
+-   **Host-Based Testing:** 100% of the logic is testable on Linux.
+-   **Mocks:** All HALs (`IWiFiHAL`, `IFreeRTOSHAL`, `ITimerHAL`) are mocked.
+-   **Protocol Logic:** Managers are tested by injecting `DecodedPacket` inputs and verifying `DecodedTxPacket` outputs to the `MockTxManager`.
