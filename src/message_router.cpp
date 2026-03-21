@@ -40,7 +40,7 @@ void MessageRouter::handle_packet(const DecodedPacket &decoded)
         pairing_manager_.handle_response(decoded);
         break;
     case MessageType::HEARTBEAT:
-        heartbeat_manager_.handle_request(decoded.raw);
+        heartbeat_manager_.handle_request(decoded);
         break;
     case MessageType::HEARTBEAT_RESPONSE:
     {

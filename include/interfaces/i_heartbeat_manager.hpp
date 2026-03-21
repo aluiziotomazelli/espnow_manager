@@ -51,5 +51,5 @@ public:
     virtual void set_channel(uint8_t channel) = 0;
 
     /** @internal */
-    virtual void handle_request(const RxPacket &packet) = 0;
+    virtual void handle_request(const DecodedPacket &decoded) = 0;
 };

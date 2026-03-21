@@ -12,7 +12,7 @@ public:
     MOCK_METHOD(esp_err_t, deinit, (), (override));
     MOCK_METHOD(void, handle_response, (NodeId hub_id), (override));
     MOCK_METHOD(void, set_channel, (uint8_t channel), (override));
-    MOCK_METHOD(void, handle_request, (const RxPacket &packet), (override));
+    MOCK_METHOD(void, handle_request, (const DecodedPacket &decoded), (override));
 };
 
 // Note: Template methods (init, update_node_id, handle_response with enum)

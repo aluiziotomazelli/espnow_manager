@@ -78,16 +78,12 @@ void HeartbeatManager::handle_response(NodeId hub_id)
     tx_mgr_.notify_link_alive();
 }
 
-void HeartbeatManager::handle_request(const RxPacket &packet)
+void HeartbeatManager::handle_request(const DecodedPacket &decoded)
 {
-    auto header_opt = codec_.decode_header(packet.data, packet.len);
-    if (!header_opt) {
-        return;
-    }
-    const MessageHeader &header = header_opt.value();
+    const MessageHeader &header = decoded.header;
 
-    if (packet.len < sizeof(HeartbeatMessage)) {
-        ESP_LOGW(TAG, "Malformed HEARTBEAT: len %d < %d", (int)packet.len, (int)sizeof(HeartbeatMessage));
+    if (decoded.raw.len < sizeof(HeartbeatMessage)) {
+        ESP_LOGW(TAG, "Malformed HEARTBEAT: len %d < %d", (int)decoded.raw.len, (int)sizeof(HeartbeatMessage));
         return;
     }
 
@@ -107,7 +103,7 @@ void HeartbeatManager::handle_request(const RxPacket &packet)
     response.wifi_channel = current_channel_;
 
     TxPacket tx_packet;
-    memcpy(tx_packet.dest_mac, packet.src_mac, 6);
+    memcpy(tx_packet.dest_mac, decoded.raw.src_mac, 6);
     tx_packet.len = codec_.encode(
         response.header,
         &response.server_time_ms,

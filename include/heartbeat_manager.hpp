@@ -28,7 +28,7 @@ public:
     void update_node_id(NodeId id) override;
     void set_channel(uint8_t channel) override;
     void handle_response(NodeId hub_id) override;
-    void handle_request(const RxPacket &packet) override;
+    void handle_request(const DecodedPacket &decoded) override;
     esp_err_t deinit() override;
 
 protected:

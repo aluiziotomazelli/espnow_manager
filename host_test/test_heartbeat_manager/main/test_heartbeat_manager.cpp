@@ -46,21 +46,17 @@ protected:
     // Default encoded payload — non-empty so queue_packet is reached
     static constexpr size_t DUMMY_ENCODED_SIZE = 3;
 
-    // Helper: build a minimal valid RxPacket for handle_request
-    RxPacket make_heartbeat_packet(NodeId sender_id, uint8_t len_override = 0)
+    // Helper: build a minimal valid DecodedPacket for handle_request
+    DecodedPacket make_heartbeat_decoded_packet(NodeId sender_id, uint8_t len_override = 0)
     {
-        RxPacket pkt{};
-        pkt.len = (len_override > 0) ? len_override : sizeof(HeartbeatMessage);
+        DecodedPacket decoded{};
+        decoded.raw.len = (len_override > 0) ? len_override : sizeof(HeartbeatMessage);
 
-        MessageHeader hdr{};
-        hdr.sender_node_id = sender_id;
-        hdr.msg_type = MessageType::HEARTBEAT;
-        memcpy(pkt.src_mac, "\xAA\xBB\xCC\xDD\xEE\xFF", 6);
+        decoded.header.sender_node_id = sender_id;
+        decoded.header.msg_type = MessageType::HEARTBEAT;
+        memcpy(decoded.raw.src_mac, "\xAA\xBB\xCC\xDD\xEE\xFF", 6);
 
-        // codec_.decode_header will return this header
-        ON_CALL(codec_, decode_header(_, _)).WillByDefault(Return(std::optional<MessageHeader>{hdr}));
-
-        return pkt;
+        return decoded;
     }
 
     // Convenience: make codec_.encode() return a non-zero size
@@ -180,28 +176,12 @@ TEST_F(HeartbeatManagerTest, Deinit_DeleteTimerFails_ReturnError)
 // handle_request()
 // ===========================================================================
 
-TEST_F(HeartbeatManagerTest, HandleRequest_DecodeHeaderFails_NothingQueued)
-{
-    HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
-    hub.init(0, ReservedTypes::HUB);
-
-    ON_CALL(codec_, decode_header(_, _)).WillByDefault(Return(std::nullopt));
-
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
-    EXPECT_CALL(peer_mgr_, update_last_seen(_, _)).Times(0);
-
-    RxPacket pkt{};
-    pkt.len = sizeof(HeartbeatMessage);
-    hub.handle_request(pkt);
-}
-
 TEST_F(HeartbeatManagerTest, HandleRequest_MalformedLength_NothingQueued)
 {
     HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
     hub.init(0, ReservedTypes::HUB);
 
-    // decode_header succeeds but packet length is too short
-    RxPacket pkt = make_heartbeat_packet(MY_ID, sizeof(HeartbeatMessage) - 1);
+    DecodedPacket pkt = make_heartbeat_decoded_packet(MY_ID, sizeof(HeartbeatMessage) - 1);
 
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
     EXPECT_CALL(peer_mgr_, update_last_seen(_, _)).Times(0);
@@ -218,7 +198,7 @@ TEST_F(HeartbeatManagerTest, HandleRequest_Valid_UpdatesLastSeenAndQueuesRespons
     HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
     hub.init(0, ReservedTypes::HUB);
 
-    RxPacket pkt = make_heartbeat_packet(MY_ID);
+    DecodedPacket pkt = make_heartbeat_decoded_packet(MY_ID);
 
     EXPECT_CALL(peer_mgr_, update_last_seen(MY_ID, 5000 /* now_ms */));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(1);
@@ -234,7 +214,7 @@ TEST_F(HeartbeatManagerTest, HandleRequest_Valid_ResponseHeaderIsCorrect)
     HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
     hub.init(0, ReservedTypes::HUB);
 
-    RxPacket pkt = make_heartbeat_packet(MY_ID);
+    DecodedPacket pkt = make_heartbeat_decoded_packet(MY_ID);
 
     MessageHeader captured_hdr{};
     ON_CALL(codec_, encode(_, _, _, _, _)).WillByDefault([&](const MessageHeader &hdr, const void *, size_t, uint8_t *, size_t) {
@@ -257,7 +237,7 @@ TEST_F(HeartbeatManagerTest, HandleRequest_EncodeFails_NothingQueued)
     HeartbeatManager hub(ReservedIds::HUB, tx_mgr_, peer_mgr_, codec_, hal_freertos_, hal_timer_);
     hub.init(0, ReservedTypes::HUB);
 
-    RxPacket pkt = make_heartbeat_packet(MY_ID);
+    DecodedPacket pkt = make_heartbeat_decoded_packet(MY_ID);
 
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
 
@@ -397,7 +377,7 @@ TEST_F(HeartbeatManagerTest, HandleRequest_ResponseContainsCurrentChannel)
     hub.init(0, ReservedTypes::HUB);
     hub.set_channel(6);
 
-    RxPacket pkt = make_heartbeat_packet(MY_ID);
+    DecodedPacket pkt = make_heartbeat_decoded_packet(MY_ID);
 
     uint8_t captured_channel = 0;
     ON_CALL(codec_, encode(_, _, _, _, _))
