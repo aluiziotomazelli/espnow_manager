@@ -57,7 +57,7 @@ void MessageRouter::handle_packet(const DecodedPacket &decoded)
         tx_manager_.notify_logical_ack();
         break;
     case MessageType::CHANNEL_SCAN_PROBE:
-        discovery_manager_.handle_probe(decoded.raw);
+        discovery_manager_.handle_probe(decoded);
         break;
     case MessageType::CHANNEL_SCAN_RESPONSE:
     {

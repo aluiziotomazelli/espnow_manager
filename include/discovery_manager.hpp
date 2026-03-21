@@ -14,7 +14,7 @@ public:
 
     esp_err_t init(NodeId id, NodeType type, ITxManager *tx_mgr, IChannelObserver *observer = nullptr) override;
     ScanResult scan() override;
-    void handle_probe(const RxPacket &packet) override;
+    void handle_probe(const DecodedPacket &decoded) override;
     void set_channel(uint8_t channel) override;
 
 private:

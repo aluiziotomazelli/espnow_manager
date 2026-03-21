@@ -103,23 +103,19 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan()
     return result;
 }
 
-void DiscoveryManager::handle_probe(const RxPacket &packet)
+void DiscoveryManager::handle_probe(const DecodedPacket &decoded)
 {
     if (!hub_ready_) {
         return;
     }
 
-    auto header_opt = message_codec_.decode_header(packet.data, packet.len);
-    if (!header_opt)
-        return;
-
     TxPacket tx_packet;
-    memcpy(tx_packet.dest_mac, packet.src_mac, 6);
+    memcpy(tx_packet.dest_mac, decoded.raw.src_mac, 6);
     MessageHeader resp;
     resp.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
     resp.sender_node_id = my_node_id_;
     resp.sender_type = my_node_type_;
-    resp.dest_node_id = header_opt->sender_node_id;
+    resp.dest_node_id = decoded.header.sender_node_id;
     resp.payload_type = 0;
     resp.sequence_number = 0;
     resp.requires_ack = false;

@@ -33,7 +33,7 @@ public:
     virtual ScanResult scan() = 0;
 
     /** @internal */
-    virtual void handle_probe(const RxPacket &packet) = 0;
+    virtual void handle_probe(const DecodedPacket &decoded) = 0;
 
     virtual void set_channel(uint8_t channel) = 0;
 

@@ -50,6 +50,18 @@ protected:
         scanner = std::make_unique<DiscoveryManager>(wifi_hal, codec, freertos_hal);
         scanner->init(MY_ID, MY_TYPE, &tx_manager, &observer);
     }
+
+    // Helper to build a DecodedPacket for probing tests
+    DecodedPacket make_decoded_probe_packet(NodeId sender_id, NodeType sender_type)
+    {
+        DecodedPacket decoded{};
+        decoded.header.msg_type = MessageType::CHANNEL_SCAN_PROBE;
+        decoded.header.sender_node_id = sender_id;
+        decoded.header.sender_type = sender_type;
+        decoded.raw.len = 10;
+        memset(decoded.raw.src_mac, 0xAA, 6);
+        return decoded;
+    }
 };
 
 TEST_F(DiscoveryManagerTest, ScanCallOnScanStartedCallback)
@@ -215,9 +227,9 @@ TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfTxMgrNull)
     // Raw scanner (not initialized)
     DiscoveryManager raw_scanner(wifi_hal, codec, freertos_hal);
 
-    RxPacket packet;
+    DecodedPacket decoded = make_decoded_probe_packet(5, 0x02);
     EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
-    raw_scanner.handle_probe(packet);
+    raw_scanner.handle_probe(decoded);
 }
 
 TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfNotHub)
@@ -225,23 +237,9 @@ TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfNotHub)
     // Setup scanner as Node
     scanner->init(MY_ID, 0x02, nullptr, &observer);
 
-    RxPacket packet;
+    DecodedPacket decoded = make_decoded_probe_packet(5, 0x02);
     EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
-    scanner->handle_probe(packet);
-}
-
-TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfHeaderDecodeFails)
-{
-    // Setup scanner as Hub
-    scanner->init(MY_ID, ReservedTypes::HUB, &tx_manager, nullptr);
-
-    RxPacket packet;
-    // Simulate decode_header failure by returning std::nullopt
-    ON_CALL(codec, decode_header(_, _)).WillByDefault(Return(std::nullopt));
-
-    EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
-
-    scanner->handle_probe(packet);
+    scanner->handle_probe(decoded);
 }
 
 TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfEncodeFails)
@@ -249,17 +247,12 @@ TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfEncodeFails)
     // Setup scanner as Hub
     scanner->init(MY_ID, ReservedTypes::HUB, &tx_manager, nullptr);
 
-    RxPacket packet;
-    packet.len = 10;
-
-    // Simulate decode_header failure by returning a valid header but encode failure by returning 0
-    ON_CALL(codec, decode_header(_, _))
-        .WillByDefault(Return(MessageHeader{MessageType::CHANNEL_SCAN_PROBE, 0, 0x02, 5, 0x00, false, 0, 0}));
+    DecodedPacket decoded = make_decoded_probe_packet(5, 0x02);
 
     EXPECT_CALL(codec, encode(_, _, _, _, _)).WillOnce(Return(0));
     EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
 
-    scanner->handle_probe(packet);
+    scanner->handle_probe(decoded);
 }
 
 TEST_F(DiscoveryManagerTest, HandleProbeSendsResponseIfHub)
@@ -267,19 +260,15 @@ TEST_F(DiscoveryManagerTest, HandleProbeSendsResponseIfHub)
     // Setup scanner as Hub
     scanner->init(MY_ID, ReservedTypes::HUB, &tx_manager, nullptr);
 
-    RxPacket packet;
-    packet.len = 10;
-    memset(packet.src_mac, 0xAA, 6);
+    DecodedPacket decoded = make_decoded_probe_packet(5, 0x02);
 
     // Send a valid header to trigger response
     MessageHeader captured_header;
-    ON_CALL(codec, decode_header(_, _))
-        .WillByDefault(Return(MessageHeader{MessageType::CHANNEL_SCAN_PROBE, 0, 0x02, 5, 0x00, false, 0, 0}));
 
     EXPECT_CALL(codec, encode(_, _, _, _, _)).WillOnce(DoAll(testing::SaveArg<0>(&captured_header), Return(2)));
     EXPECT_CALL(tx_manager, queue_packet(_)).Times(1); // Must be called to send response
 
-    scanner->handle_probe(packet);
+    scanner->handle_probe(decoded);
 
     EXPECT_EQ(captured_header.msg_type, MessageType::CHANNEL_SCAN_RESPONSE);
     EXPECT_EQ(captured_header.dest_node_id, 5);

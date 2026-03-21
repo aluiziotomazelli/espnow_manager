@@ -13,6 +13,6 @@ public:
         (NodeId id, NodeType type, ITxManager *tx_mgr, IChannelObserver *observer),
         (override));
     MOCK_METHOD(ScanResult, scan, (), (override));
-    MOCK_METHOD(void, handle_probe, (const RxPacket &packet), (override));
+    MOCK_METHOD(void, handle_probe, (const DecodedPacket &decoded), (override));
     MOCK_METHOD(void, set_channel, (uint8_t channel), (override));
 };
