@@ -66,6 +66,11 @@ static EspNowConfig make_valid_config()
     cfg.node_type = kNodeType;
     cfg.wifi_channel = 1;
     cfg.app_rx_queue = fake_tx_queue;
+    cfg.rx_queue_length = 10;
+    cfg.stack_size_rx_task = 2048;
+    cfg.priority_rx_task = 5;
+    cfg.stack_size_tx_task = 2048;
+    cfg.priority_tx_task = 5;
     return cfg;
 }
 
@@ -449,8 +454,6 @@ TEST_F(EspNowManagerTest, DeinitDoesNotDeleteNullTaskHandles)
         .WillOnce(DoAll(SetArgPointee<5>(nullptr), Return(pdPASS)));
     EXPECT_EQ(sut_->init(make_valid_config()), ESP_OK);
 
-    sut_->init(make_valid_config());
-
     // Will not try to delete null task handles
     EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(0);
     sut_->deinit();
@@ -549,21 +552,10 @@ TEST_F(EspNowManagerTest, SendToNonExistentPeerReturnsNotFound)
     EXPECT_EQ(sut_->send_command(kNodeId, kCommandType, nullptr, false), ESP_ERR_NOT_FOUND);
 }
 
-TEST_F(EspNowManagerTest, IfEncodeReturnsZeroPacketSizeSendReturnsInvalidArg)
-{
-    init_operational_sut();
-
-    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));  // Peer is found, find_mac returns true
-    ON_CALL(*codec_, encode(_, _, _, _, _)).WillByDefault(Return(0)); // If encode returns 0
-    EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, nullptr, false), ESP_ERR_INVALID_ARG);
-    EXPECT_EQ(sut_->send_command(kHubId, kCommandType, nullptr, false), ESP_ERR_INVALID_ARG);
-}
-
 TEST_F(EspNowManagerTest, SendToExistentPeerCallsQueuePacket)
 {
     init_operational_sut();
 
-    ON_CALL(*codec_, encode(_, _, _, _, _)).WillByDefault(Return(10)); // Return non zero packet size
     ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));   // Peer is found, find_mac returns true
 
     EXPECT_CALL(*tx_mgr_, queue_packet(_)).Times(2).WillRepeatedly(Return(ESP_OK)); // Queue packet
@@ -575,7 +567,6 @@ TEST_F(EspNowManagerTest, FailureToQueuePacketReturnsFail)
 {
     init_operational_sut();
 
-    ON_CALL(*codec_, encode(_, _, _, _, _)).WillByDefault(Return(10)); // Return non zero packet size
     ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));   // Peer is found, find_mac returns true
 
     EXPECT_CALL(*tx_mgr_, queue_packet(_)).Times(2).WillRepeatedly(Return(ESP_FAIL)); // Fail to queue packet
@@ -627,20 +618,6 @@ TEST_F(EspNowManagerTest, ConfirmReceptionNonExistentPeerReturnsNotFound)
     EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_NOT_FOUND); // Return not found error
 }
 
-TEST_F(EspNowManagerTest, ConfirmReceptionEncodeFailureReturnsFail)
-{
-    init_operational_sut();
-
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sequence_number = 42;
-    sut_->set_last_header(header);
-
-    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));  // Peer is found, find_mac returns true
-    ON_CALL(*codec_, encode(_, _, _, _, _)).WillByDefault(Return(0)); // If encode returns 0
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_FAIL);         // Return fail error
-}
-
 TEST_F(EspNowManagerTest, ConfirmReceptionEnqueueFailureReturnsFail)
 {
     init_operational_sut();
@@ -651,7 +628,6 @@ TEST_F(EspNowManagerTest, ConfirmReceptionEnqueueFailureReturnsFail)
     sut_->set_last_header(header);
 
     ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));    // Peer is found, find_mac returns true
-    ON_CALL(*codec_, encode(_, _, _, _, _)).WillByDefault(Return(10));  // No failure in encoding
     ON_CALL(*tx_mgr_, queue_packet(_)).WillByDefault(Return(ESP_FAIL)); // Fail to queue packet
     EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_FAIL);           // Return fail error
 }
@@ -666,7 +642,6 @@ TEST_F(EspNowManagerTest, ConfirmReceptionSuccess)
     sut_->set_last_header(header);
 
     ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));   // Peer is found, find_mac returns true
-    ON_CALL(*codec_, encode(_, _, _, _, _)).WillByDefault(Return(10)); // No failure in encoding
     ON_CALL(*tx_mgr_, queue_packet(_)).WillByDefault(Return(ESP_OK));  // No failure in queueing packet
     EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_OK);            // Return ok
 }

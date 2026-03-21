@@ -64,12 +64,6 @@ protected:
 
         manager->deinit();
     }
-
-    static void TearDownTestSuite()
-    {
-        // Runs once after all tests in this suite
-        // vTaskEndScheduler();
-    }
 };
 
 // ===================================================
@@ -85,7 +79,7 @@ TEST_F(TxManagerTest, InitSetsTaskHandle)
 
 TEST_F(TxManagerTest, InitCallsAllCreateFunctions)
 {
-    EXPECT_CALL(freertos_hal, queue_create(_, _)).Times(1);
+    EXPECT_CALL(freertos_hal, queue_create(_, sizeof(DecodedTxPacket))).Times(1);
     EXPECT_CALL(freertos_hal, semaphore_create_binary()).Times(1);
     EXPECT_CALL(freertos_hal, timer_create(_, _, _, _, _)).Times(1);
     EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _)).Times(1);
@@ -215,20 +209,20 @@ TEST_F(TxManagerTest, NotifyWithoutTaskHandleDoesNotCallTaskNotify)
 }
 
 // ===================================================
-// TxManager::queue_packet(const TxPacket &packet)
+// TxManager::queue_packet(const DecodedTxPacket &packet)
 // ===================================================
 
 TEST_F(TxManagerTest, QueuePacketWithoutQueueReturnsError)
 {
     // Calling without init, the queue handle tx_queue_ == nullptr
-    TxPacket packet = {};
+    DecodedTxPacket packet = {};
     EXPECT_EQ(ESP_ERR_INVALID_STATE, manager->queue_packet(packet)); // Must return error
 }
 
 TEST_F(TxManagerTest, QueuePacketCallsQueueSend)
 {
     EXPECT_EQ(ESP_OK, manager->init(1000, 1));               // Initialize first
-    TxPacket packet = {};                                    // Queue packet
+    DecodedTxPacket packet = {};                                    // Queue packet
     EXPECT_CALL(freertos_hal, queue_send(_, _, _)).Times(1); // Must call queue send
     EXPECT_EQ(ESP_OK, manager->queue_packet(packet));        // Queue packet
 }
@@ -239,7 +233,7 @@ TEST_F(TxManagerTest, QueuePacketWithoutTaskHandleDoesNotTryToNotifyTask)
         .WillByDefault(DoAll(SetArgPointee<5>(nullptr), Return(pdPASS))); // Simulate no task handle
     EXPECT_EQ(ESP_OK, manager->init(1000, 1));
 
-    TxPacket packet = {};
+    DecodedTxPacket packet = {};
     EXPECT_CALL(freertos_hal, task_notify(_, _, _)).Times(0); // Must not try to notify task
     EXPECT_EQ(ESP_OK, manager->queue_packet(packet));         // Queue packet
 }
@@ -247,7 +241,7 @@ TEST_F(TxManagerTest, QueuePacketWithoutTaskHandleDoesNotTryToNotifyTask)
 TEST_F(TxManagerTest, QueueSendFailOnQueuePacketReturnsError)
 {
     EXPECT_EQ(ESP_OK, manager->init(1000, 1));
-    TxPacket packet = {};
+    DecodedTxPacket packet = {};
     ON_CALL(freertos_hal, queue_send(_, _, _)).WillByDefault(Return(pdFAIL)); // Simulate queue send failure
     EXPECT_EQ(ESP_FAIL, manager->queue_packet(packet));                       // Must return error
 }

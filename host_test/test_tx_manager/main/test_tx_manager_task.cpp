@@ -97,7 +97,7 @@ protected:
         ON_CALL(*hal, wifi_set_channel(_)).WillByDefault(Return(ESP_OK));
 
         // Codec defaults
-        ON_CALL(*codec, calculate_crc(_, _)).WillByDefault(Return(0xAB));
+        ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
 
         // Scanner defaults — hub not found
         ON_CALL(*scanner, scan()).WillByDefault(Return(IDiscoveryManager::ScanResult{1, false}));
@@ -121,12 +121,13 @@ protected:
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
-    // Helper: build a minimal TxPacket
-    TxPacket make_packet(bool requires_ack = false)
+    // Helper: build a minimal DecodedTxPacket
+    DecodedTxPacket make_packet(bool requires_ack = false)
     {
-        TxPacket pkt = {};
-        pkt.requires_ack = requires_ack;
-        pkt.len = sizeof(MessageHeader) + 1; // header + CRC byte
+        DecodedTxPacket pkt = {};
+        pkt.header.requires_ack = requires_ack;
+        pkt.payload_len = 5;
+        memset(pkt.dest_mac, 0xAA, 6);
         return pkt;
     }
 
@@ -135,7 +136,9 @@ protected:
     {
         PendingAck ack = {};
         ack.retries_left = retries;
-        ack.packet = make_packet(true);
+        ack.packet.requires_ack = true;
+        ack.packet.len = 10;
+        memset(ack.packet.dest_mac, 0xAA, 6);
         return ack;
     }
 };
@@ -148,6 +151,7 @@ TEST_F(TxManagerTaskTest, IdleStateProcessesQueuedPacket)
 {
     init_and_wait();
 
+    EXPECT_CALL(*codec, encode(_, _, _, _, _)).Times(1);
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).Times(1);
 
     manager->queue_packet(make_packet(false));
@@ -254,8 +258,8 @@ TEST_F(TxManagerTaskTest, WaitingForAckTimeoutCallsOnAckTimeout)
 
     EXPECT_CALL(*fsm, on_ack_timeout()).Times(1);
 
-    manager->notify_logical_ack();
-    vTaskDelay(pdMS_TO_TICKS(ack_timeout_ms + 10));
+    // Give time for the timer to expire
+    vTaskDelay(pdMS_TO_TICKS(ack_timeout_ms + 20));
 }
 
 TEST_F(TxManagerTaskTest, WaitingForAckNotifyPhysicalFailCallsOnPhysicalFail)
@@ -397,7 +401,7 @@ TEST_F(TxManagerTaskTest, EspnowArgErrorDoesNotCallPhysicalFail)
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state
 }
 
-TEST_F(TxManagerTaskTest, EspnowArgErrorCallsPhysicalFail)
+TEST_F(TxManagerTaskTest, EspnowOtherErrorCallsPhysicalFail)
 {
     init_and_wait();
 

@@ -132,7 +132,7 @@ protected:
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(nullptr));
 
-        // hal_timer_: get_time_ms() is called by transport_worker_task via tick()
+        // hal_timer_: get_time_ms() is called by rx_task via tick()
         ON_CALL(*hal_timer_, get_time_us()).WillByDefault(Return(0));
 
         sut_ = std::make_unique<EspNowManagerTestable>(
@@ -168,8 +168,12 @@ protected:
         cfg.node_id = kNodeId;
         cfg.node_type = kNodeType;
         cfg.wifi_channel = 1;
-        cfg.app_rx_queue = xQueueCreate(10, sizeof(RxPacket)); // app queue
+        cfg.app_rx_queue = xQueueCreate(10, sizeof(AppMessage)); // app queue
         cfg.rx_queue_length = rx_queue_length;
+        cfg.stack_size_rx_task = 2048;
+        cfg.priority_rx_task = 5;
+        cfg.stack_size_tx_task = 2048;
+        cfg.priority_tx_task = 5;
 
         ASSERT_EQ(sut_->init(cfg), ESP_OK);
         vTaskDelay(pdMS_TO_TICKS(delay_ms)); // let tasks start and block
@@ -185,7 +189,7 @@ protected:
 };
 
 // ===========================================================================
-// rx_dispatch_task — NOTIFY_CHANNEL_FOUND
+// rx_task — NOTIFY_CHANNEL_FOUND
 // ===========================================================================
 
 TEST_F(EspNowManagerTaskTest, ChannelFoundTransitionsToOperational)
@@ -195,7 +199,7 @@ TEST_F(EspNowManagerTaskTest, ChannelFoundTransitionsToOperational)
 
     EXPECT_CALL(*peer_mgr_, persist()).Times(1); // peer_manager::persist is called when channel is found
 
-    // on_channel_found_cb stores the channel and notifies rx_dispatch_task
+    // on_channel_found_cb stores the channel and notifies rx_task
     // via NOTIFY_CHANNEL_FOUND. The task then transitions NodeState.
     sut_->on_channel_found_cb(6);
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
@@ -204,7 +208,7 @@ TEST_F(EspNowManagerTaskTest, ChannelFoundTransitionsToOperational)
 }
 
 // ===========================================================================
-// rx_dispatch_task — NOTIFY_SCAN_FAILED
+// rx_task — NOTIFY_SCAN_FAILED
 // ===========================================================================
 
 TEST_F(EspNowManagerTaskTest, ScanFailedSendsToPairingState)
@@ -221,7 +225,7 @@ TEST_F(EspNowManagerTaskTest, ScanFailedSendsToPairingState)
 }
 
 // ===========================================================================
-// rx_dispatch_task — NOTIFY_SCANNING
+// rx_task — NOTIFY_SCANNING
 // ===========================================================================
 
 TEST_F(EspNowManagerTaskTest, ScanStartedTransitionsToScanning)
@@ -235,10 +239,10 @@ TEST_F(EspNowManagerTaskTest, ScanStartedTransitionsToScanning)
 }
 
 // ===========================================================================
-// transport_worker_task — tick() called when PAIRING
+// rx_task — tick() called when PAIRING
 // ===========================================================================
 
-TEST_F(EspNowManagerTaskTest, WorkerTaskCallsPairingTickWhenInPairing)
+TEST_F(EspNowManagerTaskTest, RxTaskCallsPairingTickWhenInPairing)
 {
     init_and_wait();
     ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
@@ -251,10 +255,10 @@ TEST_F(EspNowManagerTaskTest, WorkerTaskCallsPairingTickWhenInPairing)
 }
 
 // ===========================================================================
-// transport_worker_task — tick() NOT called when OPERATIONAL
+// rx_task — tick() NOT called when OPERATIONAL
 // ===========================================================================
 
-TEST_F(EspNowManagerTaskTest, WorkerTaskDoesNotCallPairingTickWhenOperational)
+TEST_F(EspNowManagerTaskTest, RxTaskDoesNotCallPairingTickWhenOperational)
 {
     init_and_wait();
     sut_->set_node_state(NodeState::OPERATIONAL);
@@ -304,7 +308,7 @@ TEST_F(EspNowManagerTaskTest, PacketRequiringAckIsStored)
     header.sender_node_id = kNodeId;
     ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
 
-    // DATA type goes to handle_packet directly (not worker queue)
+    // DATA type goes to app_rx_queue directly
 
     receive_valid_rx_packet();
 
@@ -340,7 +344,7 @@ TEST_F(EspNowManagerTaskTest, RxDispatchTaskDropsPacketWhenQueueFull)
     EXPECT_EQ(uxQueueMessagesWaiting(sut_->rx_queue_handle_), rx_queue_length);
 
     vTaskResume(sut_->rx_task_handle_);  // Resume so task can consume the packets
-    vTaskDelay(pdMS_TO_TICKS(delay_ms)); // Lets wait to rx_dispatch_task process
+    vTaskDelay(pdMS_TO_TICKS(delay_ms)); // Lets wait to rx_task process
 
     EXPECT_EQ(uxQueueMessagesWaiting(sut_->rx_queue_handle_), 0);
 }
