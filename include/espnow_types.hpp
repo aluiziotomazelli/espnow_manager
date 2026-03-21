@@ -21,6 +21,36 @@
 static constexpr uint8_t MAX_PEERS = 19;
 
 /**
+ * @brief Message delivered to the application layer after protocol processing.
+ *
+ * This struct decouples the application from the internal protocol details.
+ * The rx_dispatch_task extracts the relevant fields from the decoded packet
+ * and posts this to the app_rx_queue — the application never needs to know
+ * about MessageHeader, RxPacket, or any ESP-NOW internals.
+ *
+ * Usage:
+ *   AppMessage msg;
+ *   xQueueReceive(app_queue, &msg, portMAX_DELAY);
+ *   if (msg.payload_type == MyPayloadType::SENSOR_REPORT) {
+ *       auto *report = reinterpret_cast<const SensorReport *>(msg.payload);
+ *   }
+ *   if (msg.requires_ack) {
+ *       espnow.confirm_reception(AckStatus::OK);
+ *   }
+ */
+struct AppMessage
+{
+    NodeId sender_id;                  ///< Logical ID of the sending node
+    NodeType sender_type;              ///< Role/type of the sending node
+    MessageType msg_type;              ///< Type of the message, DATA, COMMAND...
+    PayloadType payload_type;          ///< Application-defined payload identifier
+    bool requires_ack;                 ///< If true, call confirm_reception() after processing
+    uint8_t src_mac[6];                ///< MAC address of the sender
+    uint8_t payload[MAX_PAYLOAD_SIZE]; ///< Raw payload bytes (cast to your message struct)
+    size_t payload_len;                ///< Number of valid bytes in payload[]
+};
+
+/**
  * @brief Generic structure for packets received from the ESP-NOW layer.
  */
 struct RxPacket

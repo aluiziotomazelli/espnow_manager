@@ -191,7 +191,6 @@ protected:
     esp_err_t init_discovery_manager();
     esp_err_t init_heartbeat_manager();
     esp_err_t init_pairing_manager();
-    esp_err_t init_message_router();
     NodeState determine_initial_state(etl::ivector<PeerInfo> &peers);
     void add_peers_to_espnow(etl::ivector<PeerInfo> &peers);
     esp_err_t init_fail(esp_err_t ret, const char *step);
@@ -203,6 +202,9 @@ protected:
     // Task functions
     static void rx_dispatch_task(void *arg);
     static void transport_worker_task(void *arg);
+
+    bool is_protocol_message(MessageType type);
+    static AppMessage build_app_message(const DecodedPacket &decoded);
 
     // Static ESP-NOW callbacks (ISR context)
     static void esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len);

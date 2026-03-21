@@ -49,8 +49,7 @@ EspNowManager &EspNowManager::instance()
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(
         ReservedIds::HUB, *tx_manager, *peer_manager, *message_codec, *hal_freertos, *hal_timer);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec);
-    static auto message_router =
-        std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
+    static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
 
     static EspNowManager instance(
         std::move(hal_wifi),
@@ -167,11 +166,6 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     ret = init_pairing_manager();
     if (ret != ESP_OK) {
         return init_fail(ret, "pairing_manager");
-    }
-
-    ret = init_message_router();
-    if (ret != ESP_OK) {
-        return init_fail(ret, "message_router");
     }
 
     etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
@@ -389,7 +383,10 @@ void EspNowManager::esp_now_send_cb(const esp_now_send_info_t *info, esp_now_sen
 void EspNowManager::rx_dispatch_task(void *arg)
 {
     EspNowManager *self = static_cast<EspNowManager *>(arg);
-    RxPacket packet;
+
+    RxPacket packet{};
+    DecodedPacket decoded{};
+
     while (true) {
         uint32_t notifications = 0;
 
@@ -430,27 +427,45 @@ void EspNowManager::rx_dispatch_task(void *arg)
 
         // Wait for incoming packets with a timeout to periodically check for notifications.
         if (self->hal_freertos_->queue_receive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
-            if (!self->message_codec_->validate_crc(packet.data, packet.len))
+            // Validate CRC
+            if (!self->message_codec_->validate_crc(packet.data, packet.len)) {
                 continue;
-            auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
-            if (!header_opt)
-                continue;
-            const MessageHeader &header = header_opt.value();
-
-            if (self->message_router_->should_dispatch_to_worker(header.msg_type)) {
-                self->hal_freertos_->queue_send(self->transport_worker_queue_, &packet, 0);
             }
-            else {
-                if (header.requires_ack) {
+            // Decode header
+            auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
+            if (!header_opt) {
+                continue;
+            }
+
+            decoded = {packet, header_opt.value()};
+
+            if (decoded.header.msg_type == MessageType::DATA || decoded.header.msg_type == MessageType::COMMAND) {
+                // Application-level packets — deliver directly to app queue
+                if (decoded.header.requires_ack) {
                     if (self->hal_freertos_->semaphore_take(self->ack_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-                        self->last_header_requiring_ack_ = header;
+                        self->last_header_requiring_ack_ = decoded.header;
                         self->hal_freertos_->semaphore_give(self->ack_mutex_);
                     }
                 }
-                self->message_router_->handle_packet(packet);
+                if (self->config_.app_rx_queue != nullptr) {
+                    // Create AppMessage from decoded message and send it
+                    AppMessage msg = self->build_app_message(decoded);
+                    if (self->hal_freertos_->queue_send(self->config_.app_rx_queue, &msg, 0) != pdTRUE) {
+                        ESP_LOGW(TAG, "App queue full, dropping packet");
+                    }
+                }
+            }
+            else if (self->is_protocol_message(decoded.header.msg_type)) {
+                // Protocol-internal packets — send DecodedPacket to worker queue
+                self->hal_freertos_->queue_send(self->transport_worker_queue_, &decoded, 0);
+            }
+            else {
+                // Unknown type — delegate to router for logging/handling
+                self->message_router_->handle_packet(decoded);
             }
         }
     }
+
     // Task cleanup on exit
     self->rx_dispatch_task_handle_ = nullptr;
     self->hal_freertos_->task_suspend(NULL);
@@ -460,7 +475,7 @@ void EspNowManager::rx_dispatch_task(void *arg)
 void EspNowManager::transport_worker_task(void *arg)
 {
     EspNowManager *self = static_cast<EspNowManager *>(arg);
-    RxPacket packet;
+    DecodedPacket packet{};
     while (true) {
         uint32_t notifications = 0;
         // Check for stop notification without blocking (timeout = 0) to prioritize packets on queue
@@ -563,6 +578,39 @@ void EspNowManager::transition_to_state(NodeState new_state)
     node_state_.store(new_state);
 }
 
+bool EspNowManager::is_protocol_message(MessageType type)
+{
+    switch (type) {
+    case MessageType::PAIR_REQUEST:
+    case MessageType::PAIR_RESPONSE:
+    case MessageType::HEARTBEAT:
+    case MessageType::HEARTBEAT_RESPONSE:
+    case MessageType::ACK:
+    case MessageType::CHANNEL_SCAN_PROBE:
+    case MessageType::CHANNEL_SCAN_RESPONSE:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// Helper to build AppMessage from DecodedPacket
+AppMessage EspNowManager::build_app_message(const DecodedPacket &decoded)
+{
+    AppMessage msg{};
+    msg.sender_id = decoded.header.sender_node_id;
+    msg.sender_type = decoded.header.sender_type;
+    msg.payload_type = decoded.header.payload_type;
+    msg.requires_ack = decoded.header.requires_ack;
+    memcpy(msg.src_mac, decoded.raw.src_mac, 6);
+
+    const size_t payload_offset = sizeof(MessageHeader);
+    msg.payload_len = decoded.raw.len - payload_offset - CRC_SIZE;
+    memcpy(msg.payload, decoded.raw.data + payload_offset, msg.payload_len);
+
+    return msg;
+}
+
 // ==================================================================
 // Init helpers
 // ==================================================================
@@ -662,16 +710,6 @@ esp_err_t EspNowManager::init_pairing_manager()
         return ESP_FAIL;
     }
     return pairing_manager_->init(config_.node_id, config_.node_type);
-}
-
-esp_err_t EspNowManager::init_message_router()
-{
-    if (message_router_ == nullptr) {
-        return ESP_FAIL;
-    }
-    message_router_->set_app_queue(config_.app_rx_queue);
-    message_router_->set_node_info(config_.node_id, config_.node_type);
-    return ESP_OK;
 }
 
 NodeState EspNowManager::determine_initial_state(etl::ivector<PeerInfo> &peers)

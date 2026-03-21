@@ -46,11 +46,15 @@ struct PairRequest
  */
 struct PairResponse
 {
-    MessageHeader header;           /**< Universal message header */
-    PairStatus status;              /**< Acceptance or rejection status */
-    NodeId assigned_id;             /**< Node ID assigned by the Hub (if accepted) */
+    MessageHeader header; /**< Universal message header */
+    PairStatus status;    /**< Acceptance or rejection status */
+
+    // TODO: not in use, verify if it can be used
+    NodeId assigned_id; /**< Node ID assigned by the Hub (if accepted) */
+
+    // TODO: not in use, verify if it can be used
     uint32_t heartbeat_interval_ms; /**< Heartbeat interval authorized by the Hub */
-    uint32_t report_interval_ms;    /**< Suggested reporting interval for application data */
+    uint32_t report_interval_ms;    /**< Suggested reporting interval for application data TODO: not in use */
     uint8_t wifi_channel;           /**< WiFi channel the Hub is operating on */
 };
 
@@ -72,7 +76,8 @@ struct HeartbeatResponse
 {
     MessageHeader header;    /**< Universal message header */
     uint64_t server_time_ms; /**< Current Unix epoch or relative server time in milliseconds */
-    uint8_t wifi_channel;    /**< Current WiFi channel of the Hub (for channel synchronization) */
+    // TODO: verify if channel is still necessary
+    uint8_t wifi_channel; /**< Current WiFi channel of the Hub (for channel synchronization) */
 };
 
 // ========== APPLICATION LAYER ==========
