@@ -22,8 +22,8 @@ public:
     esp_err_t start(uint32_t timeout_ms, uint64_t now_ms) override;
     void set_channel(uint8_t channel) override;
     bool is_active() const override;
-    void handle_request(const RxPacket &packet) override;
-    void handle_response(const RxPacket &packet) override;
+    void handle_request(const DecodedPacket &decoded) override;
+    void handle_response(const DecodedPacket &decoded) override;
 
 protected:
     void send_pair_request();

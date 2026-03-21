@@ -30,14 +30,14 @@ void MessageRouter::handle_packet(const DecodedPacket &decoded)
             ESP_LOGW(TAG, "Malformed PAIR_REQUEST: len %d < %d", (int)decoded.raw.len, (int)sizeof(PairRequest));
             return;
         }
-        pairing_manager_.handle_request(decoded.raw);
+        pairing_manager_.handle_request(decoded);
         break;
     case MessageType::PAIR_RESPONSE:
         if (decoded.raw.len < sizeof(PairResponse)) {
             ESP_LOGW(TAG, "Malformed PAIR_RESPONSE: len %d < %d", (int)decoded.raw.len, (int)sizeof(PairResponse));
             return;
         }
-        pairing_manager_.handle_response(decoded.raw);
+        pairing_manager_.handle_response(decoded);
         break;
     case MessageType::HEARTBEAT:
         heartbeat_manager_.handle_request(decoded.raw);

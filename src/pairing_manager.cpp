@@ -75,7 +75,7 @@ esp_err_t PairingManager::start(uint32_t timeout_ms, uint64_t now_ms)
     return ESP_OK;
 }
 
-void PairingManager::handle_request(const RxPacket &packet)
+void PairingManager::handle_request(const DecodedPacket &decoded)
 {
     // Only initialized and  active pairing session processes requests
     if (!is_initialized_ || !is_active_) {
@@ -86,13 +86,8 @@ void PairingManager::handle_request(const RxPacket &packet)
         return;
     }
 
-    auto header_opt = codec_.decode_header(packet.data, packet.len);
-    if (!header_opt) {
-        return;
-    }
-
-    const MessageHeader &header = header_opt.value();
-    const PairRequest *req = reinterpret_cast<const PairRequest *>(packet.data);
+    const MessageHeader &header = decoded.header;
+    const PairRequest *req = reinterpret_cast<const PairRequest *>(decoded.raw.data);
 
     ESP_LOGI(TAG, "Pair request from Node ID %d", (int)header.sender_node_id);
 
@@ -107,13 +102,13 @@ void PairingManager::handle_request(const RxPacket &packet)
         resp.status = PairStatus::REJECTED_NOT_ALLOWED;
     }
     else {
-        peer_mgr_.add(header.sender_node_id, packet.src_mac, header.sender_type, req->heartbeat_interval_ms);
+        peer_mgr_.add(header.sender_node_id, decoded.raw.src_mac, header.sender_type, req->heartbeat_interval_ms);
         resp.status = PairStatus::ACCEPTED;
         resp.wifi_channel = current_channel_;
     }
 
     TxPacket tx_packet;
-    memcpy(tx_packet.dest_mac, packet.src_mac, 6);
+    memcpy(tx_packet.dest_mac, decoded.raw.src_mac, 6);
     tx_packet.len = codec_.encode(
         resp.header,
         &resp.status,
@@ -126,7 +121,7 @@ void PairingManager::handle_request(const RxPacket &packet)
     }
 }
 
-void PairingManager::handle_response(const RxPacket &packet)
+void PairingManager::handle_response(const DecodedPacket &decoded)
 {
     // Only initialized and active pairing session processes requests
     if (!is_initialized_ || !is_active_) {
@@ -137,15 +132,10 @@ void PairingManager::handle_response(const RxPacket &packet)
         return;
     }
 
-    auto header_opt = codec_.decode_header(packet.data, packet.len);
-    if (!header_opt) {
-        return;
-    }
-
-    const PairResponse *resp = reinterpret_cast<const PairResponse *>(packet.data);
+    const PairResponse *resp = reinterpret_cast<const PairResponse *>(decoded.raw.data);
     if (resp->status == PairStatus::ACCEPTED) {
         ESP_LOGI(TAG, "Pairing accepted by Hub on channel %d.", (int)resp->wifi_channel);
-        peer_mgr_.add(header_opt->sender_node_id, packet.src_mac, header_opt->sender_type);
+        peer_mgr_.add(decoded.header.sender_node_id, decoded.raw.src_mac, decoded.header.sender_type);
         is_active_ = false;
     }
 }

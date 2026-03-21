@@ -50,12 +50,12 @@ protected:
     }
 
     // -----------------------------------------------------------------------
-    // Helper: RxPacket carrying a PairResponse from the HUB.
+    // Helper: DecodedPacket carrying a PairResponse from the HUB.
     // -----------------------------------------------------------------------
-    static RxPacket make_pair_response(uint8_t channel, PairStatus status = PairStatus::ACCEPTED)
+    static DecodedPacket make_decoded_pair_response(uint8_t channel, PairStatus status = PairStatus::ACCEPTED)
     {
-        RxPacket packet{};
-        auto *resp = reinterpret_cast<PairResponse *>(packet.data);
+        DecodedPacket decoded{};
+        auto *resp = reinterpret_cast<PairResponse *>(decoded.raw.data);
         resp->header.msg_type = MessageType::PAIR_RESPONSE;
         resp->header.sender_node_id = kHubId;
         resp->header.sender_type = kHubType;
@@ -63,25 +63,29 @@ protected:
         resp->header.sequence_number = 0;
         resp->status = status;
         resp->wifi_channel = channel;
-        packet.len = sizeof(PairResponse);
-        return packet;
+        decoded.raw.len = sizeof(PairResponse);
+
+        decoded.header = resp->header;
+        return decoded;
     }
 
     // -----------------------------------------------------------------------
-    // Helper: RxPacket carrying a PairRequest from an arbitrary node.
+    // Helper: DecodedPacket carrying a PairRequest from an arbitrary node.
     // -----------------------------------------------------------------------
-    static RxPacket make_pair_request(NodeId sender_id, NodeType sender_type)
+    static DecodedPacket make_decoded_pair_request(NodeId sender_id, NodeType sender_type)
     {
-        RxPacket packet{};
-        auto *req = reinterpret_cast<PairRequest *>(packet.data);
+        DecodedPacket decoded{};
+        auto *req = reinterpret_cast<PairRequest *>(decoded.raw.data);
         req->header.msg_type = MessageType::PAIR_REQUEST;
         req->header.sender_node_id = sender_id;
         req->header.sender_type = sender_type;
         req->header.dest_node_id = kHubId;
         req->header.sequence_number = 0;
         req->heartbeat_interval_ms = 60000;
-        packet.len = sizeof(PairRequest);
-        return packet;
+        decoded.raw.len = sizeof(PairRequest);
+
+        decoded.header = req->header;
+        return decoded;
     }
 };
 
@@ -105,32 +109,20 @@ protected:
         sut_->init(kHubId, kHubType);
     }
 
-    static RxPacket make_pair_request(NodeId sender_id, NodeType sender_type)
+    static DecodedPacket make_decoded_pair_request(NodeId sender_id, NodeType sender_type)
     {
-        RxPacket packet{};
-        auto *req = reinterpret_cast<PairRequest *>(packet.data);
+        DecodedPacket decoded{};
+        auto *req = reinterpret_cast<PairRequest *>(decoded.raw.data);
         req->header.msg_type = MessageType::PAIR_REQUEST;
         req->header.sender_node_id = sender_id;
         req->header.sender_type = sender_type;
         req->header.dest_node_id = kHubId;
         req->header.sequence_number = 0;
         req->heartbeat_interval_ms = 60000;
-        packet.len = sizeof(PairRequest);
-        return packet;
-    }
+        decoded.raw.len = sizeof(PairRequest);
 
-    static RxPacket make_pair_response(uint8_t channel)
-    {
-        RxPacket packet{};
-        auto *resp = reinterpret_cast<PairResponse *>(packet.data);
-        resp->header.msg_type = MessageType::PAIR_RESPONSE;
-        resp->header.sender_node_id = kHubId;
-        resp->header.sender_type = kHubType;
-        resp->header.dest_node_id = kNodeId;
-        resp->header.sequence_number = 0;
-        resp->wifi_channel = channel;
-        packet.len = sizeof(PairResponse);
-        return packet;
+        decoded.header = req->header;
+        return decoded;
     }
 };
 
@@ -286,42 +278,24 @@ TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotActive)
     // Pairing not started — response must be ignored
     EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
 
-    auto packet = make_pair_response(6);
-    sut_->handle_response(packet);
+    auto decoded = make_decoded_pair_response(6);
+    sut_->handle_response(decoded);
 }
 
 TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotInitialized)
 {
     PairingManager pm(tx_mgr_, peer_mgr_, codec_);
-    EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
-
-    auto packet = make_pair_response(6);
-    pm.handle_response(packet);
-}
-
-TEST_F(PairingManagerTest, HandleResponseIgnoredIfDecodeFailes)
-{
-    sut_->start(PAIRING_TIMEOUT_MS, kT0);
-
-    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(std::nullopt));
-    EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
-
-    auto packet = make_pair_response(6);
-    sut_->handle_response(packet);
-    EXPECT_TRUE(sut_->is_active()); // still active
+    // In actual implementation, it returns early before any logic if not initialized
+    auto decoded = make_decoded_pair_response(6);
+    pm.handle_response(decoded);
 }
 
 TEST_F(PairingManagerTest, HandleResponseAcceptedDeactivatesPairing)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sender_type = kHubType;
-    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
-
-    auto packet = make_pair_response(6, PairStatus::ACCEPTED);
-    sut_->handle_response(packet);
+    auto decoded = make_decoded_pair_response(6, PairStatus::ACCEPTED);
+    sut_->handle_response(decoded);
 
     EXPECT_FALSE(sut_->is_active());
 }
@@ -330,27 +304,18 @@ TEST_F(PairingManagerTest, HandleResponseAcceptedAddsPeer)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sender_type = kHubType;
-    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
     EXPECT_CALL(peer_mgr_, add(kHubId, _, kHubType, _)).Times(1);
 
-    auto packet = make_pair_response(6, PairStatus::ACCEPTED);
-    sut_->handle_response(packet);
+    auto decoded = make_decoded_pair_response(6, PairStatus::ACCEPTED);
+    sut_->handle_response(decoded);
 }
 
 TEST_F(PairingManagerTest, HandleResponseRejectedKeepsPairingActive)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sender_type = kHubType;
-    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
-
-    auto packet = make_pair_response(6, PairStatus::REJECTED_NOT_ALLOWED);
-    sut_->handle_response(packet);
+    auto decoded = make_decoded_pair_response(6, PairStatus::REJECTED_NOT_ALLOWED);
+    sut_->handle_response(decoded);
 
     EXPECT_TRUE(sut_->is_active());
 }
@@ -360,11 +325,10 @@ TEST_F(PairingManagerHubTest, HandleResponseIgnoredByHub)
     // HUB never processes pair responses
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
     EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
 
-    auto packet = make_pair_response(6);
-    sut_->handle_response(packet);
+    auto decoded = make_decoded_pair_request(kNodeId, kNodeType); // Wrong type for response but HUB should ignore anyway
+    sut_->handle_response(decoded);
     EXPECT_TRUE(sut_->is_active());
 }
 
@@ -374,56 +338,32 @@ TEST_F(PairingManagerHubTest, HandleResponseIgnoredByHub)
 
 TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotActive)
 {
-    EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
-
-    auto packet = make_pair_request(kNodeId, kNodeType);
-    sut_->handle_request(packet);
+    auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
+    sut_->handle_request(decoded);
 }
 
 TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotInitialized)
 {
     PairingManager pm(tx_mgr_, peer_mgr_, codec_);
-    EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
-
-    auto packet = make_pair_request(kNodeId, kNodeType);
-    pm.handle_request(packet);
-}
-
-TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfDecodeFailes)
-{
-    sut_->start(PAIRING_TIMEOUT_MS, kT0);
-
-    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(std::nullopt));
-    EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
-
-    auto packet = make_pair_request(kNodeId, kNodeType);
-    sut_->handle_request(packet);
+    auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
+    pm.handle_request(decoded);
 }
 
 TEST_F(PairingManagerHubTest, HandleRequestFromNodeAddsPeerAndResponds)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    MessageHeader header{};
-    header.sender_node_id = kNodeId;
-    header.sender_type = kNodeType;
-    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
     EXPECT_CALL(peer_mgr_, add(kNodeId, _, kNodeType, _)).Times(1);
     EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
 
-    auto packet = make_pair_request(kNodeId, kNodeType);
-    sut_->handle_request(packet);
+    auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
+    sut_->handle_request(decoded);
 }
 
 TEST_F(PairingManagerHubTest, HandleRequestFromHubIsRejected)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
-
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sender_type = kHubType;
-    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
 
     // HUB sender must NOT be added as peer
     EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
@@ -432,23 +372,19 @@ TEST_F(PairingManagerHubTest, HandleRequestFromHubIsRejected)
     EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(10));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
 
-    auto packet = make_pair_request(kHubId, kHubType);
-    sut_->handle_request(packet);
+    auto decoded = make_decoded_pair_request(kHubId, kHubType);
+    sut_->handle_request(decoded);
 }
 
 TEST_F(PairingManagerHubTest, HandleRequestEncodeFailureDoesNotQueue)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    MessageHeader header{};
-    header.sender_node_id = kNodeId;
-    header.sender_type = kNodeType;
-    EXPECT_CALL(codec_, decode_header(_, _)).WillOnce(Return(header));
     EXPECT_CALL(codec_, encode(_, _, _, _, _)).WillOnce(Return(0));
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
 
-    auto packet = make_pair_request(kNodeId, kNodeType);
-    sut_->handle_request(packet);
+    auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
+    sut_->handle_request(decoded);
 }
 
 TEST_F(PairingManagerTest, HandleRequestIgnoredByNonHub)
@@ -456,8 +392,6 @@ TEST_F(PairingManagerTest, HandleRequestIgnoredByNonHub)
     // Non-HUB nodes must never process pair requests
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    EXPECT_CALL(codec_, decode_header(_, _)).Times(0);
-
-    auto packet = make_pair_request(kNodeId, kNodeType);
-    sut_->handle_request(packet);
+    auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
+    sut_->handle_request(decoded);
 }

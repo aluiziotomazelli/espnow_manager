@@ -45,8 +45,8 @@ public:
     virtual bool is_active() const = 0;
 
     /** @internal */
-    virtual void handle_request(const RxPacket &packet) = 0;
+    virtual void handle_request(const DecodedPacket &decoded) = 0;
 
     /** @internal */
-    virtual void handle_response(const RxPacket &packet) = 0;
+    virtual void handle_response(const DecodedPacket &decoded) = 0;
 };
