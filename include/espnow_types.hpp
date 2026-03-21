@@ -187,16 +187,14 @@ struct EspNowConfig
     uint32_t ack_timeout_ms;        /**< Timeout for logical acknowledgments (ms) */
     uint32_t heartbeat_interval_ms; /**< Interval for heartbeats; 0 disables generation (ms) */
 
-    uint32_t stack_size_rx_dispatch;      /**< Stack size for the internal packet dispatcher task */
-    uint32_t stack_size_transport_worker; /**< Stack size for the worker task (Heartbeats, Pairing) */
-    uint32_t stack_size_tx_manager;       /**< Stack size for the transmission manager task */
+    uint32_t stack_size_rx_task; /**< Stack size for the internal packet dispatcher task */
+    uint32_t stack_size_tx_task; /**< Stack size for the transmission manager task */
 
-    UBaseType_t priority_rx_dispatch;      /**< Priority for the internal packet dispatcher task */
-    UBaseType_t priority_transport_worker; /**< Priority for the worker task (Heartbeats, Pairing) */
-    UBaseType_t priority_tx_manager;       /**< Priority for the transmission manager task */
+    UBaseType_t priority_rx_task; /**< Priority for the internal packet dispatcher task */
+    UBaseType_t priority_tx_task; /**< Priority for the transmission manager task */
 
-    uint32_t rx_dispatch_queue_length;      /**< Length of the internal packet dispatcher queue */
-    uint32_t transport_worker_queue_length; /**< Length of the worker task queue (Heartbeats, Pairing) */
+    uint32_t rx_queue_length; /**< Length of the internal packet dispatcher queue */
+    uint32_t tx_queue_length; /**< Length of the internal packet dispatcher queue */
 
     /**
      * @brief Default constructor with sensible defaults.
@@ -208,14 +206,12 @@ struct EspNowConfig
         , wifi_channel(DEFAULT_WIFI_CHANNEL)
         , ack_timeout_ms(DEFAULT_ACK_TIMEOUT_MS)
         , heartbeat_interval_ms(DEFAULT_HEARTBEAT_INTERVAL_MS)
-        , stack_size_rx_dispatch(4096)
-        , stack_size_transport_worker(5120)
-        , stack_size_tx_manager(4096)
-        , priority_rx_dispatch(10)
-        , priority_transport_worker(5)
-        , priority_tx_manager(9)
-        , rx_dispatch_queue_length(30)
-        , transport_worker_queue_length(20)
+        , stack_size_rx_task(4096)
+        , stack_size_tx_task(4096)
+        , priority_rx_task(10)
+        , priority_tx_task(9)
+        , rx_queue_length(30)
+        , tx_queue_length(20)
 
     {
     }
