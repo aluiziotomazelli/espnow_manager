@@ -579,7 +579,7 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool &should_st
                 pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
             }
         }
-        
+
         // Remove premature transition for non-HUB nodes
         if (config_.node_type == ReservedTypes::HUB) {
             transition_to_state(NodeState::OPERATIONAL);

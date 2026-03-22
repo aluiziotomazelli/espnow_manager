@@ -14,6 +14,7 @@
 #include "freertos/task.h"
 #include "unity.h"
 #include "test_utils.h"
+#include "nvs_flash.h"
 
 #include "espnow_manager.hpp"
 
@@ -21,7 +22,8 @@
 // Test constants
 // ---------------------------------------------------------------------------
 static constexpr uint8_t kHubChannel = 1;
-static constexpr uint32_t kPairingTimeoutMs = 15000;
+static constexpr uint8_t kNodeChannel = 2;
+static constexpr uint32_t kPairingTimeoutMs = 5000;
 static constexpr uint32_t kHeartbeatIntervalMs = 2000; // short for testing
 static constexpr uint32_t kWaitAfterPairingMs = 3000;  // time for pairing to complete
 static constexpr uint32_t kAppQueueLength = 10;
@@ -39,6 +41,7 @@ static EspNowConfig make_hub_config(QueueHandle_t app_queue)
     cfg.wifi_channel = kHubChannel;
     cfg.app_rx_queue = app_queue;
     cfg.heartbeat_interval_ms = kHeartbeatIntervalMs;
+    cfg.stack_size_rx_task = 7168;
     return cfg;
 }
 
@@ -51,6 +54,8 @@ static EspNowConfig make_node_config(QueueHandle_t app_queue)
     cfg.wifi_channel = kHubChannel;
     cfg.app_rx_queue = app_queue;
     cfg.heartbeat_interval_ms = kHeartbeatIntervalMs;
+    cfg.stack_size_rx_task = 7168;
+    // cfg.stack_size_tx_task = 2120;
     return cfg;
 }
 
@@ -60,6 +65,14 @@ static EspNowConfig make_node_config(QueueHandle_t app_queue)
 // DUT1 (HUB):  initializes, starts pairing, waits for node to pair
 // DUT2 (NODE): initializes, starts pairing, waits for hub acceptance
 // ===========================================================================
+
+TEST_CASE("Clear NVS and peer storage", "[espnow][setup]")
+{
+    // Nuclear option — apaga tudo
+    nvs_flash_erase();
+    nvs_flash_init();
+    printf("NVS Flash Ereased");
+}
 
 static void hub_pairing_test()
 {
@@ -136,7 +149,7 @@ static void hub_heartbeat_test()
     EspNowManager &mgr = EspNowManager::instance();
     TEST_ASSERT_EQUAL(ESP_OK, mgr.init(make_hub_config(app_queue)));
 
-    mgr.start_pairing(kPairingTimeoutMs);
+    // mgr.start_pairing(kPairingTimeoutMs);
     unity_send_signal("hub ready for heartbeat test");
     unity_wait_for_signal("node paired for heartbeat");
 
@@ -162,8 +175,8 @@ static void node_heartbeat_test()
 
     unity_wait_for_signal("hub ready for heartbeat test");
 
-    mgr.start_pairing(kPairingTimeoutMs);
-    vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
+    // mgr.start_pairing(kPairingTimeoutMs);
+    // vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
     TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, mgr.get_node_state());
 
     unity_send_signal("node paired for heartbeat");
@@ -196,7 +209,7 @@ static void hub_send_data_test()
     EspNowManager &mgr = EspNowManager::instance();
     TEST_ASSERT_EQUAL(ESP_OK, mgr.init(make_hub_config(app_queue)));
 
-    mgr.start_pairing(kPairingTimeoutMs);
+    // mgr.start_pairing(kPairingTimeoutMs);
     unity_send_signal("hub ready for data test");
     unity_wait_for_signal("node ready for data");
 
@@ -220,7 +233,7 @@ static void node_receive_data_test()
 
     unity_wait_for_signal("hub ready for data test");
 
-    mgr.start_pairing(kPairingTimeoutMs);
+    // mgr.start_pairing(kPairingTimeoutMs);
     vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
     TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, mgr.get_node_state());
 
