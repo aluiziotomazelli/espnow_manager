@@ -192,19 +192,20 @@ protected:
 // rx_task — NOTIFY_CHANNEL_FOUND
 // ===========================================================================
 
-TEST_F(EspNowManagerTaskTest, ChannelFoundTransitionsToOperational)
+TEST_F(EspNowManagerTaskTest, ChannelFoundStartsPairingForNode)
 {
     init_and_wait();
     ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
 
     EXPECT_CALL(*peer_mgr_, persist()).Times(1); // peer_manager::persist is called when channel is found
+    EXPECT_CALL(*pairing_mgr_, start(_, _)).Times(1);
 
     // on_channel_found_cb stores the channel and notifies rx_task
-    // via NOTIFY_CHANNEL_FOUND. The task then transitions NodeState.
+    // via NOTIFY_CHANNEL_FOUND. The task then calls pairing_mgr_->start.
     sut_->on_channel_found_cb(6);
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
 
-    EXPECT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
+    EXPECT_EQ(sut_->get_node_state(), NodeState::PAIRING);
 }
 
 // ===========================================================================

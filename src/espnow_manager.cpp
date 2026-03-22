@@ -22,7 +22,7 @@
 
 #include "espnow_manager.hpp"
 
-static const char *TAG = "EspNow";
+static const char *TAG = "EspNowManager";
 
 // RTC storage for peer list persistence must stay in global scope
 static RTC_DATA_ATTR PersistentData g_rtc_storage;
@@ -233,12 +233,21 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
     }
 
     // Store timeout for use when scan completes (NOTIFY_CHANNEL_FOUND or NOTIFY_SCAN_FAILED)
-    // pairing_manager_->start()  is called from rx_task after the correct channel is confirmed.
     pairing_timeout_ms_ = timeout_ms;
 
-    // Force TxManager into scanning so the correct channel is discovered
-    // before pair requests are sent. Pairing starts after scan result arrives.
-    tx_manager_->notify_scanning();
+    // Only non-HUB nodes need to scan for the channel first.
+    // HUB is already on the correct channel and only needs to accept requests.
+    if (config_.node_type != ReservedTypes::HUB) {
+        // Non-HUB nodes need to scan for the channel first.
+        // Force TxManager into scanning so the correct channel is discovered
+        // before pair requests are sent. Pairing starts after scan result arrives.
+        // pairing_manager_->start() is called from rx_task after the correct channel is confirmed.
+        tx_manager_->notify_scanning();
+    }
+    else {
+        // HUB can start accepting pair requests immediately since it doesn't need to discover the channel first.
+        pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
+    }
 
     transition_to_state(NodeState::PAIRING);
     return ESP_OK;
@@ -549,9 +558,16 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool &should_st
         propagate_channel();
         peer_manager_->persist();
         // Channel confirmed now safe to start pairing if NodeState::PAIRING
-        if (node_state_.load() == NodeState::PAIRING)
-            pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
-        transition_to_state(NodeState::OPERATIONAL);
+        if (node_state_.load() == NodeState::PAIRING || node_state_.load() == NodeState::SCANNING) {
+            if (config_.node_type != ReservedTypes::HUB) {
+                pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
+            }
+        }
+        
+        // Remove premature transition for non-HUB nodes
+        if (config_.node_type == ReservedTypes::HUB) {
+            transition_to_state(NodeState::OPERATIONAL);
+        }
     }
     // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb()
     if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
