@@ -286,7 +286,11 @@ void TxManager::tx_task()
 
         case TxState::WAITING_FOR_ACK:
         {
+            // The task MUST NOT consume new packets while waiting for a network ACK from the peer.
+            // It blocks here completely until a notification arrives (like NOTIFY_LOGICAL_ACK, NOTIFY_ACK_TIMEOUT, or NOTIFY_PHYSICAL_FAIL).
             if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
+                // If a NOTIFY_LOGICAL_ACK arrives, handle_notifications() warns the TxStateMachine and stops the timer.
+                // If a NOTIFY_ACK_TIMEOUT arrives, the FSM transitions to RETRYING.
                 handle_notifications(notifications, should_stop);
                 if (should_stop) {
                     break;
@@ -297,6 +301,8 @@ void TxManager::tx_task()
 
         case TxState::RETRYING:
         {
+            // Immediate packet resend logic. Does not block awaiting notifications. 
+            // Pending notifications are safely handled at the top of the next while loop iteration.
             auto pending_opt = fsm_.get_pending_ack();
             if (pending_opt && pending_opt->retries_left > 0) {
                 PendingAck pending = pending_opt.value();
@@ -307,6 +313,7 @@ void TxManager::tx_task()
                     hal_.hal_esp_now_send(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
 
                 if (send_result == ESP_OK) {
+                    // Retry sent successfully, go back to WAITING_FOR_ACK and wait for the response again.
                     freertos_hal_.timer_start(ack_timeout_timer_, pdMS_TO_TICKS(10));
                     fsm_.on_tx_success(true); // Back to WAITING_FOR_ACK
                 }
@@ -315,6 +322,7 @@ void TxManager::tx_task()
                 }
             }
             else {
+                // Retries exhausted, notify FSM to drop the packet and potentially sever the link state.
                 fsm_.on_max_retries();
             }
             break;
@@ -322,14 +330,16 @@ void TxManager::tx_task()
 
         case TxState::SCANNING:
         {
+            // The task blocks deeply inside scanner_.scan() spanning multiple active WiFi channel sweeps.
             // Start channel is managed internally by DiscoveryManager
             auto result = scanner_.scan();
             if (result.hub_found) {
-                // Link is restored. The actual WiFi channel update was handled
-                // by EspNowManager via the DiscoveryManager observer callback.
+                // The network link has been restored. 
+                // Actual peer config updating was handled by EspNowManager via the observer callback.
                 fsm_.on_link_alive();
             }
             else {
+                // Hub completely unreachable across all channels.
                 fsm_.reset(); // Back to IDLE
             }
 
