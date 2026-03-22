@@ -527,6 +527,15 @@ void EspNowManager::propagate_channel()
 {
     scanner_->set_channel(config_.wifi_channel);
     peer_manager_->set_channel(config_.wifi_channel);
+
+    // Keep the broadcast peer aligned with the current channel,
+    // ensuring all subsequent broadcasts (like PAIR_REQUEST) use the correct newly-found channel.
+    esp_now_peer_info_t broadcast = {};
+    memcpy(broadcast.peer_addr, BROADCAST_MAC, 6);
+    broadcast.channel = config_.wifi_channel;
+    broadcast.ifidx = WIFI_IF_STA;
+    broadcast.encrypt = false;
+    hal_wifi_->hal_esp_now_mod_peer(&broadcast);
 }
 
 void EspNowManager::transition_to_state(NodeState new_state)
