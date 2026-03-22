@@ -60,7 +60,16 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan()
 
         // Temporarily set channel to send probe; final channel update
         // is handled by EspNowManager via on_channel_found_cb() callback
-        hal_wifi_.wifi_set_channel(channel);
+        esp_err_t err = hal_wifi_.wifi_set_channel(channel);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to set WiFi channel to %d: %s", channel, esp_err_to_name(err));
+            continue;
+        }
+        err = modify_broadcast_peer(channel);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to modify broadcast peer for channel %d: %s", channel, esp_err_to_name(err));
+            continue;
+        }
 
         // empty initializer to avoid memory garbage on unused fields
         MessageHeader probe_header = {};
@@ -71,8 +80,9 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan()
 
         uint8_t buffer[ESP_NOW_MAX_DATA_LEN];
         size_t encoded_len = message_codec_.encode(probe_header, nullptr, 0, buffer, sizeof(buffer));
-        if (encoded_len == 0)
+        if (encoded_len == 0) {
             continue;
+        }
 
         // Loop to send probe * SCAN_CHANNEL_ATTEMPTS until the hub is not found
         for (uint8_t attempt = 0; attempt < SCAN_CHANNEL_ATTEMPTS && !result.hub_found; attempt++) {
@@ -106,27 +116,46 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan()
 void DiscoveryManager::handle_probe(const DecodedPacket &decoded)
 {
     if (!hub_ready_) {
+        ESP_LOGE(TAG, "DiscoveryManager not initialized properly. Call init() before handle_probe().");
+        return;
+    }
+    ESP_LOGD(
+        TAG,
+        "Received channel scan probe from node_id=%d, sender_type=%d",
+        decoded.header.sender_node_id,
+        decoded.header.sender_type);
+    // Build CHANNEL_SCAN_RESPONSE header
+    MessageHeader resp{};
+    resp.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
+    resp.sender_node_id = my_node_id_;
+    resp.sender_type = my_node_type_;
+    resp.dest_node_id = decoded.header.sender_node_id;
+
+    uint8_t buffer[ESP_NOW_MAX_DATA_LEN];
+    size_t len = message_codec_.encode(resp, nullptr, 0, buffer, sizeof(buffer));
+    if (len == 0) {
         return;
     }
 
-    DecodedTxPacket tx_packet;
-    memcpy(tx_packet.dest_mac, decoded.raw.src_mac, 6);
-    
-    tx_packet.header.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
-    tx_packet.header.sender_node_id = my_node_id_;
-    tx_packet.header.sender_type = my_node_type_;
-    tx_packet.header.dest_node_id = decoded.header.sender_node_id;
-    tx_packet.header.payload_type = 0;
-    tx_packet.header.sequence_number = 0;
-    tx_packet.header.requires_ack = false;
-    tx_packet.header.timestamp_ms = 0;
-
-    tx_packet.payload_len = 0;
-
-    tx_mgr_->queue_packet(tx_packet);
+    // Send directly via WiFi HAL — the probing node may not yet be a registered
+    // ESP-NOW peer, so TxManager cannot be used here.
+    esp_err_t err = hal_wifi_.hal_esp_now_send(BROADCAST_MAC, buffer, len);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to send channel scan response: %s", esp_err_to_name(err));
+    }
 }
 
 void DiscoveryManager::set_channel(uint8_t channel)
 {
     current_channel_ = channel;
+}
+
+esp_err_t DiscoveryManager::modify_broadcast_peer(const uint8_t &channel)
+{
+    esp_now_peer_info_t broadcast = {};
+    memcpy(broadcast.peer_addr, BROADCAST_MAC, 6);
+    broadcast.channel = channel;
+    broadcast.ifidx = WIFI_IF_STA;
+    broadcast.encrypt = false;
+    return hal_wifi_.hal_esp_now_mod_peer(&broadcast);
 }

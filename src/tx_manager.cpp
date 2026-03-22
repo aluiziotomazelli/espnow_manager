@@ -81,9 +81,9 @@ esp_err_t TxManager::deinit()
         }
 
         // Wait for task to exit
-        uint8_t delay = 10;
-        for (int timeout = 1000; timeout > 0; timeout -= delay) {
-            if (freertos_hal_.semaphore_take(task_done_semaphore_, delay) == pdPASS)
+        uint8_t delay_ms = 10;
+        for (int timeout = 1000; timeout > 0; timeout -= delay_ms) {
+            if (freertos_hal_.semaphore_take(task_done_semaphore_, delay_ms) == pdPASS)
                 break;
         }
         // Forcing deleting task
@@ -159,9 +159,9 @@ void TxManager::notify_logical_ack()
 
 void TxManager::tx_task_func(void *arg)
 {
-    static_cast<TxManager *>(arg)->run();
+    static_cast<TxManager *>(arg)->tx_task();
 
-    // Should never reach here — run() self-deletes via freertos_hal_
+    // Should never reach here — tx_task() self-deletes via freertos_hal_
     vTaskDelete(NULL);
 }
 
@@ -182,7 +182,7 @@ void TxManager::handle_esp_now_send_errors(esp_err_t error)
     }
 }
 
-void TxManager::handle_notifications(uint32_t notifications)
+void TxManager::handle_notifications(uint32_t notifications, bool &should_stop)
 {
     // Multiple notification bits can arrive simultaneously and must all be
     // processed. else-if would silently drop bits after the first match.
@@ -197,27 +197,25 @@ void TxManager::handle_notifications(uint32_t notifications)
     }
     if ((notifications & NOTIFY_LOGICAL_ACK) == NOTIFY_LOGICAL_ACK) {
         fsm_.on_ack_received();
-        freertos_hal_.timer_start(ack_timeout_timer_, pdMS_TO_TICKS(10));
+        freertos_hal_.timer_stop(ack_timeout_timer_, pdMS_TO_TICKS(10));
     }
     if ((notifications & NOTIFY_ACK_TIMEOUT) == NOTIFY_ACK_TIMEOUT) {
         fsm_.on_ack_timeout();
     }
     if ((notifications & NOTIFY_STOP) == NOTIFY_STOP) {
-        ESP_LOGI(TAG, "TX Manager task exiting.");
-        task_handle_ = nullptr;
-        freertos_hal_.semaphore_give(task_done_semaphore_);
-        freertos_hal_.task_suspend(nullptr); // NULL / nullptr == current task
-        freertos_hal_.task_delete(nullptr);  // NULL / nullptr == current task
+        should_stop = true;
     }
 }
 
-void TxManager::run()
+void TxManager::tx_task()
 {
     DecodedTxPacket structured_packet;
     TxPacket raw_packet;
+    bool should_stop = false;
+
     ESP_LOGI(TAG, "TX Manager task started.");
 
-    while (true) {
+    while (!should_stop) {
         uint32_t notifications = 0;
         TxState current_state = fsm_.get_state();
 
@@ -266,7 +264,10 @@ void TxManager::run()
             }
 
             if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
-                handle_notifications(notifications);
+                handle_notifications(notifications, should_stop);
+                if (should_stop) {
+                    break;
+                }
             }
 
             break;
@@ -275,7 +276,10 @@ void TxManager::run()
         case TxState::WAITING_FOR_ACK:
         {
             if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
-                handle_notifications(notifications);
+                handle_notifications(notifications, should_stop);
+                if (should_stop) {
+                    break;
+                }
             }
             break;
         }
@@ -327,4 +331,10 @@ void TxManager::run()
             break;
         }
     }
+
+    ESP_LOGI(TAG, "TX Manager task exiting.");
+    task_handle_ = nullptr;
+    freertos_hal_.semaphore_give(task_done_semaphore_);
+    freertos_hal_.task_suspend(nullptr); // NULL / nullptr == current task
+    freertos_hal_.task_delete(nullptr);  // NULL / nullptr == current task
 }

@@ -65,8 +65,7 @@ esp_err_t EspNowDriver::deinit()
 esp_err_t EspNowDriver::add_broadcast_peer(const uint8_t &channel)
 {
     esp_now_peer_info_t broadcast_peer = {};
-    const uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    memcpy(broadcast_peer.peer_addr, broadcast_mac, 6);
+    memcpy(broadcast_peer.peer_addr, BROADCAST_MAC, 6);
     broadcast_peer.channel = channel;
     broadcast_peer.ifidx = WIFI_IF_STA;
     broadcast_peer.encrypt = false;

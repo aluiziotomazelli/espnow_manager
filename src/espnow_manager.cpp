@@ -430,6 +430,13 @@ void EspNowManager::rx_task(void *arg)
                     else {
                         // Protocol-internal packets — handle immediately via router
                         self->message_router_->handle_packet(decoded);
+
+                        // Check if a PAIR_RESPONSE successfully completed the pairing on a NODE
+                        if (self->node_state_.load() == NodeState::PAIRING && !self->pairing_manager_->is_active()) {
+                            if (!self->peer_manager_->get_all().empty()) {
+                                self->transition_to_state(NodeState::OPERATIONAL);
+                            }
+                        }
                     }
                 }
             }

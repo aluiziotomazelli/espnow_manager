@@ -49,8 +49,8 @@ private:
     uint32_t ack_timeout_ms_;
 
     static void tx_task_func(void *arg);
-    void run();
+    void tx_task();
     static void ack_timeout_callback(TimerHandle_t xTimer);
     void handle_esp_now_send_errors(esp_err_t error);
-    void handle_notifications(uint32_t notification);
+    void handle_notifications(uint32_t notification, bool &should_stop);
 };

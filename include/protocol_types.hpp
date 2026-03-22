@@ -54,7 +54,7 @@ constexpr uint32_t LOGICAL_ACK_TIMEOUT_MS = 500;
 constexpr uint8_t MAX_FAILURES = 3;
 
 /** @brief Timeout for scanning a single channel during discovery (ms) */
-constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 50;
+constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 100;
 /** @brief Number of scan attempts per channel */
 constexpr uint8_t SCAN_CHANNEL_ATTEMPTS = 2;
 /** @brief Total maximum time allowed for a full channel scan */

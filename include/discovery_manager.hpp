@@ -28,6 +28,8 @@ private:
     bool node_ready_ = false;
     uint8_t current_channel_ = 1;
 
-    NodeId my_node_id_ = ReservedIds::BROADCAST;
-    NodeType my_node_type_ = ReservedTypes::UNKNOWN;
+    NodeId my_node_id_;
+    NodeType my_node_type_;
+
+    esp_err_t modify_broadcast_peer(const uint8_t &channel);
 };
