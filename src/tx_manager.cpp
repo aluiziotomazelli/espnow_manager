@@ -212,16 +212,29 @@ void TxManager::tx_task()
     DecodedTxPacket structured_packet;
     TxPacket raw_packet;
     bool should_stop = false;
+    uint32_t notifications = 0;
 
     ESP_LOGI(TAG, "TX Manager task started.");
 
     while (!should_stop) {
-        uint32_t notifications = 0;
         TxState current_state = fsm_.get_state();
+
+        // 1. Process pending notifications without blocking.
+        // This ensures they are handled even if the queue is full and we are IDLE,
+        // or if we are returning from a non-blocking state like RETRYING or SCANNING.
+        if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, 0) == pdTRUE) {
+            handle_notifications(notifications, should_stop);
+            if (should_stop) {
+                break;
+            }
+            // Refresh state in case notifications triggered a transition
+            current_state = fsm_.get_state();
+        }
 
         switch (current_state) {
         case TxState::IDLE:
         {
+            // Non-blocking queue read: the queue alone does not control sleep.
             if (freertos_hal_.queue_receive(tx_queue_, &structured_packet, 0) == pdTRUE) {
                 // Update sequence number in header before encoding
                 structured_packet.header.sequence_number = sequence_counter_++;
@@ -260,16 +273,14 @@ void TxManager::tx_task()
                 else {
                     handle_esp_now_send_errors(send_result);
                 }
-                break;
             }
-
-            if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
-                handle_notifications(notifications, should_stop);
-                if (should_stop) {
-                    break;
+            else {
+                // Queue is empty. The task blocks here waiting for any notification.
+                // When queue_packet() is called, it sends NOTIFY_DATA to wake up this wait.
+                if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
+                    handle_notifications(notifications, should_stop);
                 }
             }
-
             break;
         }
 
