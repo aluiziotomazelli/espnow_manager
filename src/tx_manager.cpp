@@ -287,7 +287,8 @@ void TxManager::tx_task()
         case TxState::WAITING_FOR_ACK:
         {
             // The task MUST NOT consume new packets while waiting for a network ACK from the peer.
-            // It blocks here completely until a notification arrives (like NOTIFY_LOGICAL_ACK, NOTIFY_ACK_TIMEOUT, or NOTIFY_PHYSICAL_FAIL).
+            // It blocks here completely until a notification arrives (like NOTIFY_LOGICAL_ACK, NOTIFY_ACK_TIMEOUT, or
+            // NOTIFY_PHYSICAL_FAIL).
             if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
                 // If a NOTIFY_LOGICAL_ACK arrives, handle_notifications() warns the TxStateMachine and stops the timer.
                 // If a NOTIFY_ACK_TIMEOUT arrives, the FSM transitions to RETRYING.
@@ -301,7 +302,7 @@ void TxManager::tx_task()
 
         case TxState::RETRYING:
         {
-            // Immediate packet resend logic. Does not block awaiting notifications. 
+            // Immediate packet resend logic. Does not block awaiting notifications.
             // Pending notifications are safely handled at the top of the next while loop iteration.
             auto pending_opt = fsm_.get_pending_ack();
             if (pending_opt && pending_opt->retries_left > 0) {
@@ -334,7 +335,7 @@ void TxManager::tx_task()
             // Start channel is managed internally by DiscoveryManager
             auto result = scanner_.scan();
             if (result.hub_found) {
-                // The network link has been restored. 
+                // The network link has been restored.
                 // Actual peer config updating was handled by EspNowManager via the observer callback.
                 fsm_.on_link_alive();
             }
