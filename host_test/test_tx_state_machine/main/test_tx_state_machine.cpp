@@ -192,3 +192,12 @@ TEST_F(TxStateMachineTest, OnScanRequestedClearFailCount)
     }
     EXPECT_EQ(TxState::SCANNING, fsm.get_state()); // Should remain in SCANNING since it's already in that state
 }
+
+TEST_F(TxStateMachineTest, OnLinkAliveInScanningSetsStateToIdle)
+{
+    fsm.on_scan_requested();
+    EXPECT_EQ(TxState::SCANNING, fsm.get_state());
+
+    fsm.on_link_alive();
+    EXPECT_EQ(TxState::IDLE, fsm.get_state());
+}

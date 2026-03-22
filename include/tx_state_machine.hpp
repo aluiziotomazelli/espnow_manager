@@ -13,7 +13,7 @@ public:
     TxState on_physical_fail() override;
     TxState on_max_retries() override;
     TxState on_scan_requested() override;
-    void on_link_alive() override;
+    TxState on_link_alive() override;
 
     TxState get_state() const override { return current_state_; }
     void reset() override;

@@ -41,9 +41,13 @@ TxState TxStateMachine::on_ack_received()
     return current_state_;
 }
 
-void TxStateMachine::on_link_alive()
+TxState TxStateMachine::on_link_alive()
 {
     send_fail_count_ = 0;
+    if (current_state_ == TxState::SCANNING) {
+        current_state_ = TxState::IDLE;
+    }
+    return current_state_;
 }
 
 TxState TxStateMachine::on_ack_timeout()
