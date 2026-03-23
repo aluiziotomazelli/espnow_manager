@@ -156,12 +156,12 @@ struct TxPacket
  */
 enum class NodeState
 {
-    UNINITIALIZED, ///< Initial state before initialization
-    IDLE,          ///< Initialized successfully, but not yet paired/idle
-    PAIRING,       ///< Actively advertising or scanning for pairing requests
-    OPERATIONAL,   ///< Has peers, normal operation
-    SCANNING,      ///< Lost connection to peers, rediscovering channel
-    COUNT          ///< Number of states (for validation)
+    UNINITIALIZED = 0, ///< Initial state before initialization
+    IDLE = 1,          ///< Initialized successfully, but not yet paired/idle
+    PAIRING = 2,       ///< Actively advertising or scanning for pairing requests
+    OPERATIONAL = 3,   ///< Has peers, normal operation
+    SCANNING = 4,      ///< Lost connection to peers, rediscovering channel
+    COUNT = 5          ///< Number of states (for validation)
 };
 
 /**

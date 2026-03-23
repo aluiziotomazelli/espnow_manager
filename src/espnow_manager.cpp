@@ -433,8 +433,9 @@ void EspNowManager::rx_task(void *arg)
                         self->message_router_->handle_packet(decoded);
 
                         // Check if a PAIR_RESPONSE successfully completed the pairing on a NODE
-                        if (self->node_fsm_->get_state() == NodeState::PAIRING && !self->pairing_manager_->is_active()) {
-                            self->node_fsm_->on_pairing_completed(!self->peer_manager_->get_all().empty());
+                        if (self->node_fsm_->get_state() == NodeState::PAIRING &&
+                            !self->pairing_manager_->is_active()) {
+                            self->node_fsm_->on_pairing_timeout(!self->peer_manager_->get_all().empty());
                         }
                     }
                 }
@@ -538,8 +539,6 @@ void EspNowManager::propagate_channel()
     hal_wifi_->hal_esp_now_mod_peer(&broadcast);
 }
 
-
-
 // Helper to build AppMessage from DecodedPacket
 AppMessage EspNowManager::build_app_message(const DecodedPacket &decoded)
 {
@@ -565,16 +564,19 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool &should_st
     }
     // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb()
     if ((notifications & NOTIFY_CHANNEL_FOUND) == NOTIFY_CHANNEL_FOUND) {
-        uint8_t channel = last_found_channel_.load();
-        config_.wifi_channel = channel;
+        config_.wifi_channel = last_found_channel_.load();
         propagate_channel();
-        peer_manager_->persist();
         // Channel confirmed now safe to start pairing if NodeState::PAIRING
         NodeState current_state = node_fsm_->get_state();
         if (current_state == NodeState::PAIRING || current_state == NodeState::SCANNING) {
             if (config_.node_type != ReservedTypes::HUB) {
                 pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
             }
+        }
+        // If we are in OPERATIONAL state, it means we have found the HUB
+        // and we need to persist the peer to storage
+        else if (current_state == NodeState::OPERATIONAL) {
+            peer_manager_->persist();
         }
 
         // Let FSM decide next state after channel found
@@ -665,8 +667,6 @@ esp_err_t EspNowManager::init_pairing_manager()
     }
     return pairing_manager_->init(config_.node_id, config_.node_type);
 }
-
-
 
 void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo> &peers)
 {

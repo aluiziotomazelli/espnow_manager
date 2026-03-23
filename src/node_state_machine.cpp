@@ -41,7 +41,7 @@ esp_err_t NodeStateMachine::on_pairing_requested()
     return transition_to(NodeState::PAIRING);
 }
 
-esp_err_t NodeStateMachine::on_pairing_completed(bool success)
+esp_err_t NodeStateMachine::on_pairing_timeout(bool success)
 {
     if (state_.load() != NodeState::PAIRING) {
         return ESP_ERR_INVALID_STATE;
@@ -66,7 +66,7 @@ esp_err_t NodeStateMachine::on_channel_found(bool is_hub, bool has_peers)
     }
 
     if (is_hub) {
-        // Current HUBs don't scan, but this supports future "Bridge" types 
+        // Current HUBs don't scan, but this supports future "Bridge" types
         // or mobile HUBs that might need to rediscover a channel.
         return transition_to(NodeState::OPERATIONAL);
     }

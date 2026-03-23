@@ -87,13 +87,14 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan()
         // Loop to send probe * SCAN_CHANNEL_ATTEMPTS until the hub is not found
         for (uint8_t attempt = 0; attempt < SCAN_CHANNEL_ATTEMPTS && !result.hub_found; attempt++) {
             hal_wifi_.hal_esp_now_send(BROADCAST_MAC, buffer, encoded_len);
+            ESP_LOGV(TAG, "Probe sent on channel: %d", channel);
 
             // Wait for hub to respond
             uint32_t notifications = 0;
             if (hal_freertos_.task_notify_wait(
                     0, NOTIFY_LINK_ALIVE, &notifications, pdMS_TO_TICKS(SCAN_CHANNEL_TIMEOUT_MS)) == pdPASS) {
                 if (notifications & NOTIFY_LINK_ALIVE) {
-                    ESP_LOGI(TAG, "Hub found on channel %d.", channel);
+                    ESP_LOGI(TAG, "Hub found on channel: %d", channel);
                     current_channel_ = channel; // Update current channel to the one where hub is found
                     observer_->on_channel_found_cb(channel);
                     result.channel = channel;

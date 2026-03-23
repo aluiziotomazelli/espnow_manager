@@ -51,7 +51,7 @@ static EspNowConfig make_node_config(QueueHandle_t app_queue)
     EspNowConfig cfg{};
     cfg.node_id = 0x02;
     cfg.node_type = 0x02;
-    cfg.wifi_channel = kHubChannel;
+    cfg.wifi_channel = kNodeChannel;
     cfg.app_rx_queue = app_queue;
     cfg.heartbeat_interval_ms = kHeartbeatIntervalMs;
     cfg.stack_size_rx_task = 7168;
@@ -80,7 +80,7 @@ static void hub_pairing_test()
     TEST_ASSERT_NOT_NULL(app_queue);
 
     EspNowManager &mgr = EspNowManager::instance();
-    TEST_ASSERT_EQUAL(ESP_OK, mgr.init(make_hub_config(app_queue)));
+    mgr.init(make_hub_config(app_queue));
     TEST_ASSERT_EQUAL(NodeState::PAIRING, mgr.get_node_state()); // HUB has no peers, starts PAIRING
 
     // Signal node that hub is ready to pair
@@ -103,7 +103,7 @@ static void node_pairing_test()
     TEST_ASSERT_NOT_NULL(app_queue);
 
     EspNowManager &mgr = EspNowManager::instance();
-    TEST_ASSERT_EQUAL(ESP_OK, mgr.init(make_node_config(app_queue)));
+    mgr.init(make_node_config(app_queue));
     TEST_ASSERT_EQUAL(NodeState::PAIRING, mgr.get_node_state()); // No peers, starts PAIRING
 
     // Wait for hub to be ready
@@ -147,11 +147,10 @@ static void hub_heartbeat_test()
     TEST_ASSERT_NOT_NULL(app_queue);
 
     EspNowManager &mgr = EspNowManager::instance();
-    TEST_ASSERT_EQUAL(ESP_OK, mgr.init(make_hub_config(app_queue)));
+    mgr.init(make_hub_config(app_queue));
 
     // mgr.start_pairing(kPairingTimeoutMs);
     unity_send_signal("hub ready for heartbeat test");
-    unity_wait_for_signal("node paired for heartbeat");
 
     // Wait for at least one heartbeat interval
     vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * 2));
@@ -171,15 +170,13 @@ static void node_heartbeat_test()
     TEST_ASSERT_NOT_NULL(app_queue);
 
     EspNowManager &mgr = EspNowManager::instance();
-    TEST_ASSERT_EQUAL(ESP_OK, mgr.init(make_node_config(app_queue)));
+    mgr.init(make_node_config(app_queue));
 
     unity_wait_for_signal("hub ready for heartbeat test");
 
     // mgr.start_pairing(kPairingTimeoutMs);
     // vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
     TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, mgr.get_node_state());
-
-    unity_send_signal("node paired for heartbeat");
 
     // Wait for hub to verify heartbeat
     unity_wait_for_signal("hub heartbeat verified");

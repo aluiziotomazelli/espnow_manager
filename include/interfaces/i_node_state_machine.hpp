@@ -5,10 +5,11 @@
 
 /**
  * @brief Interface for the Node State Machine.
- * 
+ *
  * This class governs the high-level state of the ESP-NOW node (Peripheral or HUB).
  */
-class INodeStateMachine {
+class INodeStateMachine
+{
 public:
     virtual ~INodeStateMachine() = default;
 
@@ -47,7 +48,7 @@ public:
      * @param success True if at least one peer is now paired.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual esp_err_t on_pairing_completed(bool success) = 0;
+    virtual esp_err_t on_pairing_timeout(bool success) = 0;
 
     /**
      * @brief Event: Channel scan requested (typically by TxManager on failure).
