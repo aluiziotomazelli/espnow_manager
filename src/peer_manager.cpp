@@ -49,26 +49,22 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_
         ESP_LOGI(TAG, "Node ID %d already exists. Updating peer info.", (int)id);
 
         bool mac_changed = (memcmp(it->mac, mac, 6) != 0);
-        bool channel_changed = (it->channel != current_channel_);
 
         if (mac_changed) {
             auto peer_info = make_espnow_peer_info(mac);
 
-            ret = driver_hal_.hal_esp_now_add_peer(&peer_info);
-
+            // Delete peer
+            ret = driver_hal_.hal_esp_now_del_peer(it->mac);
+            // Add peer with new MAC
             if (ret == ESP_OK) {
-                ret = driver_hal_.hal_esp_now_del_peer(it->mac);
+                ret = driver_hal_.hal_esp_now_add_peer(&peer_info);
             }
         }
-        else if (channel_changed) {
-            auto peer_info = make_espnow_peer_info(mac);
-            ret = driver_hal_.hal_esp_now_mod_peer(&peer_info);
-        }
 
+        // Update peer info even if MAC was not changed
         if (ret == ESP_OK) {
             memcpy(it->mac, mac, 6);
             it->type = type;
-            it->channel = current_channel_;
             it->heartbeat_interval_ms = heartbeat_interval_ms;
             // Move to front (LRU)
             PeerInfo updated = *it;
@@ -86,23 +82,25 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_
                 return a.last_seen_ms < b.last_seen_ms;
             });
 
-            driver_hal_.hal_esp_now_del_peer(oldest->mac); // TODO: check return before erasing
-            peers_.erase(oldest);
+            // Delete the last seen peers
+            ret = driver_hal_.hal_esp_now_del_peer(oldest->mac);
+            if (ret == ESP_OK) {
+                // Erase from peers_ list
+                peers_.erase(oldest);
+            }
+        }
+        // Only add the new peer if the oldest was removed successfully
+        if (ret == ESP_OK) {
+            auto peer_info = make_espnow_peer_info(mac);
+            ret = driver_hal_.hal_esp_now_add_peer(&peer_info);
         }
 
-        esp_now_peer_info_t peer_info = {};
-        memcpy(peer_info.peer_addr, mac, 6);
-        peer_info.channel = current_channel_;
-        peer_info.ifidx = WIFI_IF_STA;
-        peer_info.encrypt = false;
-        ret = driver_hal_.hal_esp_now_add_peer(&peer_info);
-
+        // If the new peer was added successfully to ESP-NOW driver, add it to peers_ list
         if (ret == ESP_OK) {
             PeerInfo new_peer;
             memcpy(new_peer.mac, mac, 6);
             new_peer.node_id = id;
             new_peer.type = type;
-            new_peer.channel = current_channel_;
             new_peer.last_seen_ms = 0; // Will be updated by caller if needed
             new_peer.paired = true;
             new_peer.heartbeat_interval_ms = heartbeat_interval_ms;
@@ -111,8 +109,9 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_
         }
     }
 
+    // Save to storage if everything was successful
     if (ret == ESP_OK) {
-        save_to_storage();
+        ret = save_peers_to_storage();
     }
 
     freertos_hal_.semaphore_give(mutex_);
@@ -134,9 +133,9 @@ esp_err_t PeerManager::remove(NodeId id)
 
     esp_err_t ret = driver_hal_.hal_esp_now_del_peer(it->mac);
 
-    if (ret == ESP_OK) {   // If peer is removed successfully from driver
-        peers_.erase(it);  // Remove from peer list
-        save_to_storage(); // Save to storage
+    if (ret == ESP_OK) {               // If peer is removed successfully from driver
+        peers_.erase(it);              // Remove from peer list
+        ret = save_peers_to_storage(); // Save to storage
     }
 
     freertos_hal_.semaphore_give(mutex_);
@@ -211,37 +210,55 @@ void PeerManager::update_last_seen(NodeId id, uint64_t now_ms)
     freertos_hal_.semaphore_give(mutex_);
 }
 
-esp_err_t PeerManager::load_from_storage(uint8_t &wifi_channel)
+esp_err_t PeerManager::load_peers_from_storage()
 {
     etl::vector<PersistentPeer, MAX_PEERS> stored_peers;
-    esp_err_t err = storage_.load(wifi_channel, stored_peers);
-    if (err == ESP_OK) {
-        if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
-            peers_.clear();
-            for (const auto &sp : stored_peers) {
-                if (peers_.size() < MAX_PEERS) {
-                    peers_.push_back(persistent_to_info(sp));
-                }
-            }
-            freertos_hal_.semaphore_give(mutex_);
-        }
-        else {
-            err = ESP_ERR_TIMEOUT;
-        }
+
+    esp_err_t err = storage_.load_peers(stored_peers);
+    if (err != ESP_OK) {
+        return err;
     }
-    return err;
+
+    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+        peers_.clear();
+        for (const auto &sp : stored_peers) {
+            if (peers_.size() < MAX_PEERS) {
+                peers_.push_back(persistent_to_info(sp));
+            }
+        }
+        freertos_hal_.semaphore_give(mutex_);
+        return ESP_OK;
+    }
+    else {
+        return ESP_ERR_TIMEOUT;
+    }
 }
 
-void PeerManager::save_to_storage()
+esp_err_t PeerManager::load_channel_from_storage(uint8_t &channel)
 {
-    etl::vector<PersistentPeer, MAX_PEERS> to_save;
+    return storage_.load_channel(channel);
+}
+
+esp_err_t PeerManager::save_channel_in_storage(uint8_t channel)
+{
+    return storage_.store_channel(channel);
+}
+
+// =====================================================================================
+// Private methods
+// =====================================================================================
+
+esp_err_t PeerManager::save_peers_to_storage()
+{
+    etl::vector<PersistentPeer, MAX_PEERS> peers_to_save;
     for (const auto &p : peers_) {
-        to_save.push_back(info_to_persistent(p));
+        peers_to_save.push_back(info_to_persistent(p));
     }
-    esp_err_t err = storage_.save(current_channel_, to_save, true);
+    esp_err_t err = storage_.store_peers(peers_to_save, true);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to save peers to storage: %s", esp_err_to_name(err));
     }
+    return err;
 }
 
 PersistentPeer PeerManager::info_to_persistent(const PeerInfo &info)
@@ -250,7 +267,6 @@ PersistentPeer PeerManager::info_to_persistent(const PeerInfo &info)
     memcpy(p.mac, info.mac, 6);
     p.type = info.type;
     p.node_id = info.node_id;
-    p.channel = info.channel;
     p.paired = info.paired;
     p.heartbeat_interval_ms = info.heartbeat_interval_ms;
     return p;
@@ -262,7 +278,6 @@ PeerInfo PeerManager::persistent_to_info(const PersistentPeer &persistent)
     memcpy(info.mac, persistent.mac, 6);
     info.type = persistent.type;
     info.node_id = persistent.node_id;
-    info.channel = persistent.channel;
     info.last_seen_ms = 0;
     info.paired = persistent.paired;
     info.heartbeat_interval_ms = persistent.heartbeat_interval_ms;

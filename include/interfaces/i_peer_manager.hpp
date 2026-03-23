@@ -23,6 +23,14 @@ public:
 
     /**
      * @brief Add peer to list
+     * @param id Node ID
+     * @param mac Pointer to 6-byte MAC address: uint8_t mac[6]
+     * @param type Node type
+     * @param heartbeat_interval_ms Heartbeat interval in milliseconds
+     * @return ESP_OK: successful
+     * @return ESP_ERR_TIMEOUT: mutex timeout
+     * @return ESP_ERR_INVALID_ARG: invalid MAC
+     * @return Other: internal NVS and ESP-NOW errors
      * @internal
      */
     virtual esp_err_t add(NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms = 0) = 0;
@@ -43,6 +51,12 @@ public:
 
     /**
      * @brief Remove peer from list
+     * @param id Node ID
+     * @return ESP_OK: successful
+     * @return ESP_ERR_NOT_FOUND: peer not found
+     * @return ESP_ERR_TIMEOUT: mutex timeout
+     * @return Others: internal NVS and ESP-NOW errors
+     *
      * @internal
      */
     virtual esp_err_t remove(NodeId id) = 0;
@@ -81,18 +95,23 @@ public:
 
     /**
      * @brief Get all registered peers
+     * @return etl::vector<PeerInfo, MAX_PEERS> Vector of all registered peers
      * @internal
      */
     virtual etl::vector<PeerInfo, MAX_PEERS> get_all() = 0;
 
     /**
      * @brief Get peers that haven't been seen since a timeout
+     * @param now_ms Current time in milliseconds
+     * @return etl::vector<NodeId, MAX_PEERS> Vector of offline peers
      * @internal
      */
     virtual etl::vector<NodeId, MAX_PEERS> get_offline(uint64_t now_ms) = 0;
 
     /**
      * @brief Update the last seen timestamp for a peer
+     * @param id Node ID
+     * @param now_ms Current time in milliseconds
      * @internal
      */
     virtual void update_last_seen(NodeId id, uint64_t now_ms) = 0;
@@ -108,9 +127,34 @@ public:
     }
 
     /**
-     * @brief Load peer list from persistent storage
-     * @note clears the current peer list - intended for initialization only
+     * @brief Load channel from persistent storage
+     * @param channel Pointer to store the channel
+     * @return ESP_OK if successful
+     * @return ESP_ERR_INVALID_VERSION: mismatch PersistentData::VERSION
+     * @return ESP_ERR_INVALID_CRC: CRC check failed
+     * @return Others: internal NVS errors
+     *
      * @internal
      */
-    virtual esp_err_t load_from_storage(uint8_t &wifi_channel) = 0;
+    virtual esp_err_t load_channel_from_storage(uint8_t &channel) = 0;
+
+    /**
+     * @brief Save channel to persistent storage
+     * @param channel Channel to save
+     * @return ESP_OK if successful
+     * @return Others: internal NVS errors
+     * @internal
+     */
+    virtual esp_err_t save_channel_in_storage(uint8_t channel) = 0;
+
+    /**
+     * @brief Load peer list from persistent storage inside PeerManager list
+     * @return ESP_OK if successful
+     * @return ESP_ERR_INVALID_VERSION: mismatch PersistentData::VERSION
+     * @return ESP_ERR_INVALID_CRC: CRC check failed
+     * @return ESP_ERR_TIMEOUT: mutex timeout
+     * @return Others: internal NVS errors
+     * @internal
+     */
+    virtual esp_err_t load_peers_from_storage() = 0;
 };

@@ -123,7 +123,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     // PeerManager needs to be initialized to load channel from storage before EspNowDriver
     if (peer_manager_ != nullptr) {
         uint8_t stored_channel;
-        if (peer_manager_->load_from_storage(stored_channel) == ESP_OK) {
+        if (peer_manager_->load_channel_from_storage(stored_channel) == ESP_OK) {
             config_.wifi_channel = stored_channel;
         }
     }
@@ -584,7 +584,7 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool &should_st
         }
         // If we are in OPERATIONAL state, it means we have found the HUB
         else if (current_state == NodeState::OPERATIONAL) {
-            // No need to call persist() anymore, channel propagation or management 
+            // No need to call persist() anymore, channel propagation or management
             // operations now handle their own persistence if needed.
         }
 
@@ -682,7 +682,7 @@ void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo> &peers)
     for (auto &peer : peers) {
         esp_now_peer_info_t info = {};
         memcpy(info.peer_addr, peer.mac, 6);
-        info.channel = peer.channel;
+        info.channel = 0;
         info.ifidx = WIFI_IF_STA;
         info.encrypt = false;
         hal_wifi_->hal_esp_now_add_peer(&info);

@@ -12,15 +12,14 @@
 class MockPeerManager : public IPeerManager
 {
 public:
-    MOCK_METHOD(
-        esp_err_t,
-        add,
-        (NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms),
-        (override));
+    MOCK_METHOD(esp_err_t, add, (NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms), (override));
     MOCK_METHOD(esp_err_t, remove, (NodeId id), (override));
     MOCK_METHOD(bool, find_mac, (NodeId id, uint8_t *mac), (override));
     MOCK_METHOD((etl::vector<PeerInfo, MAX_PEERS>), get_all, (), (override));
     MOCK_METHOD((etl::vector<NodeId, MAX_PEERS>), get_offline, (uint64_t now_ms), (override));
     MOCK_METHOD(void, update_last_seen, (NodeId id, uint64_t now_ms), (override));
-    MOCK_METHOD(esp_err_t, load_from_storage, (uint8_t &wifi_channel), (override));
+
+    MOCK_METHOD(esp_err_t, load_channel_from_storage, (uint8_t &channel), (override));
+    MOCK_METHOD(esp_err_t, save_channel_in_storage, (uint8_t channel), (override));
+    MOCK_METHOD(esp_err_t, load_peers_from_storage, (), (override));
 };

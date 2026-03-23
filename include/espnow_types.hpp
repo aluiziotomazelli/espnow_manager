@@ -79,7 +79,6 @@ struct PeerInfo
     uint8_t mac[6];                 /**< 6-byte MAC address of the peer */
     NodeType type;                  /**< Categorization of the node (e.g., HUB or peripheral) */
     NodeId node_id;                 /**< Unique logical ID assigned to the node */
-    uint8_t channel;                /**< WiFi channel the peer is currently using */
     uint64_t last_seen_ms;          /**< Timestamp of the last message received (ms) */
     bool paired;                    /**< If true, the node has completed the pairing process */
     uint32_t heartbeat_interval_ms; /**< Expected frequency of heartbeat messages */
@@ -93,7 +92,6 @@ struct PersistentPeer
     uint8_t mac[6];                 /**< 6-byte MAC address */
     NodeType type;                  /**< Node type */
     NodeId node_id;                 /**< Logical Node ID */
-    uint8_t channel;                /**< Operating WiFi channel */
     bool paired;                    /**< Pairing status */
     uint32_t heartbeat_interval_ms; /**< Configured heartbeat interval */
 
@@ -107,8 +105,8 @@ struct PersistentPeer
      */
     bool operator==(const PersistentPeer &other) const
     {
-        if (std::tie(type, node_id, channel, paired, heartbeat_interval_ms) !=
-            std::tie(other.type, other.node_id, other.channel, other.paired, other.heartbeat_interval_ms)) {
+        if (std::tie(type, node_id, paired, heartbeat_interval_ms) !=
+            std::tie(other.type, other.node_id, other.paired, other.heartbeat_interval_ms)) {
             return false;
         }
         return std::memcmp(mac, other.mac, sizeof(mac)) == 0;
