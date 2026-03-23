@@ -432,14 +432,24 @@ void EspNowManager::rx_task(void *arg)
                         // Protocol-internal packets — handle immediately via router
                         self->message_router_->handle_packet(decoded);
 
-                        // Check if a PAIR_RESPONSE successfully completed the pairing on a NODE
-                        if (self->node_fsm_->get_state() == NodeState::PAIRING &&
-                            !self->pairing_manager_->is_active()) {
-                            self->node_fsm_->on_pairing_timeout(!self->peer_manager_->get_all().empty());
+                        // A NODE ends its pairing time (!is_active) immediately when it receives a PAIR_RESPONSE
+                        // when SCANNING is sucessfull. The peer is add to the peer manager so we check if node
+                        // has peer and call on_pairing_timeout.
+                        if (!self->pairing_manager_->is_active()) {
+                            bool has_peers = !self->peer_manager_->get_all().empty();
+                            self->node_fsm_->on_pairing_timeout(has_peers);
                         }
                     }
                 }
             }
+        }
+        // HUBs go to pairing inactive only by timeout, not when sucessfull pair a node.
+        // Non_HUB cannot be handled here because the scanning process is not instantaneous and if
+        // on_pairing_timeout is called before the scan is completed, the node will go to IDLE instead of
+        // OPERATIONAL.
+        if (self->config_.node_type == ReservedTypes::HUB && !self->pairing_manager_->is_active()) {
+            bool has_peers = !self->peer_manager_->get_all().empty();
+            self->node_fsm_->on_pairing_timeout(has_peers);
         }
 
         // Tick pairing manager to handle timeouts
