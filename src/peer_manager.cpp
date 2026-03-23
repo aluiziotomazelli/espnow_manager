@@ -240,14 +240,6 @@ esp_err_t PeerManager::load_from_storage(uint8_t &wifi_channel)
     return err;
 }
 
-void PeerManager::persist()
-{
-    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
-        save_to_storage();
-        freertos_hal_.semaphore_give(mutex_);
-    }
-}
-
 void PeerManager::save_to_storage()
 {
     etl::vector<PersistentPeer, MAX_PEERS> to_save;

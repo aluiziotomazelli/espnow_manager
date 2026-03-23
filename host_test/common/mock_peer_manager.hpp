@@ -23,6 +23,5 @@ public:
     MOCK_METHOD((etl::vector<NodeId, MAX_PEERS>), get_offline, (uint64_t now_ms), (override));
     MOCK_METHOD(void, update_last_seen, (NodeId id, uint64_t now_ms), (override));
     MOCK_METHOD(esp_err_t, load_from_storage, (uint8_t &wifi_channel), (override));
-    MOCK_METHOD(void, persist, (), (override));
     MOCK_METHOD(void, set_channel, (uint8_t channel), (override));
 };

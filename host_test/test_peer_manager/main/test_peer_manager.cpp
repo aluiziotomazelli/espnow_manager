@@ -452,19 +452,8 @@ TEST_F(PeerManagerTest, LoadFromStorageClearsPreviousPeers)
     EXPECT_TRUE(manager->find_mac(ID_2, found_mac));
 }
 
-TEST_F(PeerManagerTest, PersistCallsSaveToStorage)
-{
-    uint8_t mac[6];
-    make_mac(mac, ID_2);
-    ON_CALL(storage, save(_, _, _)).WillByDefault(Return(ESP_OK));
-    manager->add(ID_2, mac, PEER, 10);
-
-    EXPECT_CALL(storage, save(_, _, _)).Times(1);
-    manager->persist();
-}
-
 // =========================================================================
-// PeerManager::save_to_storage (via persist, add, remove)
+// PeerManager::save_to_storage (via add, remove)
 // =========================================================================
 
 TEST_F(PeerManagerTest, SaveToStorageLogsOnError)
@@ -480,21 +469,6 @@ TEST_F(PeerManagerTest, SaveToStorageLogsOnError)
 
     // Peer must still be in the list (storage error doesn't roll back)
     EXPECT_EQ(1, manager->get_all().size());
-}
-
-// =========================================================================
-// PeerManager::persist
-// =========================================================================
-
-TEST_F(PeerManagerTest, PersistLogsOnStorageError)
-{
-    uint8_t mac[6];
-    make_mac(mac, ID_2);
-    manager->add(ID_2, mac, PEER, 10);
-
-    // persist() calls save_to_storage() which only logs on failure
-    EXPECT_CALL(storage, save(_, _, _)).WillOnce(Return(ESP_FAIL));
-    manager->persist(); // Must not crash or propagate error
 }
 
 // =========================================================================

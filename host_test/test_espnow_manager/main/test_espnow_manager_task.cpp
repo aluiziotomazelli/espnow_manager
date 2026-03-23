@@ -221,7 +221,6 @@ TEST_F(EspNowManagerTaskTest, ChannelFoundStartsPairingForNode)
     init_and_wait();
     ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
 
-    EXPECT_CALL(*peer_mgr_, persist()).Times(1);
     EXPECT_CALL(*pairing_mgr_, start(_, _)).Times(1);
 
     sut_->on_channel_found_cb(6);

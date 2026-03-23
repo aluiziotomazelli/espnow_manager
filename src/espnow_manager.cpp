@@ -584,9 +584,9 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool &should_st
             }
         }
         // If we are in OPERATIONAL state, it means we have found the HUB
-        // and we need to persist the peer to storage
         else if (current_state == NodeState::OPERATIONAL) {
-            peer_manager_->persist();
+            // No need to call persist() anymore, channel propagation or management 
+            // operations now handle their own persistence if needed.
         }
 
         // Let FSM decide next state after channel found

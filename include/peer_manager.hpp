@@ -28,7 +28,6 @@ public:
 
     // Helper for initialization (loading from storage)
     esp_err_t load_from_storage(uint8_t &wifi_channel) override;
-    void persist() override;
     void set_channel(uint8_t channel) override;
 
 private:
