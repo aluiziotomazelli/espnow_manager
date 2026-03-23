@@ -76,34 +76,30 @@ public:
 
     ~StorageManager();
 
-    /**
-     * @brief Loads data from RTC or NVS.
-     *
-     * @param wifi_channel Output for the loaded wifi channel.
-     * @param peers Output for the loaded peer list.
-     * @return ESP_OK if loaded successfully, error otherwise.
-     */
-    esp_err_t load(uint8_t &wifi_channel, etl::ivector<PersistentPeer> &peers) override;
+    /** @copydoc IStorageManager::load_channel */
+    esp_err_t load_channel(uint8_t &channel) override;
+
+    /** @copydoc IStorageManager::store_channel */
+    esp_err_t store_channel(uint8_t channel) override;
+
+    /** @copydoc IStorageManager::load_peers */
+    esp_err_t load_peers(etl::ivector<PersistentPeer> &peers) override;
+
+    /** @copydoc IStorageManager::store_peers */
+    esp_err_t store_peers(const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit = true) override;
 
     /**
-     * @brief Saves data to RTC and NVS.
-     *
-     * @param wifi_channel Current wifi channel.
-     * @param peers Current peer list.
-     * @param force_nvs_commit If true, forces a save to NVS even if data seems
-     * unchanged.
-     * @return ESP_OK if saved successfully, error otherwise.
+     * @brief Calculates the CRC of the given data.
+     * @param data The data to calculate the CRC of.
+     * @return The CRC of the given data.
      */
-    esp_err_t
-    save(uint8_t wifi_channel, const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit = true) override;
-
     static uint32_t calculate_crc(const PersistentData &data);
 
 private:
     std::unique_ptr<IPersistenceBackend> rtc_backend_;
     std::unique_ptr<IPersistenceBackend> nvs_backend_;
 
-    esp_err_t
-    validate_and_unpack_data(PersistentData &data, uint8_t &wifi_channel, etl::ivector<PersistentPeer> &peers);
+    esp_err_t load_raw_data(PersistentData &out_data);
     bool is_data_dirty(const PersistentData &new_data);
+    esp_err_t validate_data(const PersistentData &data);
 };

@@ -9,6 +9,8 @@
 class MockStorageManager : public IStorageManager
 {
 public:
-    MOCK_METHOD(esp_err_t, load, (uint8_t &, etl::ivector<PersistentPeer> &), (override));
-    MOCK_METHOD(esp_err_t, save, (uint8_t, const etl::ivector<PersistentPeer> &, bool), (override));
+    MOCK_METHOD(esp_err_t, load_channel, (uint8_t &), (override));
+    MOCK_METHOD(esp_err_t, store_channel, (uint8_t), (override));
+    MOCK_METHOD(esp_err_t, load_peers, (etl::ivector<PersistentPeer> &), (override));
+    MOCK_METHOD(esp_err_t, store_peers, (const etl::ivector<PersistentPeer> &, bool), (override));
 };

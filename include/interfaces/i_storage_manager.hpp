@@ -19,9 +19,35 @@ class IStorageManager
 public:
     virtual ~IStorageManager() = default;
 
-    /** @internal */
-    virtual esp_err_t load(uint8_t &wifi_channel, etl::ivector<PersistentPeer> &peers) = 0;
-    /** @internal */
-    virtual esp_err_t
-    save(uint8_t wifi_channel, const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit = true) = 0;
+    /**
+     * @brief Loads the wifi channel from storage.
+     * @param channel Output for the loaded wifi channel.
+     * @return ESP_OK if loaded successfully, error otherwise.
+     * @internal
+     */
+    virtual esp_err_t load_channel(uint8_t &channel) = 0;
+
+    /**
+     * @brief Stores the wifi channel to storage.
+     * @param channel The wifi channel to store.
+     * @return ESP_OK if stored successfully, error otherwise.
+     * @internal
+     */
+    virtual esp_err_t store_channel(uint8_t channel) = 0;
+
+    /**
+     * @brief Loads the peers from storage.
+     * @param peers Output for the loaded peers.
+     * @return ESP_OK if loaded successfully, error otherwise.
+     * @internal
+     */
+    virtual esp_err_t load_peers(etl::ivector<PersistentPeer> &peers) = 0;
+
+    /**
+     * @brief Stores the peers to storage.
+     * @param peers The peers to store.
+     * @return ESP_OK if stored successfully, error otherwise.
+     * @internal
+     */
+    virtual esp_err_t store_peers(const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit = true) = 0;
 };
