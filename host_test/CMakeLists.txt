@@ -18,6 +18,7 @@ add_test(NAME test_peer_manager COMMAND ../test_peer_manager/build/test_peer_man
 add_test(NAME test_storage_manager COMMAND ../test_storage_manager/build/test_storage_manager.elf)
 add_test(NAME test_tx_manager COMMAND ../test_tx_manager/build/test_tx_manager.elf)
 add_test(NAME test_tx_state_machine COMMAND ../test_tx_state_machine/build/test_tx_state_machine.elf)
+add_test(NAME test_node_state_machine COMMAND ../test_node_state_machine/build/test_node_state_machine.elf)
 
 # Unified Coverage Configuration
 find_program(LCOV_PATH lcov REQUIRED)
@@ -58,6 +59,7 @@ add_custom_target(build_all_tests
     COMMAND idf.py -C ../test_storage_manager build
     COMMAND idf.py -C ../test_tx_manager build
     COMMAND idf.py -C ../test_tx_state_machine build
+    COMMAND idf.py -C ../test_node_state_machine build
     COMMENT "Building all test projects using idf.py"
 )
 
