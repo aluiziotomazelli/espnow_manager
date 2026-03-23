@@ -23,12 +23,14 @@ TEST_F(NodeStateMachineTest, InitialStateIsUninitialized)
     EXPECT_EQ(fsm.get_state(), NodeState::UNINITIALIZED);
 }
 
+// Init without peers means it will start pairing to look for nodes to pair with
 TEST_F(NodeStateMachineTest, InitSuccessWithoutPeersTransitionsToPairing)
 {
     EXPECT_EQ(fsm.on_init(false), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::PAIRING);
 }
 
+// Init with peers means it already has peers and will start operational state
 TEST_F(NodeStateMachineTest, InitSuccessWithPeersTransitionsToOperational)
 {
     EXPECT_EQ(fsm.on_init(true), ESP_OK);
