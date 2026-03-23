@@ -144,20 +144,23 @@ struct TxPacket
  * @brief Enumeration of node states.
  *
  * NodeState transitions:
+ * UNINITIALIZED → IDLE         (init(), no peers found)
  * UNINITIALIZED → OPERATIONAL  (init(), peers found in storage)
- * UNINITIALIZED → PAIRING      (init(), no peers in storage)
- * PAIRING       → OPERATIONAL  (pairing accepted)
- * OPERATIONAL   → PAIRING      (button press, explicit request)
- * OPERATIONAL   → SCANNING     (TX failures exceed threshold)
- * SCANNING      → OPERATIONAL  (channel found)
- * SCANNING      → PAIRING      (scan failed, peers may be stale)
+ * IDLE          → PAIRING      (start_pairing())
+ * PAIRING       → OPERATIONAL  (pairing successful)
+ * PAIRING       → IDLE         (pairing timeout)
+ * OPERATIONAL   → PAIRING      (explicit pairing request)
+ * OPERATIONAL   → SCANNING     (link lost, TX failures)
+ * SCANNING      → OPERATIONAL  (channel rediscovered)
+ * SCANNING      → PAIRING      (link lost and no peers found)
  */
 enum class NodeState
 {
     UNINITIALIZED, ///< Initial state before initialization
-    PAIRING,       ///< No peers, scanning + actively accepting pairing requests
+    IDLE,          ///< Initialized successfully, but not yet paired/idle
+    PAIRING,       ///< Actively advertising or scanning for pairing requests
     OPERATIONAL,   ///< Has peers, normal operation
-    SCANNING,      ///< Has peers but lost channel, rediscovering
+    SCANNING,      ///< Lost connection to peers, rediscovering channel
     COUNT          ///< Number of states (for validation)
 };
 

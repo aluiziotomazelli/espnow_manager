@@ -13,6 +13,7 @@ idf_component_register(
         "src/pairing_manager.cpp"
         "src/message_router.cpp"
         "src/espnow_driver.cpp"
+        "src/node_state_machine.cpp"
     
     INCLUDE_DIRS
         "include"

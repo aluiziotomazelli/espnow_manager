@@ -1,0 +1,73 @@
+#pragma once
+
+#include "esp_err.h"
+#include "espnow_types.hpp"
+
+/**
+ * @brief Interface for the Node State Machine.
+ * 
+ * This class governs the high-level state of the ESP-NOW node (Peripheral or HUB).
+ */
+class INodeStateMachine {
+public:
+    virtual ~INodeStateMachine() = default;
+
+    /**
+     * @brief Gets the current state of the node.
+     * @return Current NodeState.
+     */
+    virtual NodeState get_state() const = 0;
+
+    /**
+     * @brief Resets the state machine to UNINITIALIZED.
+     */
+    virtual void reset() = 0;
+
+    /**
+     * @brief Event: Initialization successful.
+     * @param has_peers True if peers were loaded from storage.
+     * @return ESP_OK or ESP_ERR_INVALID_STATE.
+     */
+    virtual esp_err_t on_init(bool has_peers) = 0;
+
+    /**
+     * @brief Event: Deinitialization requested.
+     * @return ESP_OK.
+     */
+    virtual esp_err_t on_deinit() = 0;
+
+    /**
+     * @brief Event: Pairing process requested by user/app.
+     * @return ESP_OK or ESP_ERR_INVALID_STATE.
+     */
+    virtual esp_err_t on_pairing_requested() = 0;
+
+    /**
+     * @brief Event: Pairing process completed (either success or timeout).
+     * @param success True if at least one peer is now paired.
+     * @return ESP_OK or ESP_ERR_INVALID_STATE.
+     */
+    virtual esp_err_t on_pairing_completed(bool success) = 0;
+
+    /**
+     * @brief Event: Channel scan requested (typically by TxManager on failure).
+     * @return ESP_OK or ESP_ERR_INVALID_STATE.
+     */
+    virtual esp_err_t on_scan_requested() = 0;
+
+    /**
+     * @brief Event: Channel rediscovered.
+     * @param is_hub True if the node is a HUB.
+     * @param has_peers True if the node has at least one peer.
+     * @return ESP_OK or ESP_ERR_INVALID_STATE.
+     */
+    virtual esp_err_t on_channel_found(bool is_hub, bool has_peers) = 0;
+
+    /**
+     * @brief Event: Channel scan failed after all attempts.
+     * @param is_pairing_active True if we were scanning as part of a pairing process.
+     * @param has_peers True if the node has known peers.
+     * @return ESP_OK or ESP_ERR_INVALID_STATE.
+     */
+    virtual esp_err_t on_scan_failed(bool is_pairing_active, bool has_peers) = 0;
+};
