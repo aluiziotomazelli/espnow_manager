@@ -537,7 +537,6 @@ uint64_t EspNowManager::get_time_ms() const
 void EspNowManager::propagate_channel()
 {
     scanner_->set_channel(config_.wifi_channel);
-    peer_manager_->set_channel(config_.wifi_channel);
 
     // Keep the broadcast peer aligned with the current channel,
     // ensuring all subsequent broadcasts (like PAIR_REQUEST) use the correct newly-found channel.

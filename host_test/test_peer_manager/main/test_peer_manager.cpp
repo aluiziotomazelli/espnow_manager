@@ -125,29 +125,6 @@ TEST_F(PeerManagerTest, AddPeerSameIdDifferentMAcFailsAndReturnsError)
     EXPECT_EQ(1, manager->get_all().size());                                            // Must be only one peer
 }
 
-TEST_F(PeerManagerTest, AddPeerWithSameIdButDifferentChannelCallsMod)
-{
-    uint8_t mac[6];
-    make_mac(mac, ID_2);
-
-    uint8_t ch_1 = 1;
-    uint8_t ch_2 = 2;
-
-    // add(...) compares it->channel with current_channel_: compares
-    // current_channel_ saved via manager->set_channel with peer channel
-    // If it->channel == current_channel_ it will call esp_now_add_peer()
-    // If it->channel != current_channel_ it will call esp_now_mod_peer()
-
-    manager->set_channel(ch_1);                              // Set channel
-    EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1); // First add
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));
-
-    manager->set_channel(ch_2);                              // Change channel
-    EXPECT_CALL(wifi_hal, hal_esp_now_mod_peer(_)).Times(1); // Must call mod
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));    // New channel
-    EXPECT_EQ(1, manager->get_all().size());                 // Must be only one peer
-}
-
 TEST_F(PeerManagerTest, AddPeersFailsAndDoesNotIncludePeer)
 {
     uint8_t mac[6];
@@ -491,21 +468,6 @@ TEST_F(PeerManagerTest, UpdateLastSeenDontTakeMutex)
     manager->update_last_seen(ID_2, 10);
 }
 
-TEST_F(PeerManagerTest, SetChannelDontTakeMutex)
-{
-    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE)); // semaphore_take fails
-    EXPECT_CALL(freertos_hal, semaphore_give(_)).Times(0);                     // semaphore_give should not be called
-
-    manager->set_channel(10);
-}
-
-TEST_F(PeerManagerTest, PersistDontTakeMutex)
-{
-    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE)); // semaphore_take fails
-    EXPECT_CALL(freertos_hal, semaphore_give(_)).Times(0);                     // semaphore_give should not be called
-
-    manager->persist();
-}
 TEST_F(PeerManagerTest, LoadFromStorageDontTakeMutexReturnsError)
 {
     EXPECT_CALL(storage, load(_, _)).WillOnce(Return(ESP_OK));

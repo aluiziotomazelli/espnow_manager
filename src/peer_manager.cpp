@@ -52,11 +52,7 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_
         bool channel_changed = (it->channel != current_channel_);
 
         if (mac_changed) {
-            esp_now_peer_info_t peer_info = {};
-            memcpy(peer_info.peer_addr, mac, 6);
-            peer_info.channel = current_channel_;
-            peer_info.ifidx = WIFI_IF_STA;
-            peer_info.encrypt = false;
+            auto peer_info = make_espnow_peer_info(mac);
 
             ret = driver_hal_.hal_esp_now_add_peer(&peer_info);
 
@@ -65,11 +61,7 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_
             }
         }
         else if (channel_changed) {
-            esp_now_peer_info_t peer_info = {};
-            memcpy(peer_info.peer_addr, mac, 6);
-            peer_info.channel = current_channel_;
-            peer_info.ifidx = WIFI_IF_STA;
-            peer_info.encrypt = false;
+            auto peer_info = make_espnow_peer_info(mac);
             ret = driver_hal_.hal_esp_now_mod_peer(&peer_info);
         }
 
@@ -277,10 +269,12 @@ PeerInfo PeerManager::persistent_to_info(const PersistentPeer &persistent)
     return info;
 }
 
-void PeerManager::set_channel(uint8_t channel)
+esp_now_peer_info_t PeerManager::make_espnow_peer_info(const uint8_t *mac)
 {
-    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
-        current_channel_ = channel;
-        freertos_hal_.semaphore_give(mutex_);
-    }
+    esp_now_peer_info_t peer_info = {};
+    memcpy(peer_info.peer_addr, mac, 6);
+    peer_info.channel = 0;
+    peer_info.ifidx = WIFI_IF_STA;
+    peer_info.encrypt = false;
+    return peer_info;
 }

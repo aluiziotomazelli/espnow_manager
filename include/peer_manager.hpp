@@ -28,7 +28,6 @@ public:
 
     // Helper for initialization (loading from storage)
     esp_err_t load_from_storage(uint8_t &wifi_channel) override;
-    void set_channel(uint8_t channel) override;
 
 private:
     IStorageManager &storage_;
@@ -42,4 +41,5 @@ private:
     void save_to_storage();
     PersistentPeer info_to_persistent(const PeerInfo &info);
     PeerInfo persistent_to_info(const PersistentPeer &persistent);
+    esp_now_peer_info_t make_espnow_peer_info(const uint8_t *mac);
 };

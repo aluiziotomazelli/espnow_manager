@@ -113,6 +113,4 @@ public:
      * @internal
      */
     virtual esp_err_t load_from_storage(uint8_t &wifi_channel) = 0;
-
-    virtual void set_channel(uint8_t channel) = 0;
 };
