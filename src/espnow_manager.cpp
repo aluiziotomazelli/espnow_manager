@@ -7,6 +7,7 @@
 #include "heartbeat_manager.hpp"
 #include "message_codec.hpp"
 #include "message_router.hpp"
+#include "node_state_machine.hpp"
 #include "pairing_manager.hpp"
 #include "peer_manager.hpp"
 #include "protocol_messages.hpp"
@@ -61,16 +62,17 @@ EspNowManager &EspNowManager::instance()
         std::move(tx_manager),
         std::move(heartbeat_mgr),
         std::move(pairing_mgr),
-        std::move(message_router));
+        std::move(message_router),
+        std::make_unique<NodeStateMachine>());
     return instance;
 }
 // LCOV_EXCL_STOP
 
 EspNowManager::EspNowManager(
-    std::unique_ptr<IWiFiHAL> driver_hal,
-    std::unique_ptr<ITimerHAL> timer_hal,
-    std::unique_ptr<IFreeRTOSHAL> freertos_hal,
-    std::unique_ptr<IEspNowDriver> bootstraper,
+    std::unique_ptr<IWiFiHAL> hal_wifi,
+    std::unique_ptr<ITimerHAL> hal_timer,
+    std::unique_ptr<IFreeRTOSHAL> hal_freertos,
+    std::unique_ptr<IEspNowDriver> espnow_driver,
     std::unique_ptr<IPeerManager> peer_manager,
     std::unique_ptr<IMessageCodec> message_codec,
     std::unique_ptr<IDiscoveryManager> scanner,
@@ -78,11 +80,12 @@ EspNowManager::EspNowManager(
     std::unique_ptr<ITxManager> tx_manager,
     std::unique_ptr<IHeartbeatManager> heartbeat_manager,
     std::unique_ptr<IPairingManager> pairing_manager,
-    std::unique_ptr<IMessageRouter> message_router)
-    : hal_wifi_(std::move(driver_hal))
-    , hal_timer_(std::move(timer_hal))
-    , hal_freertos_(std::move(freertos_hal))
-    , espnow_driver_(std::move(bootstraper))
+    std::unique_ptr<IMessageRouter> message_router,
+    std::unique_ptr<INodeStateMachine> node_fsm)
+    : hal_wifi_(std::move(hal_wifi))
+    , hal_timer_(std::move(hal_timer))
+    , hal_freertos_(std::move(hal_freertos))
+    , espnow_driver_(std::move(espnow_driver))
     , peer_manager_(std::move(peer_manager))
     , message_codec_(std::move(message_codec))
     , scanner_(std::move(scanner))
@@ -91,6 +94,7 @@ EspNowManager::EspNowManager(
     , heartbeat_manager_(std::move(heartbeat_manager))
     , pairing_manager_(std::move(pairing_manager))
     , message_router_(std::move(message_router))
+    , node_fsm_(std::move(node_fsm))
 {
 }
 
@@ -106,7 +110,7 @@ EspNowManager::~EspNowManager()
 
 esp_err_t EspNowManager::init(const EspNowConfig &config)
 {
-    if (node_state_.load() != NodeState::UNINITIALIZED) {
+    if (node_fsm_->get_state() != NodeState::UNINITIALIZED) {
         return ESP_ERR_INVALID_STATE;
     }
     if (config.app_rx_queue == nullptr) {
@@ -167,10 +171,8 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     }
 
     etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
-    NodeState initial_state = determine_initial_state(peers);
-    transition_to_state(initial_state);
-
-    if (initial_state == NodeState::OPERATIONAL) {
+    node_fsm_->on_init(!peers.empty());
+    if (node_fsm_->get_state() == NodeState::OPERATIONAL) {
         add_peers_to_espnow(peers);
     }
 
@@ -221,14 +223,13 @@ void EspNowManager::deinit()
     esp_now_initialized_ = false;
     last_header_requiring_ack_.reset();
     config_ = EspNowConfig();
-    transition_to_state(NodeState::UNINITIALIZED);
-
+    node_fsm_->on_deinit();
     ESP_LOGI(TAG, "EspNow component deinitialized.");
 }
 
 esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 {
-    if (node_state_.load() == NodeState::UNINITIALIZED) {
+    if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -249,7 +250,7 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
         pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
     }
 
-    transition_to_state(NodeState::PAIRING);
+    node_fsm_->on_pairing_requested();
     return ESP_OK;
 }
 
@@ -276,7 +277,7 @@ esp_err_t EspNowManager::send_command(
 
 esp_err_t EspNowManager::confirm_reception(AckStatus status)
 {
-    if (node_state_.load() != NodeState::OPERATIONAL)
+    if (node_fsm_->get_state() != NodeState::OPERATIONAL)
         return ESP_ERR_INVALID_STATE;
 
     if (hal_freertos_->semaphore_take(ack_mutex_, pdMS_TO_TICKS(100)) != pdTRUE)
@@ -330,7 +331,7 @@ esp_err_t EspNowManager::remove_peer(NodeId node_id)
 
 etl::vector<NodeId, MAX_PEERS> EspNowManager::get_offline_peers() const
 {
-    if (node_state_.load() != NodeState::OPERATIONAL)
+    if (node_fsm_->get_state() != NodeState::OPERATIONAL)
         return {};
     return peer_manager_->get_offline(get_time_ms());
 }
@@ -338,12 +339,12 @@ etl::vector<NodeId, MAX_PEERS> EspNowManager::get_offline_peers() const
 // Getters
 NodeState EspNowManager::get_node_state() const
 {
-    return node_state_.load();
+    return node_fsm_->get_state();
 }
 
 bool EspNowManager::is_initialized() const
 {
-    return node_state_.load() != NodeState::UNINITIALIZED;
+    return node_fsm_->get_state() != NodeState::UNINITIALIZED;
 }
 
 etl::vector<PeerInfo, MAX_PEERS> EspNowManager::get_peers()
@@ -432,10 +433,8 @@ void EspNowManager::rx_task(void *arg)
                         self->message_router_->handle_packet(decoded);
 
                         // Check if a PAIR_RESPONSE successfully completed the pairing on a NODE
-                        if (self->node_state_.load() == NodeState::PAIRING && !self->pairing_manager_->is_active()) {
-                            if (!self->peer_manager_->get_all().empty()) {
-                                self->transition_to_state(NodeState::OPERATIONAL);
-                            }
+                        if (self->node_fsm_->get_state() == NodeState::PAIRING && !self->pairing_manager_->is_active()) {
+                            self->node_fsm_->on_pairing_completed(!self->peer_manager_->get_all().empty());
                         }
                     }
                 }
@@ -443,10 +442,11 @@ void EspNowManager::rx_task(void *arg)
         }
 
         // Tick pairing manager to handle timeouts
-        if (self->node_state_.load() == NodeState::PAIRING) {
+        NodeState current_state = self->node_fsm_->get_state();
+        if (current_state == NodeState::PAIRING) {
             self->pairing_manager_->tick(self->get_time_ms());
         }
-        else if (self->node_state_.load() == NodeState::OPERATIONAL) {
+        else if (current_state == NodeState::OPERATIONAL) {
             self->heartbeat_manager_->tick(self->get_time_ms());
         }
     }
@@ -490,7 +490,7 @@ esp_err_t EspNowManager::send_packet(
     size_t len,
     bool require_ack)
 {
-    if (node_state_.load() != NodeState::OPERATIONAL)
+    if (node_fsm_->get_state() != NodeState::OPERATIONAL)
         return ESP_ERR_INVALID_STATE;
 
     DecodedTxPacket tx_packet;
@@ -538,11 +538,7 @@ void EspNowManager::propagate_channel()
     hal_wifi_->hal_esp_now_mod_peer(&broadcast);
 }
 
-void EspNowManager::transition_to_state(NodeState new_state)
-{
-    ESP_LOGI(TAG, "NodeState: %d -> %d", static_cast<int>(node_state_.load()), static_cast<int>(new_state));
-    node_state_.store(new_state);
-}
+
 
 // Helper to build AppMessage from DecodedPacket
 AppMessage EspNowManager::build_app_message(const DecodedPacket &decoded)
@@ -565,7 +561,7 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool &should_st
 {
     // Entered scanning state — TxManager is actively searching for the HUB.
     if ((notifications & NOTIFY_SCANNING) == NOTIFY_SCANNING) {
-        transition_to_state(NodeState::SCANNING);
+        node_fsm_->on_scan_requested();
     }
     // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb()
     if ((notifications & NOTIFY_CHANNEL_FOUND) == NOTIFY_CHANNEL_FOUND) {
@@ -574,20 +570,19 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool &should_st
         propagate_channel();
         peer_manager_->persist();
         // Channel confirmed now safe to start pairing if NodeState::PAIRING
-        if (node_state_.load() == NodeState::PAIRING || node_state_.load() == NodeState::SCANNING) {
+        NodeState current_state = node_fsm_->get_state();
+        if (current_state == NodeState::PAIRING || current_state == NodeState::SCANNING) {
             if (config_.node_type != ReservedTypes::HUB) {
                 pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
             }
         }
 
-        // Remove premature transition for non-HUB nodes
-        if (config_.node_type == ReservedTypes::HUB) {
-            transition_to_state(NodeState::OPERATIONAL);
-        }
+        // Let FSM decide next state after channel found
+        node_fsm_->on_channel_found(config_.node_type == ReservedTypes::HUB, !peer_manager_->get_all().empty());
     }
     // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb()
     if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
-        transition_to_state(NodeState::PAIRING);
+        node_fsm_->on_scan_failed(pairing_manager_->is_active(), !peer_manager_->get_all().empty());
     }
     // If NOTIFY_STOP is set, we break the loop and exit the task.
     if (notifications & NOTIFY_STOP) {
@@ -671,15 +666,7 @@ esp_err_t EspNowManager::init_pairing_manager()
     return pairing_manager_->init(config_.node_id, config_.node_type);
 }
 
-NodeState EspNowManager::determine_initial_state(etl::ivector<PeerInfo> &peers)
-{
-    if (peers.empty()) {
-        return NodeState::PAIRING;
-    }
-    else {
-        return NodeState::OPERATIONAL;
-    }
-}
+
 
 void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo> &peers)
 {

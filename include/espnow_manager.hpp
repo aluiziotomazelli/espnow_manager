@@ -11,6 +11,7 @@
 #include "i_heartbeat_manager.hpp"
 #include "i_message_codec.hpp"
 #include "i_message_router.hpp"
+#include "i_node_state_machine.hpp"
 #include "i_pairing_manager.hpp"
 #include "i_peer_manager.hpp"
 #include "i_hal_timer.hpp"
@@ -52,7 +53,8 @@ public:
         std::unique_ptr<ITxManager> tx_manager,
         std::unique_ptr<IHeartbeatManager> heartbeat_manager,
         std::unique_ptr<IPairingManager> pairing_manager,
-        std::unique_ptr<IMessageRouter> message_router);
+        std::unique_ptr<IMessageRouter> message_router,
+        std::unique_ptr<INodeStateMachine> node_fsm);
 
     EspNowManager(const EspNowManager &) = delete;
     EspNowManager &operator=(const EspNowManager &) = delete;
@@ -142,6 +144,7 @@ protected:
     std::unique_ptr<IHeartbeatManager> heartbeat_manager_; ///< Pointer to heartbeat manager
     std::unique_ptr<IPairingManager> pairing_manager_;     ///< Pointer to pairing manager
     std::unique_ptr<IMessageRouter> message_router_;       ///< Pointer to message router
+    std::unique_ptr<INodeStateMachine> node_fsm_;          ///< Pointer to node state machine
 
     bool esp_now_initialized_ = false;
     std::optional<MessageHeader> last_header_requiring_ack_{};
@@ -198,10 +201,8 @@ protected:
     static void esp_now_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status);
 
     std::atomic<uint8_t> last_found_channel_{0};
-    std::atomic<NodeState> node_state_{NodeState::UNINITIALIZED};
+
 
     // Store pairing timeout for use after channel scan completes
     uint32_t pairing_timeout_ms_ = PAIRING_TIMEOUT_MS;
-
-    void transition_to_state(NodeState new_state);
 };
