@@ -23,7 +23,7 @@ esp_err_t NodeStateMachine::on_init(bool has_peers)
     if (state_.load() != NodeState::UNINITIALIZED) {
         return ESP_ERR_INVALID_STATE;
     }
-    return transition_to(has_peers ? NodeState::OPERATIONAL : NodeState::IDLE);
+    return transition_to(has_peers ? NodeState::OPERATIONAL : NodeState::PAIRING);
 }
 
 esp_err_t NodeStateMachine::on_deinit()
