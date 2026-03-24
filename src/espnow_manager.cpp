@@ -26,21 +26,28 @@
 static const char *TAG = "EspNowManager";
 
 // RTC storage for peer list persistence must stay in global scope
-static RTC_DATA_ATTR PersistentData g_rtc_storage;
+static RTC_DATA_ATTR PersistentPeers g_rtc_peers;
+static RTC_DATA_ATTR PersistentChannel g_rtc_channel;
 
 // Singleton Factory Constructor ---- (not used in host based tests) LCOV_EXCL_START
 EspNowManager &EspNowManager::instance()
 {
     static NvsHAL nvs_hal;
-    static auto rtc_backend = std::make_unique<RtcBackend>(g_rtc_storage);
-    static auto nvs_backend = std::make_unique<NvsBackend>(nvs_hal);
-    static StorageManager storage(std::move(rtc_backend), std::move(nvs_backend));
+    static auto rtc_peers_backend = std::make_unique<RtcBackend>(&g_rtc_peers, sizeof(g_rtc_peers));
+    static auto rtc_channel_backend = std::make_unique<RtcBackend>(&g_rtc_channel, sizeof(g_rtc_channel));
+    static auto nvs_peers_backend = std::make_unique<NvsBackend>(nvs_hal, "peers_data");
+    static auto nvs_channel_backend = std::make_unique<NvsBackend>(nvs_hal, "channel_data");
+    static auto storage = std::make_unique<StorageManager>(
+        std::move(rtc_peers_backend),
+        std::move(rtc_channel_backend),
+        std::move(nvs_peers_backend),
+        std::move(nvs_channel_backend));
 
     static auto hal_wifi = std::make_unique<WiFiHAL>();
     static auto hal_timer = std::make_unique<TimerHAL>();
     static auto hal_freertos = std::make_unique<FreeRTOSHAL>();
     static auto bootstraper = std::make_unique<EspNowDriver>(*hal_wifi);
-    static auto peer_manager = std::make_unique<PeerManager>(storage, *hal_wifi, *hal_freertos);
+    static auto peer_manager = std::make_unique<PeerManager>(*storage, *hal_wifi, *hal_freertos);
     static auto message_codec = std::make_unique<MessageCodec>();
     static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *message_codec, *hal_freertos);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
@@ -51,6 +58,7 @@ EspNowManager &EspNowManager::instance()
     static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
 
     static EspNowManager instance(
+        std::move(storage),
         std::move(hal_wifi),
         std::move(hal_timer),
         std::move(hal_freertos),
@@ -69,6 +77,7 @@ EspNowManager &EspNowManager::instance()
 // LCOV_EXCL_STOP
 
 EspNowManager::EspNowManager(
+    std::unique_ptr<IStorageManager> storage,
     std::unique_ptr<IWiFiHAL> hal_wifi,
     std::unique_ptr<ITimerHAL> hal_timer,
     std::unique_ptr<IFreeRTOSHAL> hal_freertos,
@@ -82,7 +91,8 @@ EspNowManager::EspNowManager(
     std::unique_ptr<IPairingManager> pairing_manager,
     std::unique_ptr<IMessageRouter> message_router,
     std::unique_ptr<INodeStateMachine> node_fsm)
-    : hal_wifi_(std::move(hal_wifi))
+    : storage_(std::move(storage))
+    , hal_wifi_(std::move(hal_wifi))
     , hal_timer_(std::move(hal_timer))
     , hal_freertos_(std::move(hal_freertos))
     , espnow_driver_(std::move(espnow_driver))
@@ -120,10 +130,10 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
     config_ = config;
     esp_err_t ret = ESP_OK;
 
-    // PeerManager needs to be initialized to load channel from storage before EspNowDriver
-    if (peer_manager_ != nullptr) {
+    // Storage needs to be initialized to load channel from storage before EspNowDriver
+    if (storage_ != nullptr) {
         uint8_t stored_channel;
-        if (peer_manager_->load_channel_from_storage(stored_channel) == ESP_OK) {
+        if (storage_->load_channel(stored_channel) == ESP_OK) {
             config_.wifi_channel = stored_channel;
         }
     }

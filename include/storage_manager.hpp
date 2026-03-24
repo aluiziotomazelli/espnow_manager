@@ -18,10 +18,10 @@
 // For now, assuming MAX_PEERS is visible in this translation unit.
 
 /**
- * @brief Internal structure for persistent data.
+ * @brief Internal structure for persistent peers data
  * This structure is serialized and stored in RTC RAM and NVS.
  */
-struct PersistentData
+struct PersistentPeers
 {
     // Schema identifiers (constants, not user data for dirty check)
     static constexpr uint32_t MAGIC = 0x4553504E;
@@ -30,7 +30,6 @@ struct PersistentData
     // Actual data fields
     uint32_t magic;
     uint32_t version;
-    uint8_t wifi_channel;
     uint8_t num_peers;
     PersistentPeer peers[MAX_PEERS]; // Array of peers, size determined by MAX_PEERS
     uint32_t crc;                    // CRC for data integrity
@@ -46,9 +45,9 @@ struct PersistentData
      *
      * This guarantees we only write to NVS when actual user state has changed.
      */
-    bool operator==(const PersistentData &other) const
+    bool operator==(const PersistentPeers &other) const
     {
-        if (std::tie(wifi_channel, num_peers) != std::tie(other.wifi_channel, other.num_peers)) {
+        if (std::tie(num_peers) != std::tie(other.num_peers)) {
             return false;
         }
 
@@ -61,7 +60,33 @@ struct PersistentData
         return true;
     }
 
-    bool operator!=(const PersistentData &other) const { return !(*this == other); }
+    bool operator!=(const PersistentPeers &other) const { return !(*this == other); }
+};
+
+/**
+ * @brief Internal structure for persistent channel data
+ * This structure is serialized and stored in RTC RAM and NVS.
+ */
+struct PersistentChannel
+{
+    // Magic number to identify the structure
+    static constexpr uint32_t MAGIC = 0x4348414E; // "CHAN"
+
+    // Actual data fields
+    uint32_t magic;
+    uint8_t wifi_channel;
+    uint32_t crc; // CRC for data integrity
+
+    bool operator==(const PersistentChannel &other) const
+    {
+        if (wifi_channel != other.wifi_channel) {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool operator!=(const PersistentChannel &other) const { return !(*this == other); }
 };
 
 /**
@@ -71,8 +96,10 @@ class StorageManager : public IStorageManager
 {
 public:
     StorageManager(
-        std::unique_ptr<IPersistenceBackend> rtc_backend = nullptr,
-        std::unique_ptr<IPersistenceBackend> nvs_backend = nullptr);
+        std::unique_ptr<IPersistenceBackend> rtc_peers,
+        std::unique_ptr<IPersistenceBackend> nvs_peers,
+        std::unique_ptr<IPersistenceBackend> rtc_channel,
+        std::unique_ptr<IPersistenceBackend> nvs_channel);
 
     ~StorageManager();
 
@@ -90,16 +117,23 @@ public:
 
     /**
      * @brief Calculates the CRC of the given data.
+     * @tparam T The type of the data to calculate the CRC of.
      * @param data The data to calculate the CRC of.
      * @return The CRC of the given data.
      */
-    static uint32_t calculate_crc(const PersistentData &data);
+    template <typename T> static uint32_t calculate_crc(const T &data);
 
 private:
-    std::unique_ptr<IPersistenceBackend> rtc_backend_;
-    std::unique_ptr<IPersistenceBackend> nvs_backend_;
+    std::unique_ptr<IPersistenceBackend> rtc_peers_backend_;
+    std::unique_ptr<IPersistenceBackend> nvs_peers_backend_;
+    std::unique_ptr<IPersistenceBackend> rtc_channel_backend_;
+    std::unique_ptr<IPersistenceBackend> nvs_channel_backend_;
 
-    esp_err_t load_raw_data(PersistentData &out_data);
-    bool is_data_dirty(const PersistentData &new_data);
-    esp_err_t validate_data(const PersistentData &data);
+    esp_err_t load_raw_peers(PersistentPeers &out_peers);
+    esp_err_t validate_peers_data(const PersistentPeers &peers);
+    bool is_data_dirty(const PersistentPeers &new_peers);
+
+    esp_err_t load_raw_channel(PersistentChannel &out_channel);
+    esp_err_t validate_channel_data(const PersistentChannel &channel);
+    bool is_data_dirty(const PersistentChannel &new_channel);
 };

@@ -20,6 +20,7 @@
 #include "i_hal_wifi.hpp"
 #include "i_espnow_driver.hpp"
 #include "i_hal_freertos.hpp"
+#include "i_storage_manager.hpp"
 
 // ========================================
 // ESP-NOW Manager Implementation
@@ -42,6 +43,7 @@ public:
      * @internal
      */
     EspNowManager(
+        std::unique_ptr<IStorageManager> storage,
         std::unique_ptr<IWiFiHAL> hal_wifi,
         std::unique_ptr<ITimerHAL> hal_timer,
         std::unique_ptr<IFreeRTOSHAL> hal_freertos,
@@ -132,6 +134,7 @@ protected:
     EspNowConfig config_{};
 
     // --- Sub-components (Interfaces) ---
+    std::unique_ptr<IStorageManager> storage_;             ///< Pointer to storage
     std::unique_ptr<IWiFiHAL> hal_wifi_;                   ///< Pointer to WiFi HAL
     std::unique_ptr<ITimerHAL> hal_timer_;                 ///< Pointer to timer HAL
     std::unique_ptr<IFreeRTOSHAL> hal_freertos_;           ///< Pointer to FreeRTOS HAL
