@@ -44,8 +44,8 @@ protected:
         ON_CALL(wifi_hal, hal_esp_now_mod_peer(_)).WillByDefault(Return(ESP_OK));
 
         // Storage happy path
-        ON_CALL(storage, save(_, _, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(storage, load(_, _)).WillByDefault(Return(ESP_ERR_NOT_FOUND));
+        ON_CALL(storage, store_peers(_, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(storage, load_peers(_)).WillByDefault(Return(ESP_ERR_NOT_FOUND));
 
         manager = std::make_unique<PeerManager>(storage, wifi_hal, freertos_hal);
     }
@@ -103,13 +103,13 @@ TEST_F(PeerManagerTest, AddPeerWithSameIdButDifferentMAcCallsDelAndAdd)
 
     make_mac(mac, 99); // Change mac
 
-    EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1).WillOnce(Return(ESP_OK)); // Must call add
-    EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_)).Times(1); // And call del if add returns ESP_OK
+    EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_)).Times(1).WillOnce(Return(ESP_OK)); // Must call del
+    EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1); // And call add if del returns ESP_OK
     EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));    // Nwe MAC but same ID
     EXPECT_EQ(1, manager->get_all().size());                 // Must be only one peer
 }
 
-TEST_F(PeerManagerTest, AddPeerSameIdDifferentMAcFailsAndReturnsError)
+TEST_F(PeerManagerTest, AddSameIdDifferentMAcDelFailsAndReturnsError)
 {
     uint8_t mac[6];
     make_mac(mac, ID_2);
@@ -119,10 +119,14 @@ TEST_F(PeerManagerTest, AddPeerSameIdDifferentMAcFailsAndReturnsError)
 
     make_mac(mac, 99); // Change mac
 
-    EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(1).WillOnce(Return(ESP_FAIL)); // Must call add
-    EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_)).Times(0);                            // Must not call del
-    EXPECT_EQ(ESP_FAIL, manager->add(ID_2, mac, PEER, 10));                             // ESP_FAIL propagates
-    EXPECT_EQ(1, manager->get_all().size());                                            // Must be only one peer
+    // To change the MAC we must delete and add again the same peer, but if the  delete fails,
+    //  the add will not be called - a conservative behavior if the MAX_PEERS list is full.
+    EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_))
+        .Times(1)
+        .WillOnce(Return(ESP_FAIL));                         // First will cal del, but if it fails
+    EXPECT_CALL(wifi_hal, hal_esp_now_add_peer(_)).Times(0); // then add will not be called
+    EXPECT_EQ(ESP_FAIL, manager->add(ID_2, mac, PEER, 10));  // ESP_FAIL propagates
+    EXPECT_EQ(1, manager->get_all().size());                 // Must be only one peer
 }
 
 TEST_F(PeerManagerTest, AddPeersFailsAndDoesNotIncludePeer)
@@ -183,7 +187,7 @@ TEST_F(PeerManagerTest, AddBeyondMaxRemovesPeerWithOldestLastSeen)
     EXPECT_TRUE(manager->find_mac(99, found_mac));
 }
 
-TEST_F(PeerManagerTest, AddBeyondMaxDeleteOldestDeleteFailsStillAdds)
+TEST_F(PeerManagerTest, DelFailOnAddBeyondMaxDontAddPeer)
 {
     // Fill to max
     for (int i = 0; i < MAX_PEERS; i++) {
@@ -192,13 +196,15 @@ TEST_F(PeerManagerTest, AddBeyondMaxDeleteOldestDeleteFailsStillAdds)
         manager->add((NodeId)i, mac, PEER, 10);
     }
 
-    // del_peer for evicted peer will fail — but add() ignores that return value
+    // Try to add a new peer, and delete the oldest peer fails
     EXPECT_CALL(wifi_hal, hal_esp_now_del_peer(_)).WillOnce(Return(ESP_FAIL));
 
+    // New peer
     uint8_t new_mac[6];
     make_mac(new_mac, 99);
-    // add() still proceeds to hal_esp_now_add_peer regardless of del result
-    EXPECT_EQ(ESP_OK, manager->add((NodeId)99, new_mac, PEER, 10));
+
+    // Add new peer will fail because del fails
+    EXPECT_NE(ESP_OK, manager->add((NodeId)99, new_mac, PEER, 10));
     EXPECT_EQ(MAX_PEERS, manager->get_all().size());
 }
 
@@ -348,14 +354,14 @@ TEST_F(PeerManagerTest, GetOfflineReturnsEmptyWhenHeartbeatIntervalIsZero)
 }
 
 // =========================================================================
-// PeerManager::load_from_storage
+// PeerManager::load_peers_from_storage
 // =========================================================================
 
 TEST_F(PeerManagerTest, LoadFromStorageReturnsErrorWhenEmpty)
 {
     // Default ON_CALL already returns ESP_ERR_NOT_FOUND
-    uint8_t channel = 0;
-    EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load_from_storage(channel));
+
+    EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->load_peers_from_storage());
     EXPECT_TRUE(manager->get_all().empty());
 }
 
@@ -365,26 +371,21 @@ TEST_F(PeerManagerTest, LoadFromStoragePopulatesPeerList)
     etl::vector<PersistentPeer, 2> stored;
     PersistentPeer p1 = {};
     p1.node_id = ID_2;
-    p1.channel = 6;
     memset(p1.mac, 0xAA, 6);
 
     PersistentPeer p2 = {};
     p2.node_id = ID_3;
-    p2.channel = 6;
     memset(p2.mac, 0xBB, 6);
 
     stored.push_back(p1);
     stored.push_back(p2);
 
-    ON_CALL(storage, load(_, _)).WillByDefault([&](uint8_t &channel, etl::ivector<PersistentPeer> &peers) {
-        channel = 6;
+    ON_CALL(storage, load_peers(_)).WillByDefault([&](etl::ivector<PersistentPeer> &peers) {
         peers = stored;
         return ESP_OK;
     });
 
-    uint8_t channel = 0;
-    EXPECT_EQ(ESP_OK, manager->load_from_storage(channel));
-    EXPECT_EQ(6, channel); // channel was updated
+    EXPECT_EQ(ESP_OK, manager->load_peers_from_storage());
     EXPECT_EQ(2, manager->get_all().size());
 
     // Verify peer data was correctly mapped
@@ -412,15 +413,12 @@ TEST_F(PeerManagerTest, LoadFromStorageClearsPreviousPeers)
 
     stored.push_back(p1);
 
-    EXPECT_CALL(storage, load(_, _)).WillOnce([&](uint8_t &channel, etl::ivector<PersistentPeer> &peers) {
-        channel = 1;
-        // peers.assign(stored.begin(), stored.end());
+    EXPECT_CALL(storage, load_peers(_)).WillOnce([&](etl::ivector<PersistentPeer> &peers) {
         peers = stored;
         return ESP_OK;
     });
 
-    uint8_t channel = 0;
-    EXPECT_EQ(ESP_OK, manager->load_from_storage(channel));
+    EXPECT_EQ(ESP_OK, manager->load_peers_from_storage());
 
     // ID_4 must be gone, ID_2 must be present
     EXPECT_EQ(1, manager->get_all().size());
@@ -438,11 +436,10 @@ TEST_F(PeerManagerTest, SaveToStorageLogsOnError)
     uint8_t mac[6];
     make_mac(mac, ID_2);
 
-    // First add succeeds in storage (called by add internally)
-    EXPECT_CALL(storage, save(_, _, _)).WillOnce(Return(ESP_FAIL)); // save_to_storage inside add() returns error
+    EXPECT_CALL(storage, store_peers(_, _)).WillOnce(Return(ESP_FAIL)); // save_to_storage inside add() returns error
 
     // add() itself must still return ESP_OK — storage failure is non-fatal
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));
+    EXPECT_EQ(ESP_FAIL, manager->add(ID_2, mac, PEER, 10));
 
     // Peer must still be in the list (storage error doesn't roll back)
     EXPECT_EQ(1, manager->get_all().size());
@@ -470,11 +467,11 @@ TEST_F(PeerManagerTest, UpdateLastSeenDontTakeMutex)
 
 TEST_F(PeerManagerTest, LoadFromStorageDontTakeMutexReturnsError)
 {
-    EXPECT_CALL(storage, load(_, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(storage, load_peers(_)).WillOnce(Return(ESP_OK));
     EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE)); // semaphore_take fails
     EXPECT_CALL(freertos_hal, semaphore_give(_)).Times(0);                     // semaphore_give should not be called
-    uint8_t channel = 0;
-    EXPECT_EQ(ESP_ERR_TIMEOUT, manager->load_from_storage(channel));
+
+    EXPECT_EQ(ESP_ERR_TIMEOUT, manager->load_peers_from_storage());
 }
 
 TEST_F(PeerManagerTest, AddPeersDontTakeMutexReturnsError)
