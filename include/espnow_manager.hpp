@@ -21,6 +21,7 @@
 #include "i_espnow_driver.hpp"
 #include "i_hal_freertos.hpp"
 #include "i_storage_manager.hpp"
+#include "i_channel_monitor.hpp"
 
 // ========================================
 // ESP-NOW Manager Implementation
@@ -50,6 +51,7 @@ public:
         std::unique_ptr<IEspNowDriver> espnow_driver,
         std::unique_ptr<IPeerManager> peer_manager,
         std::unique_ptr<IMessageCodec> message_codec,
+        std::unique_ptr<IChannelMonitor> channel_monitor,
         std::unique_ptr<IDiscoveryManager> scanner,
         std::unique_ptr<ITxStateMachine> tx_fsm,
         std::unique_ptr<ITxManager> tx_manager,
@@ -141,6 +143,7 @@ protected:
     std::unique_ptr<IEspNowDriver> espnow_driver_;         ///< Pointer to espnow_driver
     std::unique_ptr<IPeerManager> peer_manager_;           ///< Pointer to peer manager
     std::unique_ptr<IMessageCodec> message_codec_;         ///< Pointer to message codec
+    std::unique_ptr<IChannelMonitor> channel_monitor_;     ///< Pointer to channel monitor
     std::unique_ptr<IDiscoveryManager> scanner_;           ///< Pointer to discovery manager
     std::unique_ptr<ITxStateMachine> tx_fsm_;              ///< Pointer to tx state machine
     std::unique_ptr<ITxManager> tx_manager_;               ///< Pointer to tx manager
@@ -160,6 +163,7 @@ protected:
     void on_channel_found_cb(uint8_t channel) override;
     void on_scan_failed_cb() override;
     void on_scan_started_cb() override;
+    void on_channel_changed_cb(uint8_t channel) override;
 
     // --- Private Methods ---
     uint64_t get_time_ms() const;
@@ -184,6 +188,7 @@ protected:
     esp_err_t init_discovery_manager();
     esp_err_t init_heartbeat_manager();
     esp_err_t init_pairing_manager();
+    esp_err_t init_channel_monitor();
     NodeState determine_initial_state(etl::ivector<PeerInfo> &peers);
     void add_peers_to_espnow(etl::ivector<PeerInfo> &peers);
     esp_err_t init_fail(esp_err_t ret, const char *step);

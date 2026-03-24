@@ -5,9 +5,7 @@
 #include <type_traits>
 
 #include "espnow_types.hpp"
-#include "protocol_messages.hpp"
 #include "i_channel_observer.hpp"
-#include "i_tx_manager.hpp"
 
 /**
  * @interface IDiscoveryManager

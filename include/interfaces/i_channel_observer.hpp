@@ -29,4 +29,9 @@ public:
      * This callback can be used to trigger any necessary actions on EspNowManager
      */
     virtual void on_scan_started_cb() = 0;
+
+    /**
+     * @brief Called when the WiFi channel has changed.
+     */
+    virtual void on_channel_changed_cb(uint8_t new_channel) = 0;
 };

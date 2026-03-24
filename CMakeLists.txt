@@ -14,6 +14,7 @@ idf_component_register(
         "src/message_router.cpp"
         "src/espnow_driver.cpp"
         "src/node_state_machine.cpp"
+        "src/channel_monitor.cpp"
     
     INCLUDE_DIRS
         "include"
