@@ -20,6 +20,7 @@
 #include "hal_nvs.hpp"
 #include "persistence_backend.hpp"
 #include "storage_manager.hpp"
+#include "channel_monitor.hpp"
 
 #include "espnow_manager.hpp"
 
@@ -49,6 +50,7 @@ EspNowManager &EspNowManager::instance()
     static auto bootstraper = std::make_unique<EspNowDriver>(*hal_wifi);
     static auto peer_manager = std::make_unique<PeerManager>(*storage, *hal_wifi, *hal_freertos);
     static auto message_codec = std::make_unique<MessageCodec>();
+    static auto channel_monitor = std::make_unique<ChannelMonitor>(*hal_wifi);
     static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *message_codec, *hal_freertos);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
     static auto tx_manager =
@@ -65,6 +67,7 @@ EspNowManager &EspNowManager::instance()
         std::move(bootstraper),
         std::move(peer_manager),
         std::move(message_codec),
+        std::move(channel_monitor),
         std::move(scanner),
         std::move(tx_fsm),
         std::move(tx_manager),
@@ -84,6 +87,7 @@ EspNowManager::EspNowManager(
     std::unique_ptr<IEspNowDriver> espnow_driver,
     std::unique_ptr<IPeerManager> peer_manager,
     std::unique_ptr<IMessageCodec> message_codec,
+    std::unique_ptr<IChannelMonitor> channel_monitor,
     std::unique_ptr<IDiscoveryManager> scanner,
     std::unique_ptr<ITxStateMachine> tx_fsm,
     std::unique_ptr<ITxManager> tx_manager,
@@ -98,6 +102,7 @@ EspNowManager::EspNowManager(
     , espnow_driver_(std::move(espnow_driver))
     , peer_manager_(std::move(peer_manager))
     , message_codec_(std::move(message_codec))
+    , channel_monitor_(std::move(channel_monitor))
     , scanner_(std::move(scanner))
     , tx_fsm_(std::move(tx_fsm))
     , tx_manager_(std::move(tx_manager))
@@ -180,6 +185,11 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
         return init_fail(ret, "pairing_manager");
     }
 
+    ret = init_channel_monitor();
+    if (ret != ESP_OK) {
+        return init_fail(ret, "channel_monitor");
+    }
+
     // Load peers from storage and add them to ESP-NOW
     peer_manager_->load_peers_from_storage();
     etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
@@ -191,6 +201,7 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
 
     // Update scanner with current channel
     scanner_->set_channel(config_.wifi_channel);
+    storage_->store_channel(config.wifi_channel);
 
     ESP_LOGI(TAG, "EspNow component initialized successfully.");
     return ret;
@@ -465,13 +476,16 @@ void EspNowManager::rx_task(void *arg)
             self->node_fsm_->on_pairing_timeout(has_peers);
         }
 
-        // Tick pairing manager to handle timeouts
+        // Tick submodules to handle timers
         NodeState current_state = self->node_fsm_->get_state();
         if (current_state == NodeState::PAIRING) {
             self->pairing_manager_->tick(self->get_time_ms());
         }
         else if (current_state == NodeState::OPERATIONAL) {
             self->heartbeat_manager_->tick(self->get_time_ms());
+        }
+        if (current_state != NodeState::UNINITIALIZED) {
+            self->channel_monitor_->tick(self->get_time_ms());
         }
     }
 
@@ -501,6 +515,11 @@ void EspNowManager::on_scan_started_cb()
     hal_freertos_->task_notify(rx_task_handle_, NOTIFY_SCANNING, eSetBits);
 }
 
+void EspNowManager::on_channel_changed_cb(uint8_t channel)
+{
+    last_found_channel_.store(channel);
+    hal_freertos_->task_notify(rx_task_handle_, NOTIFY_CHANNEL_CHANGED, eSetBits);
+}
 // =========================================================================================
 // Internal methods
 // =========================================================================================
@@ -582,16 +601,24 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool &should_st
         }
         // If we are in OPERATIONAL state, it means we have found the HUB
         else if (current_state == NodeState::OPERATIONAL) {
-            // No need to call persist() anymore, channel propagation or management
-            // operations now handle their own persistence if needed.
+            storage_->store_channel(config_.wifi_channel);
         }
 
         // Let FSM decide next state after channel found
+        // TODO: on_channel_found(bool is_hub, bool has_peers), are we passing hardcoded is_hub value?
         node_fsm_->on_channel_found(config_.node_type == ReservedTypes::HUB, !peer_manager_->get_all().empty());
     }
     // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb()
     if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
         node_fsm_->on_scan_failed(pairing_manager_->is_active(), !peer_manager_->get_all().empty());
+    }
+    // NOTIFY_CHANNEL_CHANGED is set by on_channel_changed_cb()
+    if ((notifications & NOTIFY_CHANNEL_CHANGED) == NOTIFY_CHANNEL_CHANGED) {
+        uint8_t channel = last_found_channel_.load();
+        config_.wifi_channel = channel;
+        scanner_->set_channel(channel);
+        storage_->store_channel(channel);
+        ESP_LOGI(TAG, "Channel changed to %d", channel);
     }
     // If NOTIFY_STOP is set, we break the loop and exit the task.
     if (notifications & NOTIFY_STOP) {
@@ -675,6 +702,21 @@ esp_err_t EspNowManager::init_pairing_manager()
     return pairing_manager_->init(config_.node_id, config_.node_type);
 }
 
+esp_err_t EspNowManager::init_channel_monitor()
+{
+    if (channel_monitor_ == nullptr) {
+        return ESP_FAIL;
+    }
+    return channel_monitor_->init(this, config_.channel_monitor_interval_ms);
+}
+
+esp_err_t EspNowManager::init_fail(esp_err_t ret, const char *step)
+{
+    ESP_LOGE(TAG, "init failed at %s: %s", step, esp_err_to_name(ret));
+    deinit();
+    return ret;
+}
+
 void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo> &peers)
 {
     for (auto &peer : peers) {
@@ -685,13 +727,6 @@ void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo> &peers)
         peer_info.encrypt = false;
         hal_wifi_->hal_esp_now_add_peer(&peer_info);
     }
-}
-
-esp_err_t EspNowManager::init_fail(esp_err_t ret, const char *step)
-{
-    ESP_LOGE(TAG, "init failed at %s: %s", step, esp_err_to_name(ret));
-    deinit();
-    return ret;
 }
 
 void EspNowManager::signal_task_to_stop()
