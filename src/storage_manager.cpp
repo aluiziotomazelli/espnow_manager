@@ -151,6 +151,8 @@ esp_err_t StorageManager::load_raw_peers(PersistentPeers &out)
     if (ret == ESP_OK) {
         ret = validate_peers_data(out);
         if (ret == ESP_OK) {
+            // Sync RTC with NVS
+            rtc_peers_backend_->save(&out, sizeof(PersistentPeers));
             ESP_LOGD(TAG, "Loaded data from NVS");
             return ESP_OK;
         }
@@ -209,6 +211,8 @@ esp_err_t StorageManager::load_raw_channel(PersistentChannel &out)
     if (ret == ESP_OK) {
         ret = validate_channel_data(out);
         if (ret == ESP_OK) {
+            // Sync RTC with NVS
+            rtc_channel_backend_->save(&out, sizeof(PersistentChannel));
             ESP_LOGD(TAG, "Loaded data from NVS");
             return ESP_OK;
         }
