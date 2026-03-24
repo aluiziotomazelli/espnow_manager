@@ -60,8 +60,8 @@ TEST_F(NodeStateMachineTest, ResetTransitionsToUninitialized)
 TEST_F(NodeStateMachineTest, PairingRequestedFromIdleTransitionsToPairing)
 {
     // Reach IDLE first
-    fsm.on_init(false);              // PAIRING
-    fsm.on_pairing_completed(false); // IDLE
+    fsm.on_init(false);            // PAIRING
+    fsm.on_pairing_timeout(false); // IDLE
     ASSERT_EQ(fsm.get_state(), NodeState::IDLE);
 
     EXPECT_EQ(fsm.on_pairing_requested(), ESP_OK);
@@ -81,7 +81,7 @@ TEST_F(NodeStateMachineTest, PairingRequestedFromOperationalTransitionsToPairing
 TEST_F(NodeStateMachineTest, PairingCompletedWithPeersTransitionsToOperational)
 {
     fsm.on_init(false); // already in PAIRING
-    EXPECT_EQ(fsm.on_pairing_completed(true), ESP_OK);
+    EXPECT_EQ(fsm.on_pairing_timeout(true), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::OPERATIONAL);
 }
 
@@ -90,7 +90,7 @@ TEST_F(NodeStateMachineTest, PairingCompletedWithPeersTransitionsToOperational)
 TEST_F(NodeStateMachineTest, PairingCompletedWithoutPeersTransitionsToIdle)
 {
     fsm.on_init(false); // already in PAIRING
-    EXPECT_EQ(fsm.on_pairing_completed(false), ESP_OK);
+    EXPECT_EQ(fsm.on_pairing_timeout(false), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::IDLE);
 }
 
@@ -217,7 +217,7 @@ TEST_F(NodeStateMachineTest, InvalidTransitionsReturnErrorState)
     EXPECT_EQ(fsm.on_init(true), ESP_ERR_INVALID_STATE);
 
     // IDLE -> SCANNING is invalid (only from Operational or Pairing)
-    fsm.on_pairing_completed(false); // Transition to IDLE
+    fsm.on_pairing_timeout(false); // Transition to IDLE
     ASSERT_EQ(fsm.get_state(), NodeState::IDLE);
     EXPECT_EQ(fsm.on_scan_requested(), ESP_ERR_INVALID_STATE);
     EXPECT_EQ(fsm.get_state(), NodeState::IDLE);
@@ -227,8 +227,8 @@ TEST_F(NodeStateMachineTest, InvalidTransitionsReturnErrorState)
     EXPECT_EQ(fsm.on_pairing_requested(), ESP_ERR_INVALID_STATE);
 
     // Invalid transition for pairing completed (must be in PAIRING)
-    fsm.on_pairing_completed(true); // Valid PAIRING -> OPERATIONAL
-    EXPECT_EQ(fsm.on_pairing_completed(true), ESP_ERR_INVALID_STATE);
+    fsm.on_pairing_timeout(true); // Valid PAIRING -> OPERATIONAL
+    EXPECT_EQ(fsm.on_pairing_timeout(true), ESP_ERR_INVALID_STATE);
 
     // Invalid transition for channel found (must be in SCANNING or PAIRING)
     EXPECT_EQ(fsm.on_channel_found(false, false), ESP_ERR_INVALID_STATE);

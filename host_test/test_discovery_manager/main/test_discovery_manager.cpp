@@ -13,6 +13,7 @@ using ::testing::DoAll;
 using ::testing::InSequence;
 using ::testing::NiceMock;
 using ::testing::Return;
+using ::testing::SaveArg;
 using ::testing::SetArgPointee;
 
 class MockChannelObserver : public IChannelObserver
@@ -29,7 +30,6 @@ protected:
     NiceMock<MockWiFiHAL> wifi_hal;
     NiceMock<MockMessageCodec> codec;
     NiceMock<MockFreeRTOSHAL> freertos_hal;
-    NiceMock<MockTxManager> tx_manager;
     NiceMock<MockChannelObserver> observer;
     std::unique_ptr<DiscoveryManager> scanner;
 
@@ -48,7 +48,7 @@ protected:
         ON_CALL(freertos_hal, task_notify_wait(_, _, _, _)).WillByDefault(Return(pdFAIL));
 
         scanner = std::make_unique<DiscoveryManager>(wifi_hal, codec, freertos_hal);
-        scanner->init(MY_ID, MY_TYPE, &tx_manager, &observer);
+        scanner->init(MY_ID, MY_TYPE, &observer);
     }
 
     // Helper to build a DecodedPacket for probing tests
@@ -128,6 +128,18 @@ TEST_F(DiscoveryManagerTest, HubNotFoundOnAnyChannelCallsObserverScanFailed)
     ASSERT_EQ(VALID_CHANNEL, res.channel);
 }
 
+TEST_F(DiscoveryManagerTest, SetWifiChannelFailOnScanCallsScanFailed)
+{
+    scanner->set_channel(VALID_CHANNEL);
+
+    EXPECT_CALL(wifi_hal, wifi_set_channel(_)).WillRepeatedly(Return(ESP_FAIL));
+    EXPECT_CALL(observer, on_scan_failed_cb()).Times(1);
+
+    IDiscoveryManager::ScanResult res = scanner->scan();
+    ASSERT_FALSE(res.hub_found);
+    ASSERT_EQ(VALID_CHANNEL, res.channel);
+}
+
 TEST_F(DiscoveryManagerTest, EmptyEncodedMessageDontCallSend)
 {
     scanner->set_channel(VALID_CHANNEL);
@@ -161,7 +173,7 @@ TEST_F(DiscoveryManagerTest, ProbeMessageHasCorrectHeader)
 
     NodeId NEW_ID = 3;
     NodeType NEW_TYPE = 0x04;
-    scanner->init(NEW_ID, NEW_TYPE, &tx_manager, &observer);
+    scanner->init(NEW_ID, NEW_TYPE, &observer);
 
     EXPECT_CALL(codec, encode(_, _, _, _, _))
         .Times(1)
@@ -198,18 +210,19 @@ TEST_F(DiscoveryManagerTest, ChannelScanOrderStartsFromGivenChannel)
     scanner->scan();
 }
 
-TEST_F(DiscoveryManagerTest, HubFoundOnSecondAttemptOfSameChannel)
+TEST_F(DiscoveryManagerTest, HubFoundOnNotFirstAttemptOfSameChannel)
 {
     scanner->set_channel(VALID_CHANNEL);
     InSequence s;
 
+    uint8_t attempts = SCAN_CHANNEL_ATTEMPTS;
     EXPECT_CALL(wifi_hal, wifi_set_channel(VALID_CHANNEL)).Times(1);
 
     // First attempt: no notification (hub not found)
-    EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(1);
-    EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _)).Times(1).WillOnce(Return(pdFAIL));
+    EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(attempts - 1);
+    EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _)).Times(attempts - 1).WillRepeatedly(Return(pdFAIL));
 
-    // Second attempt: hub found
+    // Other attempts: hub found
     EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(1);
     EXPECT_CALL(freertos_hal, task_notify_wait(_, _, _, _))
         .Times(1)
@@ -222,42 +235,37 @@ TEST_F(DiscoveryManagerTest, HubFoundOnSecondAttemptOfSameChannel)
     ASSERT_EQ(VALID_CHANNEL, res.channel);
 }
 
-TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfTxMgrNull)
-{
-    // Raw scanner (not initialized)
-    DiscoveryManager raw_scanner(wifi_hal, codec, freertos_hal);
-
-    DecodedPacket decoded = make_decoded_probe_packet(5, 0x02);
-    EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
-    raw_scanner.handle_probe(decoded);
-}
-
 TEST_F(DiscoveryManagerTest, HandleProbeIgnoresIfNotHub)
 {
     // Setup scanner as Node
-    scanner->init(MY_ID, 0x02, nullptr, &observer);
+    scanner->init(MY_ID, 0x02, &observer);
 
     DecodedPacket decoded = make_decoded_probe_packet(5, 0x02);
-    EXPECT_CALL(tx_manager, queue_packet(_)).Times(0);
+    EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(0);
     scanner->handle_probe(decoded);
 }
 
 TEST_F(DiscoveryManagerTest, HandleProbeSendsResponseIfHub)
 {
     // Setup scanner as Hub
-    scanner->init(MY_ID, ReservedTypes::HUB, &tx_manager, nullptr);
+    scanner->init(MY_ID, ReservedTypes::HUB, nullptr);
 
-    DecodedPacket decoded = make_decoded_probe_packet(5, 0x02);
+    DecodedPacket decoded = make_decoded_probe_packet(MY_ID, MY_TYPE);
 
-    DecodedTxPacket captured_packet;
-    EXPECT_CALL(tx_manager, queue_packet(_))
-        .Times(1)
-        .WillOnce(DoAll(testing::SaveArg<0>(&captured_packet), Return(ESP_OK)));
+    EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(1).WillOnce(Return(ESP_OK));
 
     scanner->handle_probe(decoded);
+}
 
-    EXPECT_EQ(captured_packet.header.msg_type, MessageType::CHANNEL_SCAN_RESPONSE);
-    EXPECT_EQ(captured_packet.header.dest_node_id, 5);
+TEST_F(DiscoveryManagerTest, HandleProbeDoesNotSendResponseIfEncodeReturnsZero)
+{
+    scanner->init(MY_ID, ReservedTypes::HUB, nullptr);
+
+    ON_CALL(codec, encode(_, _, _, _, _)).WillByDefault(Return(0));
+
+    DecodedPacket decoded = make_decoded_probe_packet(MY_ID, MY_TYPE);
+    EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).Times(0);
+    scanner->handle_probe(decoded);
 }
 
 TEST_F(DiscoveryManagerTest, ScanFailsIfNotInitialized)
@@ -267,12 +275,8 @@ TEST_F(DiscoveryManagerTest, ScanFailsIfNotInitialized)
     ASSERT_FALSE(res.hub_found);
 }
 
-TEST_F(DiscoveryManagerTest, InitReturnsErrorIfHubMissingTxMgr)
+TEST_F(DiscoveryManagerTest, InitFailsIfObserverIsNull)
 {
-    EXPECT_EQ(ESP_ERR_INVALID_ARG, scanner->init(MY_ID, ReservedTypes::HUB, nullptr, nullptr));
-}
-
-TEST_F(DiscoveryManagerTest, InitReturnsErrorIfNodeMissingObserver)
-{
-    EXPECT_EQ(ESP_ERR_INVALID_ARG, scanner->init(MY_ID, MY_TYPE, nullptr, nullptr));
+    esp_err_t ret = scanner->init(MY_ID, MY_TYPE, nullptr);
+    ASSERT_NE(ret, ESP_OK);
 }

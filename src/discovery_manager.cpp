@@ -15,17 +15,12 @@ DiscoveryManager::DiscoveryManager(IWiFiHAL &wifi_hal, IMessageCodec &message_co
 {
 }
 
-esp_err_t DiscoveryManager::init(NodeId id, NodeType type, ITxManager *tx_mgr, IChannelObserver *observer)
+esp_err_t DiscoveryManager::init(NodeId id, NodeType type, IChannelObserver *observer)
 {
     my_node_id_ = id;
     my_node_type_ = type;
 
     if (type == ReservedTypes::HUB) {
-        if (tx_mgr == nullptr) {
-            ESP_LOGE(TAG, "TxManager is required for Hub type.");
-            return ESP_ERR_INVALID_ARG;
-        }
-        tx_mgr_ = tx_mgr;
         hub_ready_ = true;
     }
     else {
@@ -63,11 +58,6 @@ IDiscoveryManager::ScanResult DiscoveryManager::scan()
         esp_err_t err = hal_wifi_.wifi_set_channel(channel);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to set WiFi channel to %d: %s", channel, esp_err_to_name(err));
-            continue;
-        }
-        err = modify_broadcast_peer(channel);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to modify broadcast peer for channel %d: %s", channel, esp_err_to_name(err));
             continue;
         }
 
@@ -149,14 +139,4 @@ void DiscoveryManager::handle_probe(const DecodedPacket &decoded)
 void DiscoveryManager::set_channel(uint8_t channel)
 {
     current_channel_ = channel;
-}
-
-esp_err_t DiscoveryManager::modify_broadcast_peer(const uint8_t &channel)
-{
-    esp_now_peer_info_t broadcast = {};
-    memcpy(broadcast.peer_addr, BROADCAST_MAC, 6);
-    broadcast.channel = channel;
-    broadcast.ifidx = WIFI_IF_STA;
-    broadcast.encrypt = false;
-    return hal_wifi_.hal_esp_now_mod_peer(&broadcast);
 }

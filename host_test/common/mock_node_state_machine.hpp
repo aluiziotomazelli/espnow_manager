@@ -3,15 +3,17 @@
 #include "gmock/gmock.h"
 #include "i_node_state_machine.hpp"
 
-class MockNodeStateMachine : public INodeStateMachine {
+class MockNodeStateMachine : public INodeStateMachine
+{
 public:
-    MockNodeStateMachine() {
+    MockNodeStateMachine()
+    {
         using ::testing::_;
-        using ::testing::Return;
         using ::testing::Invoke;
+        using ::testing::Return;
 
         ON_CALL(*this, get_state()).WillByDefault(Invoke([this]() { return state_; }));
-        
+
         ON_CALL(*this, on_init(_)).WillByDefault(Invoke([this](bool has_peers) {
             state_ = has_peers ? NodeState::OPERATIONAL : NodeState::IDLE;
             return ESP_OK;
@@ -32,7 +34,7 @@ public:
             return ESP_OK;
         }));
 
-        ON_CALL(*this, on_pairing_completed(_)).WillByDefault(Invoke([this](bool has_peers) {
+        ON_CALL(*this, on_pairing_timeout(_)).WillByDefault(Invoke([this](bool has_peers) {
             state_ = has_peers ? NodeState::OPERATIONAL : NodeState::IDLE;
             return ESP_OK;
         }));
@@ -45,7 +47,8 @@ public:
         ON_CALL(*this, on_scan_failed(_, _)).WillByDefault(Invoke([this](bool pairing_active, bool has_peers) {
             if (!pairing_active && state_ == NodeState::PAIRING) {
                 state_ = NodeState::IDLE;
-            } else if (state_ == NodeState::SCANNING) {
+            }
+            else if (state_ == NodeState::SCANNING) {
                 if (!pairing_active) {
                     state_ = has_peers ? NodeState::OPERATIONAL : NodeState::IDLE;
                 }
@@ -59,7 +62,7 @@ public:
     MOCK_METHOD(esp_err_t, on_init, (bool has_peers), (override));
     MOCK_METHOD(esp_err_t, on_deinit, (), (override));
     MOCK_METHOD(esp_err_t, on_pairing_requested, (), (override));
-    MOCK_METHOD(esp_err_t, on_pairing_completed, (bool has_peers), (override));
+    MOCK_METHOD(esp_err_t, on_pairing_timeout, (bool has_peers), (override));
     MOCK_METHOD(esp_err_t, on_scan_requested, (), (override));
     MOCK_METHOD(esp_err_t, on_channel_found, (bool is_hub, bool has_peers), (override));
     MOCK_METHOD(esp_err_t, on_scan_failed, (bool pairing_active, bool has_peers), (override));

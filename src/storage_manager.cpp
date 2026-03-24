@@ -74,6 +74,7 @@ esp_err_t StorageManager::load_peers(etl::ivector<PersistentPeer> &peers)
     for (size_t i = 0; i < peers_to_copy; ++i) {
         peers.push_back(data.peers[i]);
     }
+
     return ESP_OK;
 }
 

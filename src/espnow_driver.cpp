@@ -66,7 +66,7 @@ esp_err_t EspNowDriver::add_broadcast_peer(const uint8_t &channel)
 {
     esp_now_peer_info_t broadcast_peer = {};
     memcpy(broadcast_peer.peer_addr, BROADCAST_MAC, 6);
-    broadcast_peer.channel = channel;
+    broadcast_peer.channel = 0;
     broadcast_peer.ifidx = WIFI_IF_STA;
     broadcast_peer.encrypt = false;
     return wifi_hal_.hal_esp_now_add_peer(&broadcast_peer);

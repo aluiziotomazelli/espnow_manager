@@ -172,7 +172,6 @@ protected:
 
     // Persistence helpers
     void update_wifi_channel(uint8_t channel);
-    void propagate_channel();
 
     // Init helpers
     esp_err_t create_mutex();
@@ -201,7 +200,6 @@ protected:
     static void esp_now_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status);
 
     std::atomic<uint8_t> last_found_channel_{0};
-
 
     // Store pairing timeout for use after channel scan completes
     uint32_t pairing_timeout_ms_ = PAIRING_TIMEOUT_MS;

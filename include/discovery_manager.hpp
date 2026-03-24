@@ -12,7 +12,7 @@ class DiscoveryManager : public IDiscoveryManager
 public:
     DiscoveryManager(IWiFiHAL &wifi_hal, IMessageCodec &message_codec, IFreeRTOSHAL &freertos_hal);
 
-    esp_err_t init(NodeId id, NodeType type, ITxManager *tx_mgr, IChannelObserver *observer = nullptr) override;
+    esp_err_t init(NodeId id, NodeType type, IChannelObserver *observer = nullptr) override;
     ScanResult scan() override;
     void handle_probe(const DecodedPacket &decoded) override;
     void set_channel(uint8_t channel) override;
@@ -30,6 +30,4 @@ private:
 
     NodeId my_node_id_;
     NodeType my_node_type_;
-
-    esp_err_t modify_broadcast_peer(const uint8_t &channel);
 };

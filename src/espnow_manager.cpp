@@ -170,14 +170,17 @@ esp_err_t EspNowManager::init(const EspNowConfig &config)
         return init_fail(ret, "pairing_manager");
     }
 
+    // Load peers from storage and add them to ESP-NOW
+    peer_manager_->load_peers_from_storage();
     etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
+    // If there are peers, we are in OPERATIONAL state, otherwise in PAIRING state
     node_fsm_->on_init(!peers.empty());
     if (node_fsm_->get_state() == NodeState::OPERATIONAL) {
         add_peers_to_espnow(peers);
     }
 
-    // Update sub componentes with current channel from loaded NVS or Config default
-    propagate_channel();
+    // Update scanner with current channel
+    scanner_->set_channel(config_.wifi_channel);
 
     ESP_LOGI(TAG, "EspNow component initialized successfully.");
     return ret;
@@ -534,20 +537,6 @@ uint64_t EspNowManager::get_time_ms() const
     return hal_timer_->get_time_us() / 1000;
 }
 
-void EspNowManager::propagate_channel()
-{
-    scanner_->set_channel(config_.wifi_channel);
-
-    // Keep the broadcast peer aligned with the current channel,
-    // ensuring all subsequent broadcasts (like PAIR_REQUEST) use the correct newly-found channel.
-    esp_now_peer_info_t broadcast = {};
-    memcpy(broadcast.peer_addr, BROADCAST_MAC, 6);
-    broadcast.channel = config_.wifi_channel;
-    broadcast.ifidx = WIFI_IF_STA;
-    broadcast.encrypt = false;
-    hal_wifi_->hal_esp_now_mod_peer(&broadcast);
-}
-
 // Helper to build AppMessage from DecodedPacket
 AppMessage EspNowManager::build_app_message(const DecodedPacket &decoded)
 {
@@ -574,7 +563,6 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool &should_st
     // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb()
     if ((notifications & NOTIFY_CHANNEL_FOUND) == NOTIFY_CHANNEL_FOUND) {
         config_.wifi_channel = last_found_channel_.load();
-        propagate_channel();
         // Channel confirmed now safe to start pairing if NodeState::PAIRING
         NodeState current_state = node_fsm_->get_state();
         if (current_state == NodeState::PAIRING || current_state == NodeState::SCANNING) {
@@ -652,10 +640,10 @@ esp_err_t EspNowManager::init_discovery_manager()
     }
     esp_err_t ret;
     if (config_.node_type == ReservedTypes::HUB) {
-        ret = scanner_->init(config_.node_id, config_.node_type, tx_manager_.get(), nullptr);
+        ret = scanner_->init(config_.node_id, config_.node_type, nullptr);
     }
     else {
-        ret = scanner_->init(config_.node_id, config_.node_type, nullptr, this);
+        ret = scanner_->init(config_.node_id, config_.node_type, this);
     }
     return ret;
 }
@@ -680,12 +668,12 @@ esp_err_t EspNowManager::init_pairing_manager()
 void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo> &peers)
 {
     for (auto &peer : peers) {
-        esp_now_peer_info_t info = {};
-        memcpy(info.peer_addr, peer.mac, 6);
-        info.channel = 0;
-        info.ifidx = WIFI_IF_STA;
-        info.encrypt = false;
-        hal_wifi_->hal_esp_now_add_peer(&info);
+        esp_now_peer_info_t peer_info = {};
+        memcpy(peer_info.peer_addr, peer.mac, 6);
+        peer_info.channel = 0;
+        peer_info.ifidx = WIFI_IF_STA;
+        peer_info.encrypt = false;
+        hal_wifi_->hal_esp_now_add_peer(&peer_info);
     }
 }
 

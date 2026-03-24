@@ -12,7 +12,11 @@
 class MockPeerManager : public IPeerManager
 {
 public:
-    MOCK_METHOD(esp_err_t, add, (NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms), (override));
+    MOCK_METHOD(
+        esp_err_t,
+        add,
+        (NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms),
+        (override));
     MOCK_METHOD(esp_err_t, remove, (NodeId id), (override));
     MOCK_METHOD(bool, find_mac, (NodeId id, uint8_t *mac), (override));
     MOCK_METHOD((etl::vector<PeerInfo, MAX_PEERS>), get_all, (), (override));
