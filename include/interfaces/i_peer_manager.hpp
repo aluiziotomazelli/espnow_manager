@@ -127,27 +127,6 @@ public:
     }
 
     /**
-     * @brief Load channel from persistent storage
-     * @param channel Pointer to store the channel
-     * @return ESP_OK if successful
-     * @return ESP_ERR_INVALID_VERSION: mismatch PersistentData::VERSION
-     * @return ESP_ERR_INVALID_CRC: CRC check failed
-     * @return Others: internal NVS errors
-     *
-     * @internal
-     */
-    virtual esp_err_t load_channel_from_storage(uint8_t &channel) = 0;
-
-    /**
-     * @brief Save channel to persistent storage
-     * @param channel Channel to save
-     * @return ESP_OK if successful
-     * @return Others: internal NVS errors
-     * @internal
-     */
-    virtual esp_err_t save_channel_in_storage(uint8_t channel) = 0;
-
-    /**
      * @brief Load peer list from persistent storage inside PeerManager list
      * @return ESP_OK if successful
      * @return ESP_ERR_INVALID_VERSION: mismatch PersistentData::VERSION

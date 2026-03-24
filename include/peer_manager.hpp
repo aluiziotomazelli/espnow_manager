@@ -27,8 +27,6 @@ public:
     void update_last_seen(NodeId id, uint64_t now_ms) override;
 
     // Helper for initialization (loading from storage)
-    esp_err_t load_channel_from_storage(uint8_t &channel) override;
-    esp_err_t save_channel_in_storage(uint8_t channel) override;
     esp_err_t load_peers_from_storage() override;
 
 private:

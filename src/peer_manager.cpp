@@ -234,16 +234,6 @@ esp_err_t PeerManager::load_peers_from_storage()
     }
 }
 
-esp_err_t PeerManager::load_channel_from_storage(uint8_t &channel)
-{
-    return storage_.load_channel(channel);
-}
-
-esp_err_t PeerManager::save_channel_in_storage(uint8_t channel)
-{
-    return storage_.store_channel(channel);
-}
-
 // =====================================================================================
 // Private methods
 // =====================================================================================
