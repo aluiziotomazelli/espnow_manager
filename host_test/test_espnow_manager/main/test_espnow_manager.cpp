@@ -19,6 +19,7 @@
 #include "mock_tx_manager.hpp"
 #include "mock_tx_state_machine.hpp"
 #include "node_state_machine.hpp"
+#include "mock_storage_manager.hpp"
 
 #include "espnow_manager.hpp"
 
@@ -87,17 +88,20 @@ public:
     void set_last_header(const MessageHeader &header) { last_header_requiring_ack_ = header; }
     void reset_last_header() { last_header_requiring_ack_.reset(); }
 
-    using EspNowManager::node_fsm_;
     using EspNowManager::ack_mutex_;
+    using EspNowManager::node_fsm_;
 
-    void set_node_state_operational() {
+    void set_node_state_operational()
+    {
         if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
             node_fsm_->on_init(true);
-        } else if (node_fsm_->get_state() == NodeState::PAIRING) {
-            node_fsm_->on_pairing_completed(true);
-        } else if (node_fsm_->get_state() == NodeState::IDLE) {
+        }
+        else if (node_fsm_->get_state() == NodeState::PAIRING) {
+            node_fsm_->on_pairing_timeout(true);
+        }
+        else if (node_fsm_->get_state() == NodeState::IDLE) {
             node_fsm_->on_pairing_requested();
-            node_fsm_->on_pairing_completed(true);
+            node_fsm_->on_pairing_timeout(true);
         }
     }
 
@@ -122,6 +126,7 @@ class EspNowManagerTest : public ::testing::Test
 {
 protected:
     // Raw pointers for test access — lifetime managed by sut_
+    NiceMock<MockStorageManager> *storage_;
     NiceMock<MockWiFiHAL> *hal_wifi_;
     NiceMock<MockTimerHAL> *hal_timer_;
     NiceMock<MockFreeRTOSHAL> *hal_freertos_;
@@ -139,6 +144,7 @@ protected:
 
     void SetUp() override
     {
+        auto storage = std::make_unique<NiceMock<MockStorageManager>>();
         auto hal_wifi = std::make_unique<NiceMock<MockWiFiHAL>>();
         auto hal_timer = std::make_unique<NiceMock<MockTimerHAL>>();
         auto hal_freertos = std::make_unique<NiceMock<MockFreeRTOSHAL>>();
@@ -154,6 +160,7 @@ protected:
         auto node_fsm = std::make_unique<NodeStateMachine>();
 
         // Save raw pointers before ownership is transferred to sut_
+        storage_ = storage.get();
         hal_wifi_ = hal_wifi.get();
         hal_timer_ = hal_timer.get();
         hal_freertos_ = hal_freertos.get();
@@ -168,7 +175,7 @@ protected:
         message_router_ = message_router.get();
 
         // peer_mgr: empty list by default — node starts in PAIRING state
-        ON_CALL(*peer_mgr_, load_from_storage(_)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*peer_mgr_, load_peers_from_storage()).WillByDefault(Return(ESP_OK));
 
         // espnow_driver init and deinit()
         ON_CALL(*espnow_driver_, init(_, _, _)).WillByDefault(Return(ESP_OK));
@@ -192,7 +199,7 @@ protected:
         // submódule inits succeed by default
         ON_CALL(*tx_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(fake_rx_task));
-        ON_CALL(*scanner_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*scanner_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
 
         ON_CALL(*hal_freertos_, semaphore_give(_)).WillByDefault(Return(pdTRUE));
@@ -202,6 +209,7 @@ protected:
         ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));
 
         sut_ = std::make_unique<EspNowManagerTestable>(
+            std::move(storage),
             std::move(hal_wifi),
             std::move(hal_timer),
             std::move(hal_freertos),
@@ -368,7 +376,7 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfTxManagerInitFails)
 
 TEST_F(EspNowManagerTest, InitCallsDiscoveryManagerInit)
 {
-    EXPECT_CALL(*scanner_, init(_, _, _, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*scanner_, init(_, _, _)).WillOnce(Return(ESP_OK));
     sut_->init(make_valid_config());
 }
 
@@ -376,13 +384,13 @@ TEST_F(EspNowManagerTest, InitCallsDiscoveryManagerInitWhenNodeIsHub)
 {
     EspNowConfig cfg = make_valid_config();
     cfg.node_type = kHubType;
-    EXPECT_CALL(*scanner_, init(_, _, _, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*scanner_, init(_, _, _)).WillOnce(Return(ESP_OK));
     sut_->init(cfg);
 }
 
 TEST_F(EspNowManagerTest, InitReturnsFailIfDiscoveryManagerInitFails)
 {
-    ON_CALL(*scanner_, init(_, _, _, _)).WillByDefault(Return(ESP_FAIL));
+    ON_CALL(*scanner_, init(_, _, _)).WillByDefault(Return(ESP_FAIL));
     EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }

@@ -48,18 +48,21 @@ static constexpr uint8_t rx_queue_length = 30;
 class EspNowManagerTestable : public EspNowManager
 {
 public:
+    using EspNowManager::ack_mutex_;
     using EspNowManager::EspNowManager;
     using EspNowManager::node_fsm_;
-    using EspNowManager::ack_mutex_;
 
-    void set_node_state_operational() { 
+    void set_node_state_operational()
+    {
         if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
             node_fsm_->on_init(true);
-        } else if (node_fsm_->get_state() == NodeState::PAIRING) {
-            node_fsm_->on_pairing_completed(true);
-        } else if (node_fsm_->get_state() == NodeState::IDLE) {
+        }
+        else if (node_fsm_->get_state() == NodeState::PAIRING) {
+            node_fsm_->on_pairing_timeout(true);
+        }
+        else if (node_fsm_->get_state() == NodeState::IDLE) {
             node_fsm_->on_pairing_requested();
-            node_fsm_->on_pairing_completed(true);
+            node_fsm_->on_pairing_timeout(true);
         }
     }
 
@@ -138,16 +141,16 @@ protected:
         ON_CALL(*driver_, deinit()).WillByDefault(Return(ESP_OK));
 
         // peer_mgr: empty list by default — node starts in PAIRING
-        ON_CALL(*peer_mgr_, load_from_storage(_)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*peer_mgr_, load_from_storage()).WillByDefault(Return(ESP_OK));
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
         // submodule inits succeed by default
         ON_CALL(*tx_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*scanner_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*scanner_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         // ON_CALL(*heartbeat_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(nullptr));
-        
+
         // hal_timer_: get_time_ms() is called by rx_task via tick()
         ON_CALL(*hal_timer_, get_time_us()).WillByDefault(Return(0));
 
@@ -198,7 +201,8 @@ protected:
 
         esp_err_t err = sut_->init(cfg);
         if (err != ESP_OK) {
-            ADD_FAILURE() << "sut_->init(cfg) failed with error: " << esp_err_to_name(err) << " (0x" << std::hex << err << ")";
+            ADD_FAILURE() << "sut_->init(cfg) failed with error: " << esp_err_to_name(err) << " (0x" << std::hex << err
+                          << ")";
         }
         vTaskDelay(pdMS_TO_TICKS(delay_ms)); // let tasks start and block
     }
@@ -280,13 +284,13 @@ TEST_F(EspNowManagerTaskTest, RxTaskCallsPairingTickWhenInPairing)
 TEST_F(EspNowManagerTaskTest, RxTaskDoesNotCallPairingTickWhenOperational)
 {
     init_and_wait();
-    
+
     // 1. Transition to OPERATIONAL
     sut_->set_node_state_operational();
 
     // Give plenty of time for the rx_task to finish its 100ms queue_receive and see the state change
-    vTaskDelay(pdMS_TO_TICKS(500)); 
-    
+    vTaskDelay(pdMS_TO_TICKS(500));
+
     // Clear expectations from the PAIRING phase during init_and_wait
     ::testing::Mock::VerifyAndClearExpectations(pairing_mgr_);
 
