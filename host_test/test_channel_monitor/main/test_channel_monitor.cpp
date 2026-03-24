@@ -1,24 +1,16 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "channel_monitor.hpp"
 #include "mock_hal_wifi.hpp"
-#include "i_channel_observer.hpp"
+#include "mock_channel_observer.hpp"
+
+#include "channel_monitor.hpp"
 
 using ::testing::_;
 using ::testing::Invoke;
 using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::SetArgPointee;
-
-class MockChannelObserver : public IChannelObserver
-{
-public:
-    MOCK_METHOD(void, on_channel_found_cb, (uint8_t channel), (override));
-    MOCK_METHOD(void, on_scan_failed_cb, (), (override));
-    MOCK_METHOD(void, on_scan_started_cb, (), (override));
-    MOCK_METHOD(void, on_channel_changed_cb, (uint8_t new_channel), (override));
-};
 
 class ChannelMonitorTest : public ::testing::Test
 {

@@ -1,12 +1,13 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "discovery_manager.hpp"
-#include "mock_hal_wifi.hpp"
+#include "mock_channel_observer.hpp"
 #include "mock_hal_freertos.hpp"
+#include "mock_hal_wifi.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_tx_manager.hpp"
-#include "i_channel_observer.hpp"
+
+#include "discovery_manager.hpp"
 
 using ::testing::_;
 using ::testing::DoAll;
@@ -15,14 +16,6 @@ using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::SetArgPointee;
-
-class MockChannelObserver : public IChannelObserver
-{
-public:
-    MOCK_METHOD(void, on_channel_found_cb, (uint8_t channel), (override));
-    MOCK_METHOD(void, on_scan_failed_cb, (), (override));
-    MOCK_METHOD(void, on_scan_started_cb, (), (override));
-};
 
 class DiscoveryManagerTest : public ::testing::Test
 {
