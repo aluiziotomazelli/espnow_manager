@@ -21,7 +21,6 @@ private:
     IWiFiHAL &hal_wifi_;
     IMessageCodec &message_codec_;
     IFreeRTOSHAL &hal_freertos_;
-    ITxManager *tx_mgr_ = nullptr;
     IChannelObserver *observer_ = nullptr;
 
     bool hub_ready_ = false;
