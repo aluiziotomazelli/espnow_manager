@@ -13,15 +13,14 @@ public:
     {
         return esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
     };
-    esp_err_t wifi_get_channel(uint8_t *channel) override { return esp_wifi_get_channel(channel, nullptr); };
+    esp_err_t wifi_get_channel(uint8_t *primary, wifi_second_chan_t *second) override
+    {
+        return esp_wifi_get_channel(primary, second);
+    };
     esp_err_t wifi_get_mode(wifi_mode_t *mode) override { return esp_wifi_get_mode(mode); };
     esp_err_t wifi_set_channel(uint8_t primary, wifi_second_chan_t second) override
     {
         return esp_wifi_set_channel(primary, second);
-    };
-    esp_err_t wifi_get_channel(uint8_t *primary, wifi_second_chan_t *second) override
-    {
-        return esp_wifi_get_channel(primary, second);
     };
 
     esp_err_t hal_esp_now_init() override { return esp_now_init(); };

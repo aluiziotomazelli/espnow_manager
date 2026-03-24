@@ -2,7 +2,7 @@
 #pragma once
 
 #include "esp_err.h"
-// #include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // include FreeRTOS.h must appear in source files before include task.h
 #include "freertos/task.h"
 #include "esp_now.h"
 
@@ -17,7 +17,6 @@ public:
     virtual ~IWiFiHAL() = default;
 
     virtual esp_err_t wifi_set_channel(uint8_t channel) = 0;
-    virtual esp_err_t wifi_get_channel(uint8_t *channel) = 0;
     virtual esp_err_t wifi_get_mode(wifi_mode_t *mode) = 0;
     virtual esp_err_t wifi_set_channel(uint8_t primary, wifi_second_chan_t second) = 0;
     virtual esp_err_t wifi_get_channel(uint8_t *primary, wifi_second_chan_t *second) = 0;
