@@ -41,6 +41,9 @@ Thumbs.db
 
 #agents
 **/.gemini/
+**/.qwen/
+*qwen*
+*QWEN*
 # **/GEMINI.md
 
 # External dependencies source

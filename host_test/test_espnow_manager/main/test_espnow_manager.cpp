@@ -88,6 +88,7 @@ public:
 
     void set_last_header(const MessageHeader &header) { last_header_requiring_ack_ = header; }
     void reset_last_header() { last_header_requiring_ack_.reset(); }
+    std::optional<MessageHeader> get_last_header() { return last_header_requiring_ack_; }
 
     using EspNowManager::ack_mutex_;
     using EspNowManager::node_fsm_;
@@ -437,6 +438,13 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfPairingManagerInitFails)
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
 
+TEST_F(EspNowManagerTest, InitReturnsFailIfChannelMonitorInitFails)
+{
+    ON_CALL(*channel_monitor_, init(_, _)).WillByDefault(Return(ESP_FAIL));
+    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
+    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
+}
+
 // ===========================================================================
 // init() — correct argument propagation to submódules
 //
@@ -609,6 +617,50 @@ TEST_F(EspNowManagerTest, FailureToQueuePacketReturnsFail)
     EXPECT_EQ(sut_->send_command(kHubId, kCommandType, nullptr, 0), ESP_FAIL);
 }
 
+TEST_F(EspNowManagerTest, SendDataWithPayloadCopiesData)
+{
+    init_sut();
+    sut_->set_node_state_operational();
+
+    PeerInfo peer{};
+    peer.node_id = kHubId;
+    etl::vector<PeerInfo, MAX_PEERS> peers;
+    peers.push_back(peer);
+    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+
+    uint8_t test_payload[] = {0x01, 0x02, 0x03, 0x04, 0x05};
+
+    // Verify that queue_packet receives a packet with correct payload
+    EXPECT_CALL(*tx_mgr_, queue_packet(_))
+        .WillOnce([](const DecodedTxPacket &pkt) {
+            EXPECT_EQ(pkt.payload_len, 5);
+            EXPECT_EQ(pkt.payload[0], 0x01);
+            EXPECT_EQ(pkt.payload[1], 0x02);
+            EXPECT_EQ(pkt.payload[2], 0x03);
+            EXPECT_EQ(pkt.payload[3], 0x04);
+            EXPECT_EQ(pkt.payload[4], 0x05);
+            return ESP_OK;
+        });
+
+    EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, test_payload, 5), ESP_OK);
+}
+
+TEST_F(EspNowManagerTest, SendDataWithOversizedPayloadReturnsInvalidArg)
+{
+    init_sut();
+    sut_->set_node_state_operational();
+
+    PeerInfo peer{};
+    peer.node_id = kHubId;
+    etl::vector<PeerInfo, MAX_PEERS> peers;
+    peers.push_back(peer);
+    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+
+    // Payload larger than MAX_PAYLOAD_SIZE should be rejected
+    uint8_t large_payload[MAX_PAYLOAD_SIZE + 10] = {};
+    EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, large_payload, sizeof(large_payload)), ESP_ERR_INVALID_ARG);
+}
+
 // ===========================================================================
 // confirm_reception()
 // ===========================================================================
@@ -684,6 +736,24 @@ TEST_F(EspNowManagerTest, ConfirmReceptionSuccess)
     ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));  // Peer is found, find_mac returns true
     ON_CALL(*tx_mgr_, queue_packet(_)).WillByDefault(Return(ESP_OK)); // No failure in queueing packet
     EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_OK);           // Return ok
+}
+
+TEST_F(EspNowManagerTest, ConfirmReceptionResetsHeaderWhenPeerNotFound)
+{
+    init_operational_sut();
+
+    MessageHeader header{};
+    header.sender_node_id = kHubId;
+    header.sequence_number = 42;
+    sut_->set_last_header(header);
+
+    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(false));
+
+    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_NOT_FOUND);
+
+    // Verify header was reset
+    auto last_header = sut_->get_last_header();
+    EXPECT_FALSE(last_header.has_value());
 }
 
 // ===========================================================================
@@ -796,4 +866,20 @@ TEST_F(EspNowManagerTest, StartPairingTransitionsToPairingState)
     EXPECT_CALL(*tx_mgr_, notify_scanning()).Times(1);
     EXPECT_EQ(sut_->start_pairing(100), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::PAIRING); // on_pairing_requested called synchronously
+}
+
+TEST_F(EspNowManagerTest, StartPairingForHubCallsPairingManagerStart)
+{
+    // Create config with HUB type - must pass directly to init() not via init_sut()
+    EspNowConfig cfg = make_valid_config();
+    cfg.node_type = ReservedTypes::HUB;
+    ASSERT_EQ(sut_->init(cfg), ESP_OK);
+
+    // Transition to OPERATIONAL first so we can test start_pairing()
+    sut_->set_node_state_operational();
+    ASSERT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
+
+    // For HUB, pairing_manager_->start() should be called directly (no scanning)
+    EXPECT_CALL(*pairing_mgr_, start(30000, _)).Times(1);
+    EXPECT_EQ(sut_->start_pairing(30000), ESP_OK);
 }
