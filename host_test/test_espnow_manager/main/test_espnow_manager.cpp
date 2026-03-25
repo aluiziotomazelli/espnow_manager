@@ -20,6 +20,7 @@
 #include "mock_tx_state_machine.hpp"
 #include "node_state_machine.hpp"
 #include "mock_storage_manager.hpp"
+#include "mock_channel_monitor.hpp"
 
 #include "espnow_manager.hpp"
 
@@ -108,6 +109,7 @@ public:
     void on_channel_found_cb(uint8_t channel) { EspNowManager::on_channel_found_cb(channel); }
     void on_scan_failed_cb() { EspNowManager::on_scan_failed_cb(); }
     void on_scan_started_cb() { EspNowManager::on_scan_started_cb(); }
+    void on_channel_changed_cb(uint8_t channel) { EspNowManager::on_channel_changed_cb(channel); }
 };
 
 // ---------------------------------------------------------------------------
@@ -139,6 +141,7 @@ protected:
     NiceMock<MockHeartbeatManager> *heartbeat_mgr_;
     NiceMock<MockPairingManager> *pairing_mgr_;
     NiceMock<MockMessageRouter> *message_router_;
+    NiceMock<MockChannelMonitor> *channel_monitor_;
 
     std::unique_ptr<EspNowManagerTestable> sut_;
 
@@ -151,6 +154,7 @@ protected:
         auto espnow_driver = std::make_unique<NiceMock<MockEspNowDriver>>();
         auto peer_mgr = std::make_unique<NiceMock<MockPeerManager>>();
         auto codec = std::make_unique<NiceMock<MockMessageCodec>>();
+        auto channel_monitor = std::make_unique<NiceMock<MockChannelMonitor>>();
         auto scanner = std::make_unique<NiceMock<MockDiscoveryManager>>();
         auto tx_fsm = std::make_unique<NiceMock<MockTxStateMachine>>();
         auto tx_mgr = std::make_unique<NiceMock<MockTxManager>>();
@@ -167,6 +171,7 @@ protected:
         espnow_driver_ = espnow_driver.get();
         peer_mgr_ = peer_mgr.get();
         codec_ = codec.get();
+        channel_monitor_ = channel_monitor.get();
         scanner_ = scanner.get();
         tx_fsm_ = tx_fsm.get();
         tx_mgr_ = tx_mgr.get();
@@ -176,6 +181,10 @@ protected:
 
         // peer_mgr: empty list by default — node starts in PAIRING state
         ON_CALL(*peer_mgr_, load_peers_from_storage()).WillByDefault(Return(ESP_OK));
+
+        // storage: load_channel succeeds by default
+        ON_CALL(*storage_, load_channel(_)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*storage_, store_channel(_)).WillByDefault(Return(ESP_OK));
 
         // espnow_driver init and deinit()
         ON_CALL(*espnow_driver_, init(_, _, _)).WillByDefault(Return(ESP_OK));
@@ -201,6 +210,7 @@ protected:
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(fake_rx_task));
         ON_CALL(*scanner_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*channel_monitor_, init(_, _)).WillByDefault(Return(ESP_OK));
 
         ON_CALL(*hal_freertos_, semaphore_give(_)).WillByDefault(Return(pdTRUE));
 
@@ -216,6 +226,7 @@ protected:
             std::move(espnow_driver),
             std::move(peer_mgr),
             std::move(codec),
+            std::move(channel_monitor),
             std::move(scanner),
             std::move(tx_fsm),
             std::move(tx_mgr),
@@ -354,6 +365,18 @@ TEST_F(EspNowManagerTest, InitCallsEspNowDriverInit)
     sut_->init(make_valid_config());
 }
 
+TEST_F(EspNowManagerTest, InitLoadsChannelFromStorage)
+{
+    EXPECT_CALL(*storage_, load_channel(_)).WillOnce(Return(ESP_OK));
+    sut_->init(make_valid_config());
+}
+
+TEST_F(EspNowManagerTest, InitStoresChannelAtEnd)
+{
+    EXPECT_CALL(*storage_, store_channel(_)).WillOnce(Return(ESP_OK));
+    sut_->init(make_valid_config());
+}
+
 TEST_F(EspNowManagerTest, InitReturnsFailIfEspNowDriverInitFails)
 {
     ON_CALL(*espnow_driver_, init(_, _, _)).WillByDefault(Return(ESP_FAIL));
@@ -398,6 +421,12 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfDiscoveryManagerInitFails)
 TEST_F(EspNowManagerTest, InitCallsPairingManagerInit)
 {
     EXPECT_CALL(*pairing_mgr_, init(_, _)).WillOnce(Return(ESP_OK));
+    sut_->init(make_valid_config());
+}
+
+TEST_F(EspNowManagerTest, InitCallsChannelMonitorInit)
+{
+    EXPECT_CALL(*channel_monitor_, init(_, _)).WillOnce(Return(ESP_OK));
     sut_->init(make_valid_config());
 }
 
@@ -729,6 +758,12 @@ TEST_F(EspNowManagerTest, OnScanStartedCallsTaskNotify)
 {
     EXPECT_CALL(*hal_freertos_, task_notify(_, NOTIFY_SCANNING, _)).Times(1);
     sut_->on_scan_started_cb();
+}
+
+TEST_F(EspNowManagerTest, OnChannelChangedCallsTaskNotify)
+{
+    EXPECT_CALL(*hal_freertos_, task_notify(_, NOTIFY_CHANNEL_CHANGED, _)).Times(1);
+    sut_->on_channel_changed_cb(6);
 }
 
 // ===========================================================================

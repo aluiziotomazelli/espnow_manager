@@ -18,6 +18,8 @@
 #include "mock_tx_manager.hpp"
 #include "mock_tx_state_machine.hpp"
 #include "node_state_machine.hpp"
+#include "mock_storage_manager.hpp"
+#include "mock_channel_monitor.hpp"
 #include "hal_real_freertos.hpp"
 
 #include "espnow_manager.hpp"
@@ -66,10 +68,10 @@ public:
         }
     }
 
-    // Expose IChannelObserver callbacks — normally called from TxManager task
     void on_channel_found_cb(uint8_t ch) override { EspNowManager::on_channel_found_cb(ch); }
     void on_scan_failed_cb() override { EspNowManager::on_scan_failed_cb(); }
     void on_scan_started_cb() override { EspNowManager::on_scan_started_cb(); }
+    void on_channel_changed_cb(uint8_t ch) override { EspNowManager::on_channel_changed_cb(ch); }
 
     std::optional<MessageHeader> get_last_header_ack() const { return last_header_requiring_ack_; }
 
@@ -92,11 +94,13 @@ class EspNowManagerTaskTest : public ::testing::Test
 {
 protected:
     // Raw pointers for test access — owned by sut_
+    NiceMock<MockStorageManager> *storage_;
     NiceMock<MockEspNowDriver> *driver_;
     NiceMock<MockTimerHAL> *hal_timer_;
     NiceMock<MockWiFiHAL> *hal_wifi_;
     NiceMock<MockPeerManager> *peer_mgr_;
     NiceMock<MockMessageCodec> *codec_;
+    NiceMock<MockChannelMonitor> *channel_monitor_;
     NiceMock<MockDiscoveryManager> *scanner_;
     NiceMock<MockTxStateMachine> *tx_fsm_;
     NiceMock<MockTxManager> *tx_mgr_;
@@ -109,11 +113,13 @@ protected:
 
     void SetUp() override
     {
+        auto storage = std::make_unique<NiceMock<MockStorageManager>>();
         auto driver = std::make_unique<NiceMock<MockEspNowDriver>>();
         auto hal_timer = std::make_unique<NiceMock<MockTimerHAL>>();
         auto hal_wifi = std::make_unique<NiceMock<MockWiFiHAL>>();
         auto peer_mgr = std::make_unique<NiceMock<MockPeerManager>>();
         auto codec = std::make_unique<NiceMock<MockMessageCodec>>();
+        auto channel_monitor = std::make_unique<NiceMock<MockChannelMonitor>>();
         auto scanner = std::make_unique<NiceMock<MockDiscoveryManager>>();
         auto tx_fsm = std::make_unique<NiceMock<MockTxStateMachine>>();
         auto tx_mgr = std::make_unique<NiceMock<MockTxManager>>();
@@ -123,11 +129,13 @@ protected:
         auto node_fsm = std::make_unique<NodeStateMachine>();
 
         // Save raw pointers before ownership is transferred to sut_
+        storage_ = storage.get();
         driver_ = driver.get();
         hal_timer_ = hal_timer.get();
         hal_wifi_ = hal_wifi.get();
         peer_mgr_ = peer_mgr.get();
         codec_ = codec.get();
+        channel_monitor_ = channel_monitor.get();
         scanner_ = scanner.get();
         tx_fsm_ = tx_fsm.get();
         tx_mgr_ = tx_mgr.get();
@@ -140,21 +148,27 @@ protected:
         ON_CALL(*driver_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*driver_, deinit()).WillByDefault(Return(ESP_OK));
 
+        // storage: load_channel succeeds by default
+        ON_CALL(*storage_, load_channel(_)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*storage_, store_channel(_)).WillByDefault(Return(ESP_OK));
+
         // peer_mgr: empty list by default — node starts in PAIRING
-        ON_CALL(*peer_mgr_, load_from_storage()).WillByDefault(Return(ESP_OK));
+        ON_CALL(*peer_mgr_, load_peers_from_storage()).WillByDefault(Return(ESP_OK));
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
+
 
         // submodule inits succeed by default
         ON_CALL(*tx_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*scanner_, init(_, _, _)).WillByDefault(Return(ESP_OK));
-        // ON_CALL(*heartbeat_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*channel_monitor_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(nullptr));
 
         // hal_timer_: get_time_ms() is called by rx_task via tick()
         ON_CALL(*hal_timer_, get_time_us()).WillByDefault(Return(0));
 
         sut_ = std::make_unique<EspNowManagerTestable>(
+            std::move(storage),
             std::move(hal_wifi),
             std::move(hal_timer),
             // RealFreeRTOSHAL — creates real tasks, queues and mutex in init()
@@ -162,6 +176,7 @@ protected:
             std::move(driver),
             std::move(peer_mgr),
             std::move(codec),
+            std::move(channel_monitor),
             std::move(scanner),
             std::move(tx_fsm),
             std::move(tx_mgr),
@@ -233,6 +248,19 @@ TEST_F(EspNowManagerTaskTest, ChannelFoundStartsPairingForNode)
     EXPECT_EQ(sut_->get_node_state(), NodeState::PAIRING);
 }
 
+TEST_F(EspNowManagerTaskTest, ChannelFoundPersistsForHubInOperationalState)
+{
+    init_and_wait();
+    sut_->set_node_state_operational(); // Force OPERATIONAL
+    
+    // For HUB in operational state, finding a channel (e.g. via internal scan if ever implemented or manual trigger)
+    // should trigger storage.
+    EXPECT_CALL(*storage_, store_channel(6)).Times(1);
+
+    sut_->on_channel_found_cb(6);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+}
+
 // ===========================================================================
 // rx_task — NOTIFY_SCAN_FAILED
 // ===========================================================================
@@ -262,18 +290,34 @@ TEST_F(EspNowManagerTaskTest, ScanStartedTransitionsToScanning)
 }
 
 // ===========================================================================
+// rx_task — NOTIFY_CHANNEL_CHANGED
+// ===========================================================================
+
+TEST_F(EspNowManagerTaskTest, ChannelChangedUpdatesConfigAndStorage)
+{
+    init_and_wait();
+
+    uint8_t new_channel = 11;
+    EXPECT_CALL(*storage_, store_channel(new_channel)).Times(1);
+    EXPECT_CALL(*scanner_, set_channel(new_channel)).Times(1);
+
+    sut_->on_channel_changed_cb(new_channel);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+}
+
+// ===========================================================================
 // rx_task — tick() called when PAIRING
 // ===========================================================================
 
-TEST_F(EspNowManagerTaskTest, RxTaskCallsPairingTickWhenInPairing)
+TEST_F(EspNowManagerTaskTest, RxTaskCallsSubmoduleTicks)
 {
     init_and_wait();
     ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
 
     // tick() is called every loop iteration when NodeState == PAIRING.
-    // Wait slightly longer than queue_receive timeout (100ms) to ensure
-    // at least one idle loop iteration fires the tick.
     EXPECT_CALL(*pairing_mgr_, tick(_)).Times(AtLeast(1));
+    EXPECT_CALL(*channel_monitor_, tick(_)).Times(AtLeast(1));
+    
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
 }
 

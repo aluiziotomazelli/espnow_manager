@@ -4,11 +4,9 @@
 #include <gmock/gmock.h>
 #include "i_channel_monitor.hpp"
 
-class MockChannelObserver : public IChannelObserver
+class MockChannelMonitor : public IChannelMonitor
 {
 public:
-    MOCK_METHOD(void, on_channel_found_cb, (uint8_t channel), (override));
-    MOCK_METHOD(void, on_scan_failed_cb, (), (override));
-    MOCK_METHOD(void, on_scan_started_cb, (), (override));
-    MOCK_METHOD(void, on_channel_changed_cb, (uint8_t new_channel), (override));
+    MOCK_METHOD(esp_err_t, init, (IChannelObserver *observer, uint32_t interval_ms), (override));
+    MOCK_METHOD(void, tick, (uint64_t now_ms), (override));
 };
