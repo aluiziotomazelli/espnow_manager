@@ -41,18 +41,23 @@ private:
     IFreeRTOSHAL& freertos_hal_;
 
     uint16_t sequence_counter_ = 0;
+    uint32_t ack_timeout_ms_;
+    TaskHandle_t rx_task_handle_ = nullptr;
 
     // FreeRTOS resources
     SemaphoreHandle_t task_done_semaphore_;
     QueueHandle_t tx_queue_ = nullptr;
-    TaskHandle_t tx_task_handle_ = nullptr;
-    TaskHandle_t rx_task_handle_ = nullptr;
     TimerHandle_t ack_timeout_timer_ = nullptr;
-    uint32_t ack_timeout_ms_;
 
+    // Task related
+    TaskHandle_t tx_task_handle_ = nullptr;
     static void tx_task_func(void* arg);
     void tx_task();
+
+    // Timer callback
     static void ack_timeout_callback(TimerHandle_t xTimer);
+
+    // Helper methods
     void handle_esp_now_send_errors(esp_err_t error);
     void handle_notifications(uint32_t notification, bool& should_stop);
 };

@@ -8,8 +8,6 @@ TxStateMachine::TxStateMachine()
 {
 }
 
-TxStateMachine::~TxStateMachine() = default;
-
 void TxStateMachine::reset()
 {
     current_state_ = TxState::IDLE;
@@ -78,9 +76,4 @@ TxState TxStateMachine::on_max_retries()
     pending_ack_.reset();
     current_state_ = TxState::IDLE;
     return current_state_;
-}
-
-uint8_t TxStateMachine::get_fail_count() const
-{
-    return send_fail_count_;
 }

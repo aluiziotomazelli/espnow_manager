@@ -17,11 +17,11 @@ TxManager::TxManager(
     , codec_(codec)
     , freertos_hal_(freertos_hal)
     , sequence_counter_(0)
+    , ack_timeout_ms_(ack_timeout_ms)
     , task_done_semaphore_(nullptr)
     , tx_queue_(nullptr)
     , tx_task_handle_(nullptr)
     , ack_timeout_timer_(nullptr)
-    , ack_timeout_ms_(ack_timeout_ms)
 {
 }
 
@@ -220,7 +220,7 @@ void TxManager::tx_task()
         // 1. Process pending notifications without blocking.
         // This ensures they are handled even if the queue is full and we are IDLE,
         // or if we are returning from a non-blocking state like RETRYING or SCANNING.
-        if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, 0) == pdTRUE) {
+        if (freertos_hal_.task_notify_wait(0, NOTIFY_ALL, &notifications, 0) == pdTRUE) {
             handle_notifications(notifications, should_stop);
             if (should_stop) {
                 break;
