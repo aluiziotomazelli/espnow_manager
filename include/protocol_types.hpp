@@ -16,6 +16,7 @@
  */
 static constexpr uint32_t NOTIFY_LOGICAL_ACK = 0x01;
 static constexpr uint32_t NOTIFY_PHYSICAL_FAIL = 0x02;
+static constexpr uint32_t NOTIFY_MAX_FAILURES = 0x04;
 // static constexpr uint32_t NOTIFY_HUB_FOUND = 0x04; // Redundant with NOTIFY_LINK_ALIVE
 static constexpr uint32_t NOTIFY_DATA = 0x20;
 static constexpr uint32_t NOTIFY_ACK_TIMEOUT = 0x40;

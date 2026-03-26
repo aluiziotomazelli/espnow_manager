@@ -19,29 +19,10 @@ TxManager::TxManager(
     , sequence_counter_(0)
     , task_done_semaphore_(nullptr)
     , tx_queue_(nullptr)
-    , task_handle_(nullptr)
+    , tx_task_handle_(nullptr)
     , ack_timeout_timer_(nullptr)
     , ack_timeout_ms_(ack_timeout_ms)
-    , observer_(nullptr)
-    , observer_mutex_(nullptr)
 {
-}
-
-void TxManager::set_observer(ITxFailureObserver* observer)
-{
-    if (observer_mutex_ == nullptr) {
-        // Not initialized yet, store directly
-        observer_ = observer;
-        return;
-    }
-
-    if (freertos_hal_.semaphore_take(observer_mutex_, pdMS_TO_TICKS(100)) != pdTRUE) {
-        ESP_LOGW(TAG, "set_observer: timeout waiting for mutex");
-        return;
-    }
-
-    observer_ = observer;
-    freertos_hal_.semaphore_give(observer_mutex_);
 }
 
 TxManager::~TxManager()
@@ -52,11 +33,17 @@ TxManager::~TxManager()
 void TxManager::ack_timeout_callback(TimerHandle_t xTimer)
 {
     TxManager* self = static_cast<TxManager*>(pvTimerGetTimerID(xTimer));
-    self->freertos_hal_.task_notify(self->task_handle_, NOTIFY_ACK_TIMEOUT, eSetBits);
+    self->freertos_hal_.task_notify(self->tx_task_handle_, NOTIFY_ACK_TIMEOUT, eSetBits);
 }
 
-esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
+esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle)
 {
+    if (rx_task_handle == nullptr) {
+        ESP_LOGE(TAG, "RX task handle is null");
+        return ESP_ERR_INVALID_ARG;
+    }
+    rx_task_handle_ = rx_task_handle;
+
     tx_queue_ = freertos_hal_.queue_create(20, sizeof(DecodedTxPacket));
     if (tx_queue_ == nullptr) {
         return ESP_ERR_NO_MEM;
@@ -64,13 +51,6 @@ esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
 
     task_done_semaphore_ = freertos_hal_.semaphore_create_binary();
     if (task_done_semaphore_ == nullptr) {
-        deinit();
-        return ESP_ERR_NO_MEM;
-    }
-
-    // Create mutex for observer protection
-    observer_mutex_ = freertos_hal_.mutex_create();
-    if (observer_mutex_ == nullptr) {
         deinit();
         return ESP_ERR_NO_MEM;
     }
@@ -83,7 +63,7 @@ esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
     }
 
     BaseType_t task_creation =
-        freertos_hal_.task_create(tx_task_func, "tx_manager_task", stack_size, this, priority, &task_handle_);
+        freertos_hal_.task_create(tx_task_func, "tx_manager_task", stack_size, this, priority, &tx_task_handle_);
     if (task_creation != pdPASS) {
         deinit();
         return ESP_ERR_NO_MEM;
@@ -92,11 +72,11 @@ esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
     return ESP_OK;
 }
 
-esp_err_t TxManager::deinit()
+void TxManager::deinit()
 {
-    if (task_handle_ != nullptr) {
+    if (tx_task_handle_ != nullptr) {
         // Notify task to stop
-        freertos_hal_.task_notify(task_handle_, NOTIFY_STOP, eSetBits);
+        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_STOP, eSetBits);
 
         // Send dummy packet to wakeup task
         DecodedTxPacket stop_packet = {};
@@ -111,10 +91,10 @@ esp_err_t TxManager::deinit()
                 break;
         }
         // Forcing deleting task
-        if (task_handle_ != nullptr) {
+        if (tx_task_handle_ != nullptr) {
             ESP_LOGW(TAG, "Forcing deletion of tx manager task");
-            freertos_hal_.task_delete(task_handle_);
-            task_handle_ = nullptr;
+            freertos_hal_.task_delete(tx_task_handle_);
+            tx_task_handle_ = nullptr;
         }
     }
 
@@ -132,13 +112,6 @@ esp_err_t TxManager::deinit()
         freertos_hal_.timer_delete(ack_timeout_timer_, portMAX_DELAY);
         ack_timeout_timer_ = nullptr;
     }
-
-    if (observer_mutex_ != nullptr) {
-        freertos_hal_.semaphore_delete(observer_mutex_);
-        observer_mutex_ = nullptr;
-    }
-
-    return ESP_OK;
 }
 
 esp_err_t TxManager::queue_packet(const DecodedTxPacket& packet)
@@ -151,8 +124,8 @@ esp_err_t TxManager::queue_packet(const DecodedTxPacket& packet)
         return ESP_FAIL;
     }
 
-    if (task_handle_ != nullptr) {
-        freertos_hal_.task_notify(task_handle_, NOTIFY_DATA, eSetBits);
+    if (tx_task_handle_ != nullptr) {
+        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_DATA, eSetBits);
     }
 
     return ESP_OK;
@@ -160,22 +133,22 @@ esp_err_t TxManager::queue_packet(const DecodedTxPacket& packet)
 
 void TxManager::notify_physical_fail()
 {
-    if (task_handle_ != nullptr) {
-        freertos_hal_.task_notify(task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits);
+    if (tx_task_handle_ != nullptr) {
+        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits);
     }
 }
 
 void TxManager::notify_link_alive()
 {
-    if (task_handle_ != nullptr) {
-        freertos_hal_.task_notify(task_handle_, NOTIFY_LINK_ALIVE, eSetBits);
+    if (tx_task_handle_ != nullptr) {
+        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_LINK_ALIVE, eSetBits);
     }
 }
 
 void TxManager::notify_logical_ack()
 {
-    if (task_handle_ != nullptr) {
-        freertos_hal_.task_notify(task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
+    if (tx_task_handle_ != nullptr) {
+        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
     }
 }
 
@@ -211,18 +184,13 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
     if ((notifications & NOTIFY_LINK_ALIVE) == NOTIFY_LINK_ALIVE) {
         fsm_.on_link_alive();
     }
-    // Note: NOTIFY_SCANNING is handled by EspNowManager, not TxManager
-    // TxManager no longer has a SCANNING state
+    // Each NOTIFY_PHYSICAL_FAIL is delegated to FSM decide if MAX_FAILURES was reached
     if ((notifications & NOTIFY_PHYSICAL_FAIL) == NOTIFY_PHYSICAL_FAIL) {
-        // Check if MAX_FAILURES was reached and observer should be notified
+        // FSM check if MAX_FAILURES was reached and observer should be notified
         bool max_failures = fsm_.on_physical_fail();
-        if (max_failures && observer_mutex_ != nullptr) {
-            if (freertos_hal_.semaphore_take(observer_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-                if (observer_ != nullptr) {
-                    observer_->on_max_transmission_failures_cb();
-                }
-                freertos_hal_.semaphore_give(observer_mutex_);
-            }
+        if (max_failures) {
+            // Notify RX task that max failures were reached
+            freertos_hal_.task_notify(rx_task_handle_, NOTIFY_MAX_FAILURES, eSetBits);
         }
     }
     if ((notifications & NOTIFY_LOGICAL_ACK) == NOTIFY_LOGICAL_ACK) {
@@ -360,24 +328,6 @@ void TxManager::tx_task()
             break;
         }
 
-            // case TxState::SCANNING:
-            // {
-            //     // The task blocks deeply inside scanner_.scan() spanning multiple active WiFi channel sweeps.
-            //     // Start channel is managed internally by DiscoveryManager
-            //     auto result = scanner_.start_scan();
-            //     if (result.hub_found) {
-            //         // The network link has been restored.
-            //         // Actual peer config updating was handled by EspNowManager via the observer callback.
-            //         fsm_.on_link_alive();
-            //     }
-            //     else {
-            //         // Hub completely unreachable across all channels.
-            //         fsm_.reset(); // Back to IDLE
-            //     }
-
-            //     break;
-            // }
-
         default:
             ESP_LOGE(TAG, "Unknown TxState: %d", static_cast<int>(current_state));
             fsm_.reset();
@@ -386,7 +336,7 @@ void TxManager::tx_task()
     }
 
     ESP_LOGI(TAG, "TX Manager task exiting.");
-    task_handle_ = nullptr;
+    tx_task_handle_ = nullptr;
     freertos_hal_.semaphore_give(task_done_semaphore_);
     freertos_hal_.task_suspend(nullptr); // NULL / nullptr == current task
     freertos_hal_.task_delete(nullptr);  // NULL / nullptr == current task
