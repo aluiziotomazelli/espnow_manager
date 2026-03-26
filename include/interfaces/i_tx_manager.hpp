@@ -8,7 +8,7 @@
 #include "freertos/task.h"
 
 #include "espnow_types.hpp"
-
+#include "i_tx_failure_observer.hpp"
 /**
  * @interface ITxManager
  * @brief Manager for transmission queue and background sending task (internal)
@@ -26,12 +26,10 @@ public:
     virtual esp_err_t deinit() = 0;
 
     /** @internal */
-    virtual esp_err_t queue_packet(const DecodedTxPacket &packet) = 0;
+    virtual esp_err_t queue_packet(const DecodedTxPacket& packet) = 0;
 
     /** @internal */
     virtual void notify_physical_fail() = 0;
-
-    virtual void notify_scanning() = 0;
 
     /** @internal */
     virtual void notify_link_alive() = 0;
@@ -41,4 +39,13 @@ public:
 
     /** @internal */
     virtual TaskHandle_t get_task_handle() const = 0;
+
+    /**
+     * @brief Set the failure observer.
+     * @param observer Observer to notify on MAX_FAILURES. Can be nullptr.
+     * @note Thread-safe: can be called from any task.
+     *
+     * @internal
+     */
+    virtual void set_observer(ITxFailureObserver* observer) = 0;
 };

@@ -33,10 +33,10 @@ protected:
     std::unique_ptr<NiceMock<MockDiscoveryManager>> scanner_owned;
 
     // Raw pointers to use in tests
-    NiceMock<MockTxStateMachine> *fsm;
-    NiceMock<MockWiFiHAL> *hal;
-    NiceMock<MockMessageCodec> *codec;
-    NiceMock<MockDiscoveryManager> *scanner;
+    NiceMock<MockTxStateMachine>* fsm;
+    NiceMock<MockWiFiHAL>* hal;
+    NiceMock<MockMessageCodec>* codec;
+    NiceMock<MockDiscoveryManager>* scanner;
 
     RealFreeRTOSHAL freertos_hal;
     std::unique_ptr<TxManager> manager;
@@ -52,12 +52,10 @@ protected:
         fsm_owned = std::make_unique<NiceMock<MockTxStateMachine>>();
         hal_owned = std::make_unique<NiceMock<MockWiFiHAL>>();
         codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
-        scanner_owned = std::make_unique<NiceMock<MockDiscoveryManager>>();
 
         fsm = fsm_owned.get();
         hal = hal_owned.get();
         codec = codec_owned.get();
-        scanner = scanner_owned.get();
 
         // FSM tracks state via local variable
         ON_CALL(*fsm, get_state()).WillByDefault(ReturnPointee(&current_state));
@@ -73,9 +71,7 @@ protected:
             current_state = TxState::RETRYING;
             return current_state;
         }));
-        ON_CALL(*fsm, on_physical_fail()).WillByDefault(Invoke([this]() {
-            return current_state; // stays in current state unless threshold reached
-        }));
+        ON_CALL(*fsm, on_physical_fail()).WillByDefault(Return(false));
         ON_CALL(*fsm, on_max_retries()).WillByDefault(Invoke([this]() {
             current_state = TxState::IDLE;
             return current_state;
@@ -93,17 +89,14 @@ protected:
 
         // HAL defaults
         ON_CALL(*hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*hal, wifi_get_channel(_)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*hal, wifi_set_channel(_)).WillByDefault(Return(ESP_OK));
 
         // Codec defaults
         ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
 
         // Scanner defaults — hub not found
-        ON_CALL(*scanner, scan()).WillByDefault(Return(IDiscoveryManager::ScanResult{1, false}));
+        ON_CALL(*scanner, start_scan()).WillByDefault(Return(IDiscoveryManager::ScanResult{1, false}));
 
-        manager = std::make_unique<TxManager>(
-            *fsm_owned, *scanner_owned, *hal_owned, freertos_hal, *codec_owned, ack_timeout_ms);
+        manager = std::make_unique<TxManager>(*fsm_owned, *hal_owned, freertos_hal, *codec_owned, ack_timeout_ms);
     }
 
     void TearDown() override
@@ -215,16 +208,6 @@ TEST_F(TxManagerTaskTest, IdleStateNotifyPhysicalFailCallsFsmOnPhysicalFail)
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-TEST_F(TxManagerTaskTest, IdleStateNotifyScanningCallsFsmOnScanning)
-{
-    init_and_wait();
-
-    EXPECT_CALL(*fsm, on_scan_requested()).Times(1);
-
-    manager->notify_scanning();
-    vTaskDelay(pdMS_TO_TICKS(delay_ms));
-}
-
 // =============================================================================
 // WAITING_FOR_ACK
 // =============================================================================
@@ -320,36 +303,6 @@ TEST_F(TxManagerTaskTest, RetryingWithNoPendingAckCallsOnMaxRetries)
     current_state = TxState::RETRYING;
 
     EXPECT_CALL(*fsm, on_max_retries()).Times(1);
-
-    manager->notify_physical_fail();
-    vTaskDelay(pdMS_TO_TICKS(delay_ms));
-}
-
-// =============================================================================
-// SCANNING
-// =============================================================================
-
-TEST_F(TxManagerTaskTest, ScanningStateCallsScannerAndResetsOnHubNotFound)
-{
-    init_and_wait();
-
-    current_state = TxState::SCANNING;
-
-    EXPECT_CALL(*scanner, scan()).Times(1).WillOnce(Return(IDiscoveryManager::ScanResult{6, false}));
-    EXPECT_CALL(*fsm, reset()).Times(1);
-
-    manager->notify_physical_fail(); // trigger loop
-    vTaskDelay(pdMS_TO_TICKS(delay_ms));
-}
-
-TEST_F(TxManagerTaskTest, ScanningStateWithHubFoundCallsOnLinkAlive)
-{
-    init_and_wait();
-    current_state = TxState::SCANNING;
-
-    ON_CALL(*scanner, scan()).WillByDefault(Return(IDiscoveryManager::ScanResult{1, true}));
-
-    EXPECT_CALL(*fsm, on_link_alive()).Times(1);
 
     manager->notify_physical_fail();
     vTaskDelay(pdMS_TO_TICKS(delay_ms));

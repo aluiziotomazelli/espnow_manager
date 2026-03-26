@@ -4,7 +4,6 @@
 #include "mock_tx_state_machine.hpp"
 #include "mock_hal_wifi.hpp"
 #include "mock_message_codec.hpp"
-#include "mock_discovery_manager.hpp"
 #include "mock_hal_freertos.hpp"
 #include "tx_manager.hpp"
 
@@ -19,7 +18,6 @@ class TxManagerTest : public ::testing::Test
 {
 protected:
     NiceMock<MockTxStateMachine> fsm;
-    NiceMock<MockDiscoveryManager> scanner;
     NiceMock<MockWiFiHAL> hal;
     NiceMock<MockFreeRTOSHAL> freertos_hal;
     NiceMock<MockMessageCodec> codec;
@@ -30,12 +28,14 @@ protected:
     TimerHandle_t fake_timer = reinterpret_cast<TimerHandle_t>(0x2);
     SemaphoreHandle_t fake_semaphore = reinterpret_cast<SemaphoreHandle_t>(0x3);
     TaskHandle_t fake_task = reinterpret_cast<TaskHandle_t>(0x4);
+    SemaphoreHandle_t fake_mutex = reinterpret_cast<SemaphoreHandle_t>(0x5);
 
     void SetUp() override
     {
         // init() happy path
         ON_CALL(freertos_hal, queue_create(_, _)).WillByDefault(Return(fake_queue));
         ON_CALL(freertos_hal, semaphore_create_binary()).WillByDefault(Return(fake_semaphore));
+        ON_CALL(freertos_hal, mutex_create()).WillByDefault(Return(fake_mutex));
         ON_CALL(freertos_hal, timer_create(_, _, _, _, _)).WillByDefault(Return(fake_timer));
         ON_CALL(freertos_hal, task_create(_, _, _, _, _, _))
             .WillByDefault(DoAll(SetArgPointee<5>(fake_task), Return(pdPASS)));
@@ -46,10 +46,11 @@ protected:
         ON_CALL(freertos_hal, semaphore_take(_, _)).WillByDefault(Return(pdPASS));
         ON_CALL(freertos_hal, task_delete(_)).WillByDefault(Return());
         ON_CALL(freertos_hal, semaphore_delete(_)).WillByDefault(Return());
+
         ON_CALL(freertos_hal, queue_delete(_)).WillByDefault(Return());
         ON_CALL(freertos_hal, timer_delete(_, _)).WillByDefault(Return(pdPASS));
 
-        manager = std::make_unique<TxManager>(fsm, scanner, hal, freertos_hal, codec, 10);
+        manager = std::make_unique<TxManager>(fsm, hal, freertos_hal, codec, 10);
     }
 
     void deinit_after_init()
@@ -61,6 +62,7 @@ protected:
         EXPECT_CALL(freertos_hal, semaphore_delete(fake_semaphore)).Times(AnyNumber());
         EXPECT_CALL(freertos_hal, queue_delete(fake_queue)).Times(AnyNumber());
         EXPECT_CALL(freertos_hal, timer_delete(fake_timer, _)).Times(AnyNumber());
+        EXPECT_CALL(freertos_hal, semaphore_delete(fake_mutex)).Times(AnyNumber());
 
         manager->deinit();
     }
@@ -128,7 +130,7 @@ TEST_F(TxManagerTest, DeinitCallsAllDeleteFunctions)
     EXPECT_CALL(freertos_hal, queue_send(_, _, _)).Times(1);
     EXPECT_CALL(freertos_hal, semaphore_take(_, _)).Times(1);
     EXPECT_CALL(freertos_hal, task_delete(fake_task)).Times(1);
-    EXPECT_CALL(freertos_hal, semaphore_delete(_)).Times(1);
+    EXPECT_CALL(freertos_hal, semaphore_delete(_)).Times(2);
     EXPECT_CALL(freertos_hal, queue_delete(_)).Times(1);
     EXPECT_CALL(freertos_hal, timer_delete(_, _)).Times(1);
 
@@ -187,13 +189,6 @@ TEST_F(TxManagerTest, NotifyLogicalAckCallsTaskNotify)
     manager->notify_logical_ack();
 }
 
-TEST_F(TxManagerTest, NotifyScanningCallsTaskNotify)
-{
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
-    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_SCANNING, _)).Times(1);
-    manager->notify_scanning();
-}
-
 TEST_F(TxManagerTest, NotifyWithoutTaskHandleDoesNotCallTaskNotify)
 {
     ON_CALL(freertos_hal, task_create(_, _, _, _, _, _))
@@ -205,7 +200,6 @@ TEST_F(TxManagerTest, NotifyWithoutTaskHandleDoesNotCallTaskNotify)
     manager->notify_physical_fail();
     manager->notify_logical_ack();
     manager->notify_link_alive();
-    manager->notify_scanning();
 }
 
 // ===================================================
@@ -222,7 +216,7 @@ TEST_F(TxManagerTest, QueuePacketWithoutQueueReturnsError)
 TEST_F(TxManagerTest, QueuePacketCallsQueueSend)
 {
     EXPECT_EQ(ESP_OK, manager->init(1000, 1));               // Initialize first
-    DecodedTxPacket packet = {};                                    // Queue packet
+    DecodedTxPacket packet = {};                             // Queue packet
     EXPECT_CALL(freertos_hal, queue_send(_, _, _)).Times(1); // Must call queue send
     EXPECT_EQ(ESP_OK, manager->queue_packet(packet));        // Queue packet
 }

@@ -4,18 +4,16 @@
 
 #include "tx_manager.hpp"
 
-static const char *TAG = "TxManager";
+static const char* TAG = "TxManager";
 
 TxManager::TxManager(
-    ITxStateMachine &fsm,
-    IDiscoveryManager &scanner,
-    IWiFiHAL &hal,
-    IFreeRTOSHAL &freertos_hal,
-    IMessageCodec &codec,
-    uint32_t ack_timeout_ms = 500)
+    ITxStateMachine& fsm,
+    IWiFiHAL& hal,
+    IFreeRTOSHAL& freertos_hal,
+    IMessageCodec& codec,
+    uint32_t ack_timeout_ms)
     : fsm_(fsm)
-    , scanner_(scanner)
-    , hal_(hal)
+    , hal_wifi_(hal)
     , codec_(codec)
     , freertos_hal_(freertos_hal)
     , sequence_counter_(0)
@@ -24,7 +22,26 @@ TxManager::TxManager(
     , task_handle_(nullptr)
     , ack_timeout_timer_(nullptr)
     , ack_timeout_ms_(ack_timeout_ms)
+    , observer_(nullptr)
+    , observer_mutex_(nullptr)
 {
+}
+
+void TxManager::set_observer(ITxFailureObserver* observer)
+{
+    if (observer_mutex_ == nullptr) {
+        // Not initialized yet, store directly
+        observer_ = observer;
+        return;
+    }
+
+    if (freertos_hal_.semaphore_take(observer_mutex_, pdMS_TO_TICKS(100)) != pdTRUE) {
+        ESP_LOGW(TAG, "set_observer: timeout waiting for mutex");
+        return;
+    }
+
+    observer_ = observer;
+    freertos_hal_.semaphore_give(observer_mutex_);
 }
 
 TxManager::~TxManager()
@@ -34,7 +51,7 @@ TxManager::~TxManager()
 
 void TxManager::ack_timeout_callback(TimerHandle_t xTimer)
 {
-    TxManager *self = static_cast<TxManager *>(pvTimerGetTimerID(xTimer));
+    TxManager* self = static_cast<TxManager*>(pvTimerGetTimerID(xTimer));
     self->freertos_hal_.task_notify(self->task_handle_, NOTIFY_ACK_TIMEOUT, eSetBits);
 }
 
@@ -47,6 +64,13 @@ esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority)
 
     task_done_semaphore_ = freertos_hal_.semaphore_create_binary();
     if (task_done_semaphore_ == nullptr) {
+        deinit();
+        return ESP_ERR_NO_MEM;
+    }
+
+    // Create mutex for observer protection
+    observer_mutex_ = freertos_hal_.mutex_create();
+    if (observer_mutex_ == nullptr) {
         deinit();
         return ESP_ERR_NO_MEM;
     }
@@ -109,10 +133,15 @@ esp_err_t TxManager::deinit()
         ack_timeout_timer_ = nullptr;
     }
 
+    if (observer_mutex_ != nullptr) {
+        freertos_hal_.semaphore_delete(observer_mutex_);
+        observer_mutex_ = nullptr;
+    }
+
     return ESP_OK;
 }
 
-esp_err_t TxManager::queue_packet(const DecodedTxPacket &packet)
+esp_err_t TxManager::queue_packet(const DecodedTxPacket& packet)
 {
     if (tx_queue_ == nullptr) {
         return ESP_ERR_INVALID_STATE;
@@ -136,13 +165,6 @@ void TxManager::notify_physical_fail()
     }
 }
 
-void TxManager::notify_scanning()
-{
-    if (task_handle_ != nullptr) {
-        freertos_hal_.task_notify(task_handle_, NOTIFY_SCANNING, eSetBits);
-    }
-}
-
 void TxManager::notify_link_alive()
 {
     if (task_handle_ != nullptr) {
@@ -157,9 +179,9 @@ void TxManager::notify_logical_ack()
     }
 }
 
-void TxManager::tx_task_func(void *arg)
+void TxManager::tx_task_func(void* arg)
 {
-    static_cast<TxManager *>(arg)->tx_task();
+    static_cast<TxManager*>(arg)->tx_task();
 
     // Should never reach here — tx_task() self-deletes via freertos_hal_
     vTaskDelete(NULL);
@@ -182,18 +204,26 @@ void TxManager::handle_esp_now_send_errors(esp_err_t error)
     }
 }
 
-void TxManager::handle_notifications(uint32_t notifications, bool &should_stop)
+void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
 {
     // Multiple notification bits can arrive simultaneously and must all be
     // processed. else-if would silently drop bits after the first match.
     if ((notifications & NOTIFY_LINK_ALIVE) == NOTIFY_LINK_ALIVE) {
         fsm_.on_link_alive();
     }
-    if ((notifications & NOTIFY_SCANNING) == NOTIFY_SCANNING) {
-        fsm_.on_scan_requested();
-    }
+    // Note: NOTIFY_SCANNING is handled by EspNowManager, not TxManager
+    // TxManager no longer has a SCANNING state
     if ((notifications & NOTIFY_PHYSICAL_FAIL) == NOTIFY_PHYSICAL_FAIL) {
-        fsm_.on_physical_fail();
+        // Check if MAX_FAILURES was reached and observer should be notified
+        bool max_failures = fsm_.on_physical_fail();
+        if (max_failures && observer_mutex_ != nullptr) {
+            if (freertos_hal_.semaphore_take(observer_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
+                if (observer_ != nullptr) {
+                    observer_->on_max_transmission_failures_cb();
+                }
+                freertos_hal_.semaphore_give(observer_mutex_);
+            }
+        }
     }
     if ((notifications & NOTIFY_LOGICAL_ACK) == NOTIFY_LOGICAL_ACK) {
         fsm_.on_ack_received();
@@ -255,7 +285,8 @@ void TxManager::tx_task()
                 memcpy(raw_packet.dest_mac, structured_packet.dest_mac, 6);
                 raw_packet.requires_ack = structured_packet.header.requires_ack;
 
-                esp_err_t send_result = hal_.hal_esp_now_send(raw_packet.dest_mac, raw_packet.data, raw_packet.len);
+                esp_err_t send_result =
+                    hal_wifi_.hal_esp_now_send(raw_packet.dest_mac, raw_packet.data, raw_packet.len);
 
                 if (send_result == ESP_OK) {
                     TxState next = fsm_.on_tx_success(raw_packet.requires_ack);
@@ -311,7 +342,7 @@ void TxManager::tx_task()
                 fsm_.set_pending_ack(pending);
 
                 esp_err_t send_result =
-                    hal_.hal_esp_now_send(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
+                    hal_wifi_.hal_esp_now_send(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
 
                 if (send_result == ESP_OK) {
                     // Retry sent successfully, go back to WAITING_FOR_ACK and wait for the response again.
@@ -329,23 +360,23 @@ void TxManager::tx_task()
             break;
         }
 
-        case TxState::SCANNING:
-        {
-            // The task blocks deeply inside scanner_.scan() spanning multiple active WiFi channel sweeps.
-            // Start channel is managed internally by DiscoveryManager
-            auto result = scanner_.scan();
-            if (result.hub_found) {
-                // The network link has been restored.
-                // Actual peer config updating was handled by EspNowManager via the observer callback.
-                fsm_.on_link_alive();
-            }
-            else {
-                // Hub completely unreachable across all channels.
-                fsm_.reset(); // Back to IDLE
-            }
+            // case TxState::SCANNING:
+            // {
+            //     // The task blocks deeply inside scanner_.scan() spanning multiple active WiFi channel sweeps.
+            //     // Start channel is managed internally by DiscoveryManager
+            //     auto result = scanner_.start_scan();
+            //     if (result.hub_found) {
+            //         // The network link has been restored.
+            //         // Actual peer config updating was handled by EspNowManager via the observer callback.
+            //         fsm_.on_link_alive();
+            //     }
+            //     else {
+            //         // Hub completely unreachable across all channels.
+            //         fsm_.reset(); // Back to IDLE
+            //     }
 
-            break;
-        }
+            //     break;
+            // }
 
         default:
             ESP_LOGE(TAG, "Unknown TxState: %d", static_cast<int>(current_state));
