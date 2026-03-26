@@ -84,36 +84,42 @@ public:
      * @return true if MAX_FAILURES reached (observer should be notified).
      * @return false if still retrying.
      * @note Increments failure counter. Resets at MAX_FAILURES.
+     * @internal
      */
     virtual bool on_physical_fail() = 0;
 
     /**
      * @brief Get current transmission state.
      * @return Current TxState value.
+     * @internal
      */
     virtual TxState get_state() const = 0;
 
     /**
      * @brief Get current failure count.
      * @return Number of consecutive failures (0 to MAX_FAILURES).
+     * @internal
      */
     virtual uint8_t get_fail_count() const = 0;
 
     /**
      * @brief Reset state machine to initial state.
      * @note Clears pending ACK and resets failure counter.
+     * @internal
      */
     virtual void reset() = 0;
 
     /**
      * @brief Set pending ACK information.
      * @param pending_ack Pending ACK details.
+     * @internal
      */
     virtual void set_pending_ack(const PendingAck& pending_ack) = 0;
 
     /**
      * @brief Get pending ACK information.
      * @return Pending ACK details, or nullopt if none.
+     * @internal
      */
     virtual std::optional<PendingAck> get_pending_ack() const = 0;
 };
