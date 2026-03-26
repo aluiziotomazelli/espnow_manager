@@ -17,15 +17,18 @@
 static constexpr uint32_t NOTIFY_LOGICAL_ACK = 0x01;
 static constexpr uint32_t NOTIFY_PHYSICAL_FAIL = 0x02;
 static constexpr uint32_t NOTIFY_MAX_FAILURES = 0x04;
-// static constexpr uint32_t NOTIFY_HUB_FOUND = 0x04; // Redundant with NOTIFY_LINK_ALIVE
-static constexpr uint32_t NOTIFY_DATA = 0x20;
-static constexpr uint32_t NOTIFY_ACK_TIMEOUT = 0x40;
-static constexpr uint32_t NOTIFY_STOP = 0x100;
-static constexpr uint32_t NOTIFY_LINK_ALIVE = 0x200;
-static constexpr uint32_t NOTIFY_SCANNING = 0x400;
-static constexpr uint32_t NOTIFY_CHANNEL_FOUND = 0x800;
-static constexpr uint32_t NOTIFY_SCAN_FAILED = 0x1000;
-static constexpr uint32_t NOTIFY_CHANNEL_CHANGED = 0x2000;
+// static constexpr uint32_t NOTIFY_HUB_FOUND = 0x08; // Redundant with NOTIFY_LINK_ALIVE
+static constexpr uint32_t NOTIFY_DATA = 0x08;
+static constexpr uint32_t NOTIFY_ACK_TIMEOUT = 0x10;
+static constexpr uint32_t NOTIFY_STOP = 0x20;
+static constexpr uint32_t NOTIFY_LINK_ALIVE = 0x40;
+static constexpr uint32_t NOTIFY_START_SCAN = 0x80;
+static constexpr uint32_t NOTIFY_STOP_SCAN = 0x100;
+static constexpr uint32_t NOTIFY_SCAN_RESPONSE = 0x200;
+static constexpr uint32_t NOTIFY_CHANNEL_FOUND = 0x400;
+static constexpr uint32_t NOTIFY_SCAN_FAILED = 0x800;
+static constexpr uint32_t NOTIFY_CHANNEL_CHANGED = 0x1000;
+static constexpr uint32_t NOTIFY_ALL = 0xFFFFFFFF;
 
 static constexpr uint8_t BROADCAST_MAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 

@@ -46,9 +46,52 @@ DiscoveryManager::init(NodeId id, NodeType type, TaskHandle_t rx_task_handle, UB
     return ESP_OK;
 }
 
+void DiscoveryManager::deinit()
+{
+    // Wake task from any blocking state
+    if (discovery_task_handle_ != nullptr) {
+        hal_freertos_.task_notify(discovery_task_handle_, NOTIFY_STOP | NOTIFY_STOP_SCAN, eSetBits);
+    }
+
+    // Wait for task to exit (worst case: full scan cycle)
+    const constexpr uint16_t timeout_ms = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 13 + 100;
+    const constexpr uint8_t delay_ms = 50;
+    for (int elapsed_ms = 0; elapsed_ms < timeout_ms; elapsed_ms += delay_ms) {
+        if (discovery_task_handle_ == nullptr) {
+            break;
+        }
+        hal_freertos_.task_delay(pdMS_TO_TICKS(delay_ms));
+    }
+
+    // Force cleanup if task didn't exit gracefully
+    if (discovery_task_handle_ != nullptr) {
+        hal_freertos_.task_suspend(discovery_task_handle_);
+        hal_freertos_.task_delete(discovery_task_handle_);
+        discovery_task_handle_ = nullptr;
+    }
+}
+
+void DiscoveryManager::start_scan()
+{
+    if (!node_ready_ || discovery_task_handle_ == nullptr) {
+        ESP_LOGE(TAG, "DiscoveryManager not initialized properly. Call init() before start_scan().");
+        return;
+    }
+    hal_freertos_.task_notify(discovery_task_handle_, NOTIFY_START_SCAN, eSetBits);
+}
+
+void DiscoveryManager::stop_scan()
+{
+    if (!node_ready_ || discovery_task_handle_ == nullptr) {
+        ESP_LOGE(TAG, "DiscoveryManager not initialized properly. Call init() before stop_scan().");
+        return;
+    }
+    hal_freertos_.task_notify(discovery_task_handle_, NOTIFY_STOP_SCAN, eSetBits);
+}
+
 void DiscoveryManager::handle_scan_probe(const DecodedPacket& decoded)
 {
-    if (!hub_ready_) {
+    if (!hub_ready_ || discovery_task_handle_ == nullptr) {
         ESP_LOGE(TAG, "DiscoveryManager not initialized properly. Call init() before handle_probe().");
         return;
     }
@@ -59,7 +102,12 @@ void DiscoveryManager::handle_scan_probe(const DecodedPacket& decoded)
 
 void DiscoveryManager::set_channel(uint8_t channel)
 {
-    current_channel_ = channel;
+    if (channel >= 1 && channel <= 13) {
+        current_channel_ = channel;
+    }
+    else {
+        ESP_LOGW(TAG, "Invalid channel %d, must be 1-13", channel);
+    }
 }
 
 void DiscoveryManager::discovery_task_func(void* arg)
@@ -111,6 +159,7 @@ esp_err_t DiscoveryManager::scan_channel()
     }
 
     ESP_LOGI(TAG, "Starting channel scan to find Hub.");
+    is_scanning_.store(true);
     esp_err_t ret = ESP_FAIL;
 
     // We will start from actual channel (most likely to be the correct one)
@@ -133,15 +182,23 @@ esp_err_t DiscoveryManager::scan_channel()
                 continue;
             }
 
+            // Verify if scan should stop
+            if (should_stop_scan()) {
+                is_scanning_.store(false);
+                return ESP_FAIL;
+            }
+
             // Wait for hub to respond
             if (hub_was_found()) {
                 current_channel_ = channel;
                 ESP_LOGI(TAG, "Hub found on channel %d", channel);
                 ret = ESP_OK;
+                is_scanning_.store(false);
                 break;
             }
         }
     }
+    is_scanning_.store(false);
     return ret;
 }
 
@@ -161,7 +218,7 @@ MessageHeader DiscoveryManager::make_probe_header()
 {
     // empty initializer to avoid memory garbage on unused fields
     MessageHeader resp = {};
-    resp.msg_type = MessageType::CHANNEL_SCAN_RESPONSE;
+    resp.msg_type = MessageType::CHANNEL_SCAN_PROBE;
     resp.sender_node_id = my_node_id_;
     resp.sender_type = my_node_type_;
     resp.dest_node_id = ReservedIds::HUB;
@@ -181,9 +238,22 @@ bool DiscoveryManager::hub_was_found()
     return false;
 }
 
+bool DiscoveryManager::should_stop_scan()
+{
+    uint32_t notifications = 0;
+    if (hal_freertos_.task_notify_wait(0, NOTIFY_STOP_SCAN, &notifications, 0) == pdPASS) {
+        if ((notifications & NOTIFY_STOP_SCAN) == NOTIFY_STOP_SCAN) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void DiscoveryManager::notify_rx_task(uint32_t notification)
 {
-    hal_freertos_.task_notify(rx_task_handle_, notification, eSetBits);
+    if (rx_task_handle_ != nullptr) {
+        hal_freertos_.task_notify(rx_task_handle_, notification, eSetBits);
+    }
 }
 
 esp_err_t DiscoveryManager::send_scan_response()
@@ -198,6 +268,7 @@ esp_err_t DiscoveryManager::send_scan_response()
         return ESP_FAIL;
     }
 
+    // Send via broadcast — probing node maybe is not yet a registered ESP-NOW peer
     return hal_wifi_.hal_esp_now_send(BROADCAST_MAC, buffer, encoded_len);
 }
 

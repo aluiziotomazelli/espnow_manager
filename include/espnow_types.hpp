@@ -103,7 +103,7 @@ struct PersistentPeer
      * (i.e. identical data but different padding memory junk).
      * Using std::tie only compares the actual explicit data members safely.
      */
-    bool operator==(const PersistentPeer &other) const
+    bool operator==(const PersistentPeer& other) const
     {
         if (std::tie(type, node_id, paired, heartbeat_interval_ms) !=
             std::tie(other.type, other.node_id, other.paired, other.heartbeat_interval_ms)) {
@@ -112,7 +112,7 @@ struct PersistentPeer
         return std::memcmp(mac, other.mac, sizeof(mac)) == 0;
     }
 
-    bool operator!=(const PersistentPeer &other) const { return !(*this == other); }
+    bool operator!=(const PersistentPeer& other) const { return !(*this == other); }
 };
 
 /**
@@ -163,18 +163,6 @@ enum class NodeState
 };
 
 /**
- * @brief Enumeration of internal transmission states.
- */
-enum class TxState
-{
-    IDLE,            /**< No active transmission */
-    WAITING_FOR_ACK, /**< Physical send success, waiting for logical AckMessage */
-    RETRYING,        /**< Waiting before attempting a retransmission */
-    SCANNING,        /**< Performing a channel scan to locate the destination */
-    COUNT            /**< Number of states */
-};
-
-/**
  * @brief Internal tracking structure for messages waiting for an acknowledgment.
  */
 struct PendingAck
@@ -199,11 +187,13 @@ struct EspNowConfig
     uint32_t heartbeat_interval_ms; /**< Interval for heartbeats; 0 disables generation (ms) */
     uint32_t channel_monitor_interval_ms; /**< Interval for channel monitoring (ms) */
 
-    uint32_t stack_size_rx_task; /**< Stack size for the internal packet dispatcher task */
-    uint32_t stack_size_tx_task; /**< Stack size for the transmission manager task */
+    uint32_t stack_size_rx_task;        /**< Stack size for the internal packet dispatcher task */
+    uint32_t stack_size_tx_task;        /**< Stack size for the transmission manager task */
+    uint32_t stack_size_discovery_task; /**< Stack size for the discovery task */
 
-    UBaseType_t priority_rx_task; /**< Priority for the internal packet dispatcher task */
-    UBaseType_t priority_tx_task; /**< Priority for the transmission manager task */
+    UBaseType_t priority_rx_task;        /**< Priority for the internal packet dispatcher task */
+    UBaseType_t priority_tx_task;        /**< Priority for the transmission manager task */
+    UBaseType_t priority_discovery_task; /**< Priority for the discovery task */
 
     uint32_t rx_queue_length; /**< Length of the internal packet dispatcher queue */
     uint32_t tx_queue_length; /**< Length of the internal packet dispatcher queue */
