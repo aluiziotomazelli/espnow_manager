@@ -511,7 +511,7 @@ void EspNowManager::on_scan_failed_cb()
 
 void EspNowManager::on_scan_started_cb()
 {
-    hal_freertos_->task_notify(rx_task_handle_, NOTIFY_SCANNING, eSetBits);
+    hal_freertos_->task_notify(rx_task_handle_, NOTIFY_START_SCAN, eSetBits);
 }
 
 void EspNowManager::on_channel_changed_cb(uint8_t channel)
@@ -585,7 +585,7 @@ AppMessage EspNowManager::build_app_message(const DecodedPacket& decoded)
 void EspNowManager::handle_notifications(uint32_t notifications, bool& should_stop)
 {
     // Entered scanning state — TxManager is actively searching for the HUB.
-    if ((notifications & NOTIFY_SCANNING) == NOTIFY_SCANNING) {
+    if ((notifications & NOTIFY_START_SCAN) == NOTIFY_START_SCAN) {
         node_fsm_->on_scan_requested();
     }
     // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb()
@@ -676,10 +676,12 @@ esp_err_t EspNowManager::init_discovery_manager()
     }
     esp_err_t ret;
     if (config_.node_type == ReservedTypes::HUB) {
-        ret = scanner_->init(config_.node_id, config_.node_type, nullptr);
+        ret = scanner_->init(
+            config_.node_id, config_.node_type, rx_task_handle_, config_.priority_rx_task, config_.stack_size_rx_task);
     }
     else {
-        ret = scanner_->init(config_.node_id, config_.node_type, this);
+        ret = scanner_->init(
+            config_.node_id, config_.node_type, rx_task_handle_, config_.priority_rx_task, config_.stack_size_rx_task);
     }
     return ret;
 }

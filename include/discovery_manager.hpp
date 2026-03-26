@@ -21,12 +21,13 @@ public:
 
     esp_err_t
     init(NodeId id, NodeType type, TaskHandle_t rx_task_handle, UBaseType_t priority, uint32_t stack_size) override;
-    esp_err_t deinit() override { return ESP_OK; }; // TODO: remove inline stub and implement
+    void deinit() override;
     void start_scan() override;
-    esp_err_t stop_scan() override { return ESP_OK; };   // TODO: remove inline stub and implement
-    bool is_scanning() const override { return false; }; // TODO: remove inline stub and implement
+    void stop_scan() override;
+    bool is_scanning() const override { return is_scanning_.load(); };
     void handle_scan_probe(const DecodedPacket& decoded) override;
     void set_channel(uint8_t channel) override;
+    uint8_t get_channel() const override { return current_channel_; };
 
 private:
     // Dependencies
@@ -44,6 +45,7 @@ private:
     // Scan Probe helpers
     esp_err_t send_scan_probe();
     bool hub_was_found();
+    bool should_stop_scan();
     MessageHeader make_probe_header();
     esp_err_t scan_channel();
 
@@ -57,7 +59,7 @@ private:
     // State
     bool hub_ready_ = false;
     bool node_ready_ = false;
-    bool is_scanning_ = false;
+    std::atomic<bool> is_scanning_ = false;
 
     uint8_t current_channel_ = 1;
 

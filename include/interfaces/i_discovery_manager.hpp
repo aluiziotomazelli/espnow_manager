@@ -37,7 +37,7 @@ public:
      * @brief Deinitialize and stop the discovery task.
      * @note Blocks until task exits (up to 1s timeout).
      */
-    virtual esp_err_t deinit() = 0;
+    virtual void deinit() = 0;
 
     /**
      * @brief Start an asynchronous channel scan.
@@ -49,11 +49,9 @@ public:
 
     /**
      * @brief Stop an ongoing scan.
-     * @return ESP_OK on success.
-     * @return ESP_ERR_INVALID_STATE if no scan in progress.
      * @note Non-blocking: signals the internal task to stop.
      */
-    virtual esp_err_t stop_scan() = 0;
+    virtual void stop_scan() = 0;
 
     /**
      * @brief Check if a scan is currently in progress.
@@ -76,14 +74,20 @@ public:
      */
     virtual void set_channel(uint8_t channel) = 0;
 
+    /**
+     * @brief Get the WiFi channel.
+     * @return The current WiFi channel.
+     */
+    virtual uint8_t get_channel() const = 0;
+
     /** @internal */
     template <
         typename T1,
         typename T2,
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
-    esp_err_t init(T1 id, T2 type, TaskHandle_t rx_task_handle)
+    esp_err_t init(T1 id, T2 type, TaskHandle_t rx_task_handle, UBaseType_t priority, uint32_t stack_size)
     {
-        return init(static_cast<NodeId>(id), static_cast<NodeType>(type), rx_task_handle);
+        return init(static_cast<NodeId>(id), static_cast<NodeType>(type), rx_task_handle, priority, stack_size);
     }
 };
