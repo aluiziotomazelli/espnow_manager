@@ -5,7 +5,6 @@
 #include <type_traits>
 
 #include "espnow_types.hpp"
-#include "i_channel_observer.hpp"
 
 /**
  * @interface IDiscoveryManager
@@ -17,22 +16,64 @@ class IDiscoveryManager
 public:
     virtual ~IDiscoveryManager() = default;
 
-    /** @internal */
-    struct ScanResult
-    {
-        uint8_t channel;
-        bool hub_found;
-    };
+    // /** @internal */
+    // struct ScanResult
+    // {
+    //     uint8_t channel;
+    //     bool hub_found;
+    // };
 
-    /** @internal */
-    virtual esp_err_t init(NodeId id, NodeType type, IChannelObserver *observer = nullptr) = 0;
+    /**
+     * @brief Initialize the discovery manager.
+     * @param id This node's ID.
+     * @param type This node's type.
+     * @param observer Observer for scan events. Can be nullptr.
+     * @return ESP_OK on success.
+     */
+    virtual esp_err_t
+    init(NodeId id, NodeType type, TaskHandle_t rx_task_handle, UBaseType_t priority, uint32_t stack_size) = 0;
 
-    /** @internal */
-    virtual ScanResult scan() = 0;
+    /**
+     * @brief Deinitialize and stop the discovery task.
+     * @note Blocks until task exits (up to 1s timeout).
+     */
+    virtual esp_err_t deinit() = 0;
 
-    /** @internal */
-    virtual void handle_probe(const DecodedPacket &decoded) = 0;
+    /**
+     * @brief Start an asynchronous channel scan.
+     * @return ESP_OK on success.
+     * @return ESP_ERR_INVALID_STATE if scan already in progress or not initialized.
+     * @note Non-blocking: signals the internal task to start.
+     */
+    virtual void start_scan() = 0;
 
+    /**
+     * @brief Stop an ongoing scan.
+     * @return ESP_OK on success.
+     * @return ESP_ERR_INVALID_STATE if no scan in progress.
+     * @note Non-blocking: signals the internal task to stop.
+     */
+    virtual esp_err_t stop_scan() = 0;
+
+    /**
+     * @brief Check if a scan is currently in progress.
+     * @return true if scanning, false otherwise.
+     * @note Thread-safe.
+     */
+    virtual bool is_scanning() const = 0;
+
+    /**
+     * @brief Handle incoming CHANNEL_SCAN_RESPONSE packets.
+     * @param decoded The decoded response packet.
+     * @note Called from rx_task context. Thread-safe.
+     */
+    virtual void handle_scan_probe(const DecodedPacket& decoded) = 0;
+
+    /**
+     * @brief Set the WiFi channel for scanning.
+     * @param channel Primary channel (1-14).
+     * @note Should be called before start_scan().
+     */
     virtual void set_channel(uint8_t channel) = 0;
 
     /** @internal */
@@ -41,8 +82,8 @@ public:
         typename T2,
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
-    esp_err_t init(T1 id, T2 type, IChannelObserver *observer = nullptr)
+    esp_err_t init(T1 id, T2 type, TaskHandle_t rx_task_handle)
     {
-        return init(static_cast<NodeId>(id), static_cast<NodeType>(type), observer);
+        return init(static_cast<NodeId>(id), static_cast<NodeType>(type), rx_task_handle);
     }
 };
