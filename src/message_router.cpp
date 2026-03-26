@@ -4,13 +4,13 @@
 
 #include "message_router.hpp"
 
-static const char *TAG = "MessageRouter";
+static const char* TAG = "MessageRouter";
 
 MessageRouter::MessageRouter(
-    IDiscoveryManager &discovery_manager,
-    ITxManager &tx_manager,
-    IHeartbeatManager &heartbeat_manager,
-    IPairingManager &pairing_manager)
+    IDiscoveryManager& discovery_manager,
+    ITxManager& tx_manager,
+    IHeartbeatManager& heartbeat_manager,
+    IPairingManager& pairing_manager)
     : discovery_manager_(discovery_manager)
     , tx_manager_(tx_manager)
     , heartbeat_manager_(heartbeat_manager)
@@ -19,7 +19,7 @@ MessageRouter::MessageRouter(
 {
 }
 
-void MessageRouter::handle_packet(const DecodedPacket &decoded)
+void MessageRouter::handle_packet(const DecodedPacket& decoded)
 {
     switch (decoded.header.msg_type) {
     case MessageType::PAIR_REQUEST:
@@ -67,7 +67,7 @@ void MessageRouter::handle_packet(const DecodedPacket &decoded)
                 TAG, "Malformed CHANNEL_SCAN_PROBE: len %d < %d", (int)decoded.raw.len, (int)sizeof(MessageHeader));
             return;
         }
-        discovery_manager_.handle_probe(decoded);
+        discovery_manager_.handle_scan_probe(decoded);
         break;
 
     default:
