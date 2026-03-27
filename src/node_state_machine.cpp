@@ -1,7 +1,7 @@
 #include "node_state_machine.hpp"
 #include "esp_log.h"
 
-static const char *TAG = "NodeStateMachine";
+static const char* TAG = "NodeStateMachine";
 
 NodeStateMachine::NodeStateMachine()
     : state_(NodeState::UNINITIALIZED)
@@ -52,30 +52,28 @@ esp_err_t NodeStateMachine::on_pairing_timeout(bool success)
 esp_err_t NodeStateMachine::on_scan_requested()
 {
     NodeState current = state_.load();
-    if (current != NodeState::OPERATIONAL && current != NodeState::PAIRING) {
+    if (current != NodeState::OPERATIONAL && current != NodeState::PAIRING && current != NodeState::IDLE) {
         return ESP_ERR_INVALID_STATE;
     }
     return transition_to(NodeState::SCANNING);
 }
 
-esp_err_t NodeStateMachine::on_channel_found(bool is_hub, bool has_peers)
+ChannelFoundAction NodeStateMachine::on_channel_found(bool is_hub, bool has_peers)
 {
     NodeState current = state_.load();
     if (current != NodeState::SCANNING && current != NodeState::PAIRING) {
-        return ESP_ERR_INVALID_STATE;
+        return ChannelFoundAction::NOTHING;
     }
 
-    if (is_hub) {
+    if (is_hub || has_peers) {
         // Current HUBs don't scan, but this supports future "Bridge" types
         // or mobile HUBs that might need to rediscover a channel.
-        return transition_to(NodeState::OPERATIONAL);
-    }
-
-    if (has_peers) {
-        return transition_to(NodeState::OPERATIONAL);
+        transition_to(NodeState::OPERATIONAL);
+        return ChannelFoundAction::STORE_CHANNEL;
     }
     else {
-        return transition_to(NodeState::PAIRING);
+        transition_to(NodeState::PAIRING);
+        return ChannelFoundAction::START_PAIRING;
     }
 }
 
