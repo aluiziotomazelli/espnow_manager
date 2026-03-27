@@ -4,6 +4,16 @@
 #include "espnow_types.hpp"
 
 /**
+ * @brief Enum to represent the action to take when a channel is found.
+ */
+enum class ChannelFoundAction
+{
+    START_PAIRING,
+    STORE_CHANNEL,
+    NOTHING
+};
+
+/**
  * @brief Interface for the Node State Machine.
  *
  * This class governs the high-level state of the ESP-NOW node (Peripheral or HUB).
@@ -62,7 +72,7 @@ public:
      * @param has_peers True if the node has at least one peer.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual esp_err_t on_channel_found(bool is_hub, bool has_peers) = 0;
+    virtual ChannelFoundAction on_channel_found(bool is_hub, bool has_peers) = 0;
 
     /**
      * @brief Event: Channel scan failed after all attempts.
