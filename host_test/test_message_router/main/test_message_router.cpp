@@ -158,14 +158,14 @@ TEST_F(MessageRouterTest, ShortAckDoesNotCallNotifyLogicalAck)
 TEST_F(MessageRouterTest, ChannelScanProbeCallsHandleProbe)
 {
     DecodedPacket packet = create_packet(MessageType::CHANNEL_SCAN_PROBE, sizeof(MessageHeader));
-    EXPECT_CALL(discovery_manager, handle_probe(_)).Times(1);
+    EXPECT_CALL(discovery_manager, handle_scan_probe(_)).Times(1);
     router.handle_packet(packet);
 }
 
 TEST_F(MessageRouterTest, ShortChannelScanProbeDoesNotCallHandleProbe)
 {
     DecodedPacket packet = create_packet(MessageType::CHANNEL_SCAN_PROBE, sizeof(MessageHeader) - 1);
-    EXPECT_CALL(discovery_manager, handle_probe(_)).Times(0);
+    EXPECT_CALL(discovery_manager, handle_scan_probe(_)).Times(0);
     router.handle_packet(packet);
 }
 
@@ -175,7 +175,7 @@ TEST_F(MessageRouterTest, ShortChannelScanProbeDoesNotCallHandleProbe)
 TEST_F(MessageRouterTest, UnknownMessageTypeDoesNotCallAnyManager)
 {
     DecodedPacket packet = create_packet(static_cast<MessageType>(999), sizeof(MessageHeader));
-    EXPECT_CALL(discovery_manager, handle_probe(_)).Times(0);
+    EXPECT_CALL(discovery_manager, handle_scan_probe(_)).Times(0);
     EXPECT_CALL(tx_manager, notify_logical_ack()).Times(0);
     EXPECT_CALL(heartbeat_manager, handle_request(_)).Times(0);
     EXPECT_CALL(heartbeat_manager, handle_response()).Times(0);
