@@ -50,7 +50,7 @@ EspNowManager& EspNowManager::instance()
     static auto bootstraper = std::make_unique<EspNowDriver>(*hal_wifi);
     static auto peer_manager = std::make_unique<PeerManager>(*storage, *hal_wifi, *hal_freertos);
     static auto message_codec = std::make_unique<MessageCodec>();
-    static auto channel_monitor = std::make_unique<ChannelMonitor>(*hal_wifi);
+    static auto channel_monitor = std::make_unique<ChannelMonitor>(*hal_wifi, *hal_freertos);
     static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *message_codec, *hal_freertos);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
     static auto tx_manager = std::make_unique<TxManager>(*tx_fsm, *hal_wifi, *hal_freertos, *message_codec, 500);
@@ -499,17 +499,6 @@ void EspNowManager::rx_task(void* arg)
 }
 
 // =========================================================================================
-// IChannelObserver implementation for DiscoveryManager callbacks
-// =========================================================================================
-
-void EspNowManager::on_channel_changed_cb(uint8_t channel)
-{
-    // TODO: Use this callback or pass the rx_task to ChannelMonitor, so it notify rx_task directly?
-    // implement get_channel() method in ChannelMonitor if we dont use this callback anymore
-    last_found_channel_.store(channel);
-    hal_freertos_->task_notify(rx_task_handle_, NOTIFY_CHANNEL_CHANGED, eSetBits);
-}
-// =========================================================================================
 // Internal methods
 // =========================================================================================
 
@@ -612,7 +601,7 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
 
     // If NOTIFY_CHANNEL_CHANGED is set by on_channel_changed_cb()
     if ((notifications & NOTIFY_CHANNEL_CHANGED) == NOTIFY_CHANNEL_CHANGED) {
-        uint8_t channel = last_found_channel_.load();
+        uint8_t channel = channel_monitor_->get_wifi_channel();
         config_.wifi_channel = channel;
         scanner_->set_channel(channel);
         storage_->store_channel(channel);
@@ -742,7 +731,7 @@ esp_err_t EspNowManager::init_channel_monitor()
     if (channel_monitor_ == nullptr) {
         return ESP_FAIL;
     }
-    return channel_monitor_->init(this, config_.channel_monitor_interval_ms);
+    return channel_monitor_->init(config_.channel_monitor_interval_ms, rx_task_handle_);
 }
 
 esp_err_t EspNowManager::init_fail(esp_err_t ret, const char* step)

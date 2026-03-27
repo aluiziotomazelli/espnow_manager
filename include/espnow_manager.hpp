@@ -3,7 +3,6 @@
 
 #include <memory>
 #include <atomic>
-
 #include "etl/vector.h"
 
 #include "i_discovery_manager.hpp"
@@ -33,11 +32,11 @@
  *
  * @see IEspNowManager for full API documentation.
  */
-class EspNowManager : public IEspNowManager, public IChannelObserver // Modified inheritance
+class EspNowManager : public IEspNowManager
 {
 public:
     /** @brief Get the singleton instance of EspNowManager */
-    static EspNowManager &instance();
+    static EspNowManager& instance();
 
     /**
      * @brief Dependency injection constructor for testing
@@ -60,8 +59,8 @@ public:
         std::unique_ptr<IMessageRouter> message_router,
         std::unique_ptr<INodeStateMachine> node_fsm);
 
-    EspNowManager(const EspNowManager &) = delete;
-    EspNowManager &operator=(const EspNowManager &) = delete;
+    EspNowManager(const EspNowManager&) = delete;
+    EspNowManager& operator=(const EspNowManager&) = delete;
     virtual ~EspNowManager();
 
     // ========================================
@@ -69,7 +68,7 @@ public:
     // ========================================
 
     /** @copydoc IEspNowManager::init */
-    esp_err_t init(const EspNowConfig &config) override;
+    esp_err_t init(const EspNowConfig& config) override;
 
     /** @copydoc IEspNowManager::deinit */
     void deinit() override;
@@ -81,7 +80,7 @@ public:
     using IEspNowManager::send_data;
     /** @copydoc IEspNowManager::send_data */
     esp_err_t
-    send_data(NodeId dest_node_id, PayloadType payload_type, const void *payload, size_t len, bool require_ack = false)
+    send_data(NodeId dest_node_id, PayloadType payload_type, const void* payload, size_t len, bool require_ack = false)
         override;
 
     using IEspNowManager::send_command;
@@ -89,7 +88,7 @@ public:
     esp_err_t send_command(
         NodeId dest_node_id,
         CommandType command_type,
-        const void *payload,
+        const void* payload,
         size_t len,
         bool require_ack = false) override;
 
@@ -102,7 +101,7 @@ public:
 
     using IEspNowManager::add_peer;
     /** @copydoc IEspNowManager::add_peer */
-    esp_err_t add_peer(NodeId node_id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms) override;
+    esp_err_t add_peer(NodeId node_id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms) override;
 
     using IEspNowManager::remove_peer;
     /** @copydoc IEspNowManager::remove_peer */
@@ -159,9 +158,6 @@ protected:
     QueueHandle_t rx_queue_handle_ = nullptr;
     TaskHandle_t rx_task_handle_ = nullptr;
 
-    /** @brief IChannelObserver implementation */
-    void on_channel_changed_cb(uint8_t channel) override;
-
     // --- Private Methods ---
     uint64_t get_time_ms() const;
 
@@ -170,7 +166,7 @@ protected:
         NodeId dest_node_id,
         MessageType msg_type,
         PayloadType payload_type,
-        const void *payload,
+        const void* payload,
         size_t len,
         bool require_ack);
 
@@ -186,23 +182,23 @@ protected:
     esp_err_t init_heartbeat_manager();
     esp_err_t init_pairing_manager();
     esp_err_t init_channel_monitor();
-    void add_peers_to_espnow(etl::ivector<PeerInfo> &peers);
-    esp_err_t init_fail(esp_err_t ret, const char *step);
+    void add_peers_to_espnow(etl::ivector<PeerInfo>& peers);
+    esp_err_t init_fail(esp_err_t ret, const char* step);
 
     void signal_task_to_stop();
     void delete_task();
     void cleanup_resources();
 
     // Task functions
-    static void rx_task(void *arg);
+    static void rx_task(void* arg);
 
-    void handle_notifications(uint32_t notifications, bool &should_stop);
+    void handle_notifications(uint32_t notifications, bool& should_stop);
     void handle_state_transition(NodeState old_state, NodeState new_state);
-    static AppMessage build_app_message(const DecodedPacket &decoded);
+    static AppMessage build_app_message(const DecodedPacket& decoded);
 
     // Static ESP-NOW callbacks (ISR context)
-    static void esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len);
-    static void esp_now_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status);
+    static void esp_now_recv_cb(const esp_now_recv_info_t* info, const uint8_t* data, int len);
+    static void esp_now_send_cb(const esp_now_send_info_t* info, esp_now_send_status_t status);
 
     std::atomic<uint8_t> last_found_channel_{0};
 

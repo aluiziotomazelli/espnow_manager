@@ -7,6 +7,7 @@
 class MockChannelMonitor : public IChannelMonitor
 {
 public:
-    MOCK_METHOD(esp_err_t, init, (IChannelObserver *observer, uint32_t interval_ms), (override));
+    MOCK_METHOD(esp_err_t, init, (uint32_t interval_ms, TaskHandle_t rx_task_handle), (override));
     MOCK_METHOD(void, tick, (uint64_t now_ms), (override));
+    MOCK_METHOD(uint8_t, get_wifi_channel, (), (override));
 };

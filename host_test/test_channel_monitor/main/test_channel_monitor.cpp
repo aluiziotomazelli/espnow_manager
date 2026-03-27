@@ -2,7 +2,7 @@
 #include <gtest/gtest.h>
 
 #include "mock_hal_wifi.hpp"
-#include "mock_channel_observer.hpp"
+#include "mock_hal_freertos.hpp"
 
 #include "channel_monitor.hpp"
 
@@ -16,25 +16,26 @@ class ChannelMonitorTest : public ::testing::Test
 {
 protected:
     NiceMock<MockWiFiHAL> wifi_hal;
-    NiceMock<MockChannelObserver> observer;
+    NiceMock<MockFreeRTOSHAL> freertos_hal;
     std::unique_ptr<ChannelMonitor> monitor;
 
     static constexpr uint32_t INTERVAL_MS = 5000;
     static constexpr uint8_t INITIAL_CHANNEL = 1;
     static constexpr wifi_second_chan_t INITIAL_SECOND_CHANNEL = WIFI_SECOND_CHAN_NONE;
+    TaskHandle_t fake_rx_task_handle_ = reinterpret_cast<TaskHandle_t>(0x6);
 
     void SetUp() override
     {
-        monitor = std::make_unique<ChannelMonitor>(wifi_hal);
+        monitor = std::make_unique<ChannelMonitor>(wifi_hal, freertos_hal);
 
         // Mock default behavior for wifi_get_channel
         ON_CALL(wifi_hal, wifi_get_channel(_, _))
-            .WillByDefault(Invoke([](uint8_t *channel, wifi_second_chan_t *second) {
+            .WillByDefault(Invoke([](uint8_t* channel, wifi_second_chan_t* second) {
                 *channel = INITIAL_CHANNEL;
                 return ESP_OK;
             }));
     }
-    void init_monitor() { monitor->init(&observer, INTERVAL_MS); }
+    void init_monitor() { monitor->init(INTERVAL_MS, fake_rx_task_handle_); }
 };
 
 // =========================================================================
@@ -47,9 +48,9 @@ TEST_F(ChannelMonitorTest, InitSucceeds)
     SUCCEED();
 }
 
-TEST_F(ChannelMonitorTest, InitFailsWhenObserverIsNull)
+TEST_F(ChannelMonitorTest, InitFailsWhenRxTaskHandleIsNull)
 {
-    esp_err_t err = monitor->init(nullptr, INTERVAL_MS);
+    esp_err_t err = monitor->init(INTERVAL_MS, nullptr);
     EXPECT_NE(err, ESP_OK);
 }
 
@@ -69,12 +70,12 @@ TEST_F(ChannelMonitorTest, TickAtIntervalChecksWifi)
 
 TEST_F(ChannelMonitorTest, TickUnitializedDoesNothing)
 {
-    monitor->init(nullptr, INTERVAL_MS);                    // Init with nullptr will not set is_active_ to true
+    monitor->init(INTERVAL_MS, nullptr);                    // Init with nullptr will not set is_active_ to true
     EXPECT_CALL(wifi_hal, wifi_get_channel(_, _)).Times(0); // No tick will be performed
     monitor->tick(INTERVAL_MS);
 }
 
-TEST_F(ChannelMonitorTest, NotifyObserverWhenChannelChanges)
+TEST_F(ChannelMonitorTest, NotifyRxTaskWhenChannelChanges)
 {
     init_monitor();
     uint8_t new_channel = 6;
@@ -84,13 +85,13 @@ TEST_F(ChannelMonitorTest, NotifyObserverWhenChannelChanges)
 
     // Mock wifi change
     EXPECT_CALL(wifi_hal, wifi_get_channel(_, _))
-        .WillOnce(Invoke([new_channel](uint8_t *ch, wifi_second_chan_t *second) {
+        .WillOnce(Invoke([new_channel](uint8_t* ch, wifi_second_chan_t* second) {
             *ch = new_channel;
             return ESP_OK;
         }));
 
-    // Expect observer notification
-    EXPECT_CALL(observer, on_channel_changed_cb(new_channel)).Times(1);
+    // Expect rx_task notification
+    EXPECT_CALL(freertos_hal, task_notify(fake_rx_task_handle_, NOTIFY_CHANNEL_CHANGED, eSetBits)).Times(1);
 
     monitor->tick(INTERVAL_MS);
 }
@@ -105,13 +106,13 @@ TEST_F(ChannelMonitorTest, MonitorReturnTheSAmeChannelIfWifiGetChannelFail)
 
     // Mock wifi change with different channel but failing to get it
     EXPECT_CALL(wifi_hal, wifi_get_channel(_, _))
-        .WillOnce(Invoke([new_channel](uint8_t *ch, wifi_second_chan_t *second) {
+        .WillOnce(Invoke([new_channel](uint8_t* ch, wifi_second_chan_t* second) {
             *ch = new_channel;
             return ESP_FAIL;
         }));
 
-    // Expect observer notification not to be called
-    EXPECT_CALL(observer, on_channel_changed_cb(new_channel)).Times(0);
+    // Expect rx_task notification not to be called
+    EXPECT_CALL(freertos_hal, task_notify(fake_rx_task_handle_, NOTIFY_CHANNEL_CHANGED, eSetBits)).Times(0);
 
     monitor->tick(INTERVAL_MS);
 }
