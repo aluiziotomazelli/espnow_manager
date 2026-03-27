@@ -27,7 +27,7 @@ public:
     bool is_scanning() const override { return is_scanning_.load(); };
     void handle_scan_probe(const DecodedPacket& decoded) override;
     void set_channel(uint8_t channel) override;
-    uint8_t get_channel() const override { return current_channel_; };
+    uint8_t get_channel() const override { return current_channel_.load(); };
 
 protected:
     // Scan Probe helpers
@@ -64,7 +64,7 @@ private:
     bool node_ready_ = false;
     std::atomic<bool> is_scanning_ = false;
 
-    uint8_t current_channel_ = 1;
+    std::atomic<uint8_t> current_channel_ = 1;
 
     // Node info
     NodeId my_node_id_;

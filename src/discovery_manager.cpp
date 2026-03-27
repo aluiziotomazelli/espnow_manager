@@ -103,7 +103,7 @@ void DiscoveryManager::handle_scan_probe(const DecodedPacket& decoded)
 void DiscoveryManager::set_channel(uint8_t channel)
 {
     if (channel >= 1 && channel <= 13) {
-        current_channel_ = channel;
+        current_channel_.store(channel);
     }
     else {
         ESP_LOGW(TAG, "Invalid channel %d, must be 1-13", channel);
@@ -159,7 +159,7 @@ esp_err_t DiscoveryManager::scan_channel()
 
     // We will start from actual channel (most likely to be the correct one)
     for (uint8_t offset = 0; offset < 13 && ret != ESP_OK; ++offset) {
-        uint8_t channel = ((current_channel_ - 1 + offset) % 13) + 1;
+        uint8_t channel = ((current_channel_.load() - 1 + offset) % 13) + 1;
         ESP_LOGD(TAG, "Scanning channel %d", channel);
 
         // Set wifi channel to make probes attempts on this channel
@@ -183,7 +183,7 @@ esp_err_t DiscoveryManager::scan_channel()
 
             // Wait for hub to respond
             if (hub_was_found()) {
-                current_channel_ = channel;
+                current_channel_.store(channel);
                 ESP_LOGI(TAG, "Hub found on channel %d", channel);
                 ret = ESP_OK;
                 is_scanning_.store(false);
