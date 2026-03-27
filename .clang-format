@@ -29,7 +29,7 @@ AllowShortFunctionsOnASingleLine: Inline
 # POINTERS AND REFERENCES
 # ============================================================================
 # Keeps the pointer to the right: void *payload
-PointerAlignment: Right
+PointerAlignment: Left
 DerivePointerAlignment: false
 
 # ============================================================================
