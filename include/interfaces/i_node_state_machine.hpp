@@ -49,16 +49,18 @@ public:
 
     /**
      * @brief Event: Pairing process requested by user/app.
+     * @param has_peers True if the node already has peers.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual esp_err_t on_pairing_requested() = 0;
+    virtual esp_err_t on_pairing_requested(bool has_peers) = 0;
 
     /**
      * @brief Event: Pairing process completed (either success or timeout).
      * @param success True if at least one peer is now paired.
+     * @param has_peers True if the node still has known peers.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual esp_err_t on_pairing_timeout(bool success) = 0;
+    virtual esp_err_t on_pairing_timeout(bool success, bool has_peers) = 0;
 
     /**
      * @brief Event: Channel scan requested (typically by TxManager on failure).
@@ -68,17 +70,14 @@ public:
 
     /**
      * @brief Event: Channel rediscovered.
-     * @param is_hub True if the node is a HUB.
-     * @param has_peers True if the node has at least one peer.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual ChannelFoundAction on_channel_found(bool is_hub, bool has_peers) = 0;
+    virtual esp_err_t on_channel_found() = 0;
 
     /**
      * @brief Event: Channel scan failed after all attempts.
-     * @param is_pairing_active True if we were scanning as part of a pairing process.
      * @param has_peers True if the node has known peers.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual esp_err_t on_scan_failed(bool is_pairing_active, bool has_peers) = 0;
+    virtual esp_err_t on_scan_failed(bool has_peers) = 0;
 };

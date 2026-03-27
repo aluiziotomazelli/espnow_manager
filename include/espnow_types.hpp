@@ -156,10 +156,11 @@ enum class NodeState
 {
     UNINITIALIZED = 0, ///< Initial state before initialization
     IDLE = 1,          ///< Initialized successfully, but not yet paired/idle
-    PAIRING = 2,       ///< Actively advertising or scanning for pairing requests
+    PAIRING = 2,       ///< Actively advertising or accepting pairing requests
     OPERATIONAL = 3,   ///< Has peers, normal operation
-    SCANNING = 4,      ///< Lost connection to peers, rediscovering channel
-    COUNT = 5          ///< Number of states (for validation)
+    PAIRING_SCAN = 4,   ///< Scanning for a HUB to start pairing
+    RECOVERY_SCAN = 5,  ///< Lost connection to peers, rediscovering channel
+    COUNT = 6          ///< Number of states (for validation)
 };
 
 /**

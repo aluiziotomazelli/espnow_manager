@@ -98,20 +98,20 @@ class EspNowManagerTaskTest : public ::testing::Test
 {
 protected:
     // Raw pointers for test access — owned by sut_
-    NiceMock<MockStorageManager> *storage_;
-    NiceMock<MockEspNowDriver> *driver_;
-    NiceMock<MockTimerHAL> *hal_timer_;
-    NiceMock<MockWiFiHAL> *hal_wifi_;
-    NiceMock<MockPeerManager> *peer_mgr_;
-    NiceMock<MockMessageCodec> *codec_;
-    NiceMock<MockChannelMonitor> *channel_monitor_;
-    NiceMock<MockDiscoveryManager> *scanner_;
-    NiceMock<MockTxStateMachine> *tx_fsm_;
-    NiceMock<MockTxManager> *tx_mgr_;
-    NiceMock<MockHeartbeatManager> *heartbeat_mgr_;
-    NiceMock<MockPairingManager> *pairing_mgr_;
-    NiceMock<MockMessageRouter> *message_router_;
-    INodeStateMachine *node_fsm_;
+    NiceMock<MockStorageManager>* storage_;
+    NiceMock<MockEspNowDriver>* driver_;
+    NiceMock<MockTimerHAL>* hal_timer_;
+    NiceMock<MockWiFiHAL>* hal_wifi_;
+    NiceMock<MockPeerManager>* peer_mgr_;
+    NiceMock<MockMessageCodec>* codec_;
+    NiceMock<MockChannelMonitor>* channel_monitor_;
+    NiceMock<MockDiscoveryManager>* scanner_;
+    NiceMock<MockTxStateMachine>* tx_fsm_;
+    NiceMock<MockTxManager>* tx_mgr_;
+    NiceMock<MockHeartbeatManager>* heartbeat_mgr_;
+    NiceMock<MockPairingManager>* pairing_mgr_;
+    NiceMock<MockMessageRouter>* message_router_;
+    INodeStateMachine* node_fsm_;
 
     std::unique_ptr<EspNowManagerTestable> sut_;
 
@@ -161,8 +161,8 @@ protected:
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
         // submodule inits succeed by default
-        ON_CALL(*tx_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*scanner_, init(_, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*tx_mgr_, init(_, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*scanner_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*channel_monitor_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(nullptr));
@@ -519,7 +519,7 @@ TEST_F(EspNowManagerTaskTest, AckTimeoutTriggersRetryAndScanning)
     // STEP 1b: Setup peer MAC address for find_mac to return
     // This is required because send_data calls peer_manager_->find_mac()
     uint8_t peer_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
-    ON_CALL(*peer_mgr_, find_mac(kHubId, _)).WillByDefault([peer_mac](NodeId, uint8_t *out_mac) {
+    ON_CALL(*peer_mgr_, find_mac(kHubId, _)).WillByDefault([peer_mac](NodeId, uint8_t* out_mac) {
         memcpy(out_mac, peer_mac, 6);
         return true;
     });
@@ -528,7 +528,7 @@ TEST_F(EspNowManagerTaskTest, AckTimeoutTriggersRetryAndScanning)
     // When queue_packet is called, notify TxManager of physical failure
     // This simulates the scenario where packet cannot be transmitted
     // Return ESP_OK to allow queuing, but notify_physical_fail triggers retry logic
-    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillRepeatedly([this](const DecodedTxPacket &) {
+    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillRepeatedly([this](const DecodedTxPacket&) {
         // Simulate physical transmission failure (WiFi HAL fail)
         // The packet is queued successfully, but transmission will fail
         tx_mgr_->notify_physical_fail();

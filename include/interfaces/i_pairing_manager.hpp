@@ -39,9 +39,6 @@ public:
     virtual esp_err_t start(uint32_t timeout_ms, uint64_t now_ms) = 0;
 
     /** @internal */
-    virtual bool is_active() const = 0;
-
-    /** @internal */
     virtual void handle_request(const DecodedPacket& decoded) = 0;
 
     /** @internal */

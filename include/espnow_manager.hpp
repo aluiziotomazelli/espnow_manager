@@ -189,7 +189,6 @@ protected:
     esp_err_t init_heartbeat_manager();
     esp_err_t init_pairing_manager();
     esp_err_t init_channel_monitor();
-    NodeState determine_initial_state(etl::ivector<PeerInfo> &peers);
     void add_peers_to_espnow(etl::ivector<PeerInfo> &peers);
     esp_err_t init_fail(esp_err_t ret, const char *step);
 
@@ -201,6 +200,7 @@ protected:
     static void rx_task(void *arg);
 
     void handle_notifications(uint32_t notifications, bool &should_stop);
+    void handle_state_transition(NodeState old_state, NodeState new_state);
     static AppMessage build_app_message(const DecodedPacket &decoded);
 
     // Static ESP-NOW callbacks (ISR context)

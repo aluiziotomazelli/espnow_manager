@@ -19,10 +19,18 @@ PairingManager::PairingManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, IFree
 
 esp_err_t PairingManager::init(NodeId id, NodeType type, TaskHandle_t rx_task_handle)
 {
+    if (rx_task_handle_ == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (is_initialized_) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     my_id_ = id;
     my_type_ = type;
     rx_task_handle_ = rx_task_handle;
     is_initialized_ = true;
+
     return ESP_OK;
 }
 
@@ -148,11 +156,6 @@ void PairingManager::send_pair_request()
     memcpy(tx_packet.payload, &req.heartbeat_interval_ms, tx_packet.payload_len);
 
     tx_mgr_.queue_packet(tx_packet);
-}
-
-bool PairingManager::is_active() const
-{
-    return is_active_;
 }
 
 void PairingManager::notify_rx_task_pairing_done()

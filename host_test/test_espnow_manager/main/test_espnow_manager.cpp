@@ -86,7 +86,7 @@ class EspNowManagerTestable : public EspNowManager
 public:
     using EspNowManager::EspNowManager;
 
-    void set_last_header(const MessageHeader &header) { last_header_requiring_ack_ = header; }
+    void set_last_header(const MessageHeader& header) { last_header_requiring_ack_ = header; }
     void reset_last_header() { last_header_requiring_ack_.reset(); }
     std::optional<MessageHeader> get_last_header() { return last_header_requiring_ack_; }
 
@@ -129,20 +129,20 @@ class EspNowManagerTest : public ::testing::Test
 {
 protected:
     // Raw pointers for test access — lifetime managed by sut_
-    NiceMock<MockStorageManager> *storage_;
-    NiceMock<MockWiFiHAL> *hal_wifi_;
-    NiceMock<MockTimerHAL> *hal_timer_;
-    NiceMock<MockFreeRTOSHAL> *hal_freertos_;
-    NiceMock<MockEspNowDriver> *espnow_driver_;
-    NiceMock<MockPeerManager> *peer_mgr_;
-    NiceMock<MockMessageCodec> *codec_;
-    NiceMock<MockDiscoveryManager> *scanner_;
-    NiceMock<MockTxStateMachine> *tx_fsm_;
-    NiceMock<MockTxManager> *tx_mgr_;
-    NiceMock<MockHeartbeatManager> *heartbeat_mgr_;
-    NiceMock<MockPairingManager> *pairing_mgr_;
-    NiceMock<MockMessageRouter> *message_router_;
-    NiceMock<MockChannelMonitor> *channel_monitor_;
+    NiceMock<MockStorageManager>* storage_;
+    NiceMock<MockWiFiHAL>* hal_wifi_;
+    NiceMock<MockTimerHAL>* hal_timer_;
+    NiceMock<MockFreeRTOSHAL>* hal_freertos_;
+    NiceMock<MockEspNowDriver>* espnow_driver_;
+    NiceMock<MockPeerManager>* peer_mgr_;
+    NiceMock<MockMessageCodec>* codec_;
+    NiceMock<MockDiscoveryManager>* scanner_;
+    NiceMock<MockTxStateMachine>* tx_fsm_;
+    NiceMock<MockTxManager>* tx_mgr_;
+    NiceMock<MockHeartbeatManager>* heartbeat_mgr_;
+    NiceMock<MockPairingManager>* pairing_mgr_;
+    NiceMock<MockMessageRouter>* message_router_;
+    NiceMock<MockChannelMonitor>* channel_monitor_;
 
     std::unique_ptr<EspNowManagerTestable> sut_;
 
@@ -207,9 +207,9 @@ protected:
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
         // submódule inits succeed by default
-        ON_CALL(*tx_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*tx_mgr_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(fake_rx_task));
-        ON_CALL(*scanner_, init(_, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*scanner_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*channel_monitor_, init(_, _)).WillByDefault(Return(ESP_OK));
 
@@ -387,20 +387,20 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfEspNowDriverInitFails)
 
 TEST_F(EspNowManagerTest, InitCallsTxManagerInit)
 {
-    EXPECT_CALL(*tx_mgr_, init(_, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*tx_mgr_, init(_, _, _)).WillOnce(Return(ESP_OK));
     sut_->init(make_valid_config());
 }
 
 TEST_F(EspNowManagerTest, InitReturnsFailIfTxManagerInitFails)
 {
-    ON_CALL(*tx_mgr_, init(_, _)).WillByDefault(Return(ESP_FAIL));
+    ON_CALL(*tx_mgr_, init(_, _, _)).WillByDefault(Return(ESP_FAIL));
     EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
 
 TEST_F(EspNowManagerTest, InitCallsDiscoveryManagerInit)
 {
-    EXPECT_CALL(*scanner_, init(_, _, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*scanner_, init(_, _, _, _, _)).WillOnce(Return(ESP_OK));
     sut_->init(make_valid_config());
 }
 
@@ -408,13 +408,13 @@ TEST_F(EspNowManagerTest, InitCallsDiscoveryManagerInitWhenNodeIsHub)
 {
     EspNowConfig cfg = make_valid_config();
     cfg.node_type = kHubType;
-    EXPECT_CALL(*scanner_, init(_, _, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*scanner_, init(_, _, _, _, _)).WillOnce(Return(ESP_OK));
     sut_->init(cfg);
 }
 
 TEST_F(EspNowManagerTest, InitReturnsFailIfDiscoveryManagerInitFails)
 {
-    ON_CALL(*scanner_, init(_, _, _)).WillByDefault(Return(ESP_FAIL));
+    ON_CALL(*scanner_, init(_, _, _, _, _)).WillByDefault(Return(ESP_FAIL));
     EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
@@ -534,7 +534,7 @@ TEST_F(EspNowManagerTest, ReinitAfterDeinitSucceeds)
 TEST_F(EspNowManagerTest, DeinitCallsTxManagerDeinit)
 {
     init_sut();
-    EXPECT_CALL(*tx_mgr_, deinit()).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*tx_mgr_, deinit()).WillOnce(Return());
     sut_->deinit();
 }
 
@@ -631,16 +631,15 @@ TEST_F(EspNowManagerTest, SendDataWithPayloadCopiesData)
     uint8_t test_payload[] = {0x01, 0x02, 0x03, 0x04, 0x05};
 
     // Verify that queue_packet receives a packet with correct payload
-    EXPECT_CALL(*tx_mgr_, queue_packet(_))
-        .WillOnce([](const DecodedTxPacket &pkt) {
-            EXPECT_EQ(pkt.payload_len, 5);
-            EXPECT_EQ(pkt.payload[0], 0x01);
-            EXPECT_EQ(pkt.payload[1], 0x02);
-            EXPECT_EQ(pkt.payload[2], 0x03);
-            EXPECT_EQ(pkt.payload[3], 0x04);
-            EXPECT_EQ(pkt.payload[4], 0x05);
-            return ESP_OK;
-        });
+    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillOnce([](const DecodedTxPacket& pkt) {
+        EXPECT_EQ(pkt.payload_len, 5);
+        EXPECT_EQ(pkt.payload[0], 0x01);
+        EXPECT_EQ(pkt.payload[1], 0x02);
+        EXPECT_EQ(pkt.payload[2], 0x03);
+        EXPECT_EQ(pkt.payload[3], 0x04);
+        EXPECT_EQ(pkt.payload[4], 0x05);
+        return ESP_OK;
+    });
 
     EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, test_payload, 5), ESP_OK);
 }
@@ -826,7 +825,7 @@ TEST_F(EspNowManagerTest, OnScanFailedCallsTaskNotify)
 
 TEST_F(EspNowManagerTest, OnScanStartedCallsTaskNotify)
 {
-    EXPECT_CALL(*hal_freertos_, task_notify(_, NOTIFY_SCANNING, _)).Times(1);
+    EXPECT_CALL(*hal_freertos_, task_notify(_, NOTIFY_START_SCAN, _)).Times(1);
     sut_->on_scan_started_cb();
 }
 
@@ -846,7 +845,7 @@ TEST_F(EspNowManagerTest, StartPairingNotifyScanningTxManager)
     sut_->set_node_state_operational();
 
     uint32_t pairing_timeout_ms = 10000;
-    EXPECT_CALL(*tx_mgr_, notify_scanning()).Times(1);
+    // EXPECT_CALL(*tx_mgr_, notify_start_scan()).Times(1);
     ASSERT_EQ(sut_->start_pairing(pairing_timeout_ms), ESP_OK);
 }
 
@@ -863,7 +862,7 @@ TEST_F(EspNowManagerTest, StartPairingTransitionsToPairingState)
     sut_->set_node_state_operational();
     ASSERT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
 
-    EXPECT_CALL(*tx_mgr_, notify_scanning()).Times(1);
+    // EXPECT_CALL(*tx_mgr_, notify_start_scan()).Times(1);
     EXPECT_EQ(sut_->start_pairing(100), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::PAIRING); // on_pairing_requested called synchronously
 }

@@ -19,7 +19,7 @@ public:
     void tick(uint64_t now_ms) override;
 
     esp_err_t start(uint32_t timeout_ms, uint64_t now_ms) override;
-    bool is_active() const override;
+
     void handle_request(const DecodedPacket& decoded) override;
     void handle_response(const DecodedPacket& decoded) override;
 

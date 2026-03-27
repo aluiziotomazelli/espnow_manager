@@ -24,7 +24,7 @@ public:
             return ESP_OK;
         }));
 
-        ON_CALL(*this, on_pairing_requested()).WillByDefault(Invoke([this]() {
+        ON_CALL(*this, on_pairing_requested(_)).WillByDefault(Invoke([this](bool has_peers) {
             state_ = NodeState::PAIRING;
             return ESP_OK;
         }));
@@ -34,25 +34,18 @@ public:
             return ESP_OK;
         }));
 
-        ON_CALL(*this, on_pairing_timeout(_)).WillByDefault(Invoke([this](bool has_peers) {
+        ON_CALL(*this, on_pairing_timeout(_, _)).WillByDefault(Invoke([this](bool success, bool has_peers) {
             state_ = has_peers ? NodeState::OPERATIONAL : NodeState::IDLE;
             return ESP_OK;
         }));
 
-        ON_CALL(*this, on_channel_found(_, _)).WillByDefault(Invoke([this](bool is_hub, bool has_peers) {
-            state_ = has_peers ? NodeState::OPERATIONAL : NodeState::PAIRING;
+        ON_CALL(*this, on_channel_found()).WillByDefault(Invoke([this]() {
+            state_ = NodeState::OPERATIONAL;
             return ESP_OK;
         }));
 
-        ON_CALL(*this, on_scan_failed(_, _)).WillByDefault(Invoke([this](bool pairing_active, bool has_peers) {
-            if (!pairing_active && state_ == NodeState::PAIRING) {
-                state_ = NodeState::IDLE;
-            }
-            else if (state_ == NodeState::SCANNING) {
-                if (!pairing_active) {
-                    state_ = has_peers ? NodeState::OPERATIONAL : NodeState::IDLE;
-                }
-            }
+        ON_CALL(*this, on_scan_failed(_)).WillByDefault(Invoke([this](bool has_peers) {
+            state_ = has_peers ? NodeState::OPERATIONAL : NodeState::IDLE;
             return ESP_OK;
         }));
     }
@@ -61,11 +54,11 @@ public:
     MOCK_METHOD(void, reset, (), (override));
     MOCK_METHOD(esp_err_t, on_init, (bool has_peers), (override));
     MOCK_METHOD(esp_err_t, on_deinit, (), (override));
-    MOCK_METHOD(esp_err_t, on_pairing_requested, (), (override));
-    MOCK_METHOD(esp_err_t, on_pairing_timeout, (bool has_peers), (override));
+    MOCK_METHOD(esp_err_t, on_pairing_requested, (bool has_peers), (override));
+    MOCK_METHOD(esp_err_t, on_pairing_timeout, (bool success, bool has_peers), (override));
     MOCK_METHOD(esp_err_t, on_scan_requested, (), (override));
-    MOCK_METHOD(esp_err_t, on_channel_found, (bool is_hub, bool has_peers), (override));
-    MOCK_METHOD(esp_err_t, on_scan_failed, (bool pairing_active, bool has_peers), (override));
+    MOCK_METHOD(esp_err_t, on_channel_found, (), (override));
+    MOCK_METHOD(esp_err_t, on_scan_failed, (bool has_peers), (override));
 
     void set_state(NodeState s) { state_ = s; }
 

@@ -55,7 +55,7 @@ EspNowManager& EspNowManager::instance()
     static auto tx_fsm = std::make_unique<TxStateMachine>();
     static auto tx_manager = std::make_unique<TxManager>(*tx_fsm, *hal_wifi, *hal_freertos, *message_codec, 500);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *hal_timer);
-    static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager);
+    static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *hal_freertos);
     static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
 
     static EspNowManager instance(
@@ -192,15 +192,22 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
     // Load peers from storage and add them to ESP-NOW
     peer_manager_->load_peers_from_storage();
     etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
-    // If there are peers, we are in OPERATIONAL state, otherwise in PAIRING state
+
+    // NodeStateMachine decides the initial state based on peers presence
+    NodeState old_state = node_fsm_->get_state();
     node_fsm_->on_init(!peers.empty());
-    if (node_fsm_->get_state() == NodeState::OPERATIONAL) {
+    NodeState new_state = node_fsm_->get_state();
+
+    if (new_state == NodeState::OPERATIONAL) {
         add_peers_to_espnow(peers);
     }
 
-    // Update scanner with current channel
+    // React to the initial state transition
+    handle_state_transition(old_state, new_state);
+
+    // Update scanner and storage with current channel
     scanner_->set_channel(config_.wifi_channel);
-    storage_->store_channel(config.wifi_channel);
+    storage_->store_channel(config_.wifi_channel);
 
     ESP_LOGI(TAG, "EspNow component initialized successfully.");
     return ret;
@@ -257,22 +264,16 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
         return ESP_ERR_INVALID_STATE;
     }
 
-    // Store timeout for use when scan completes (NOTIFY_CHANNEL_FOUND or NOTIFY_SCAN_FAILED)
+    // Store timeout for use when pairing start or scan completes
     pairing_timeout_ms_ = timeout_ms;
 
-    // Only non-HUB nodes need to scan for the channel first.
-    // HUB is already on the correct channel and only needs to accept requests.
-    if (config_.node_type != ReservedTypes::HUB) {
-        // Non-HUB nodes need to scan for the channel first. Call to start scanning so the correct channel is discovered
-        // before pair requests are sent. Pairing starts after scan result arrives. pairing_manager_->start() is called
-        // from rx_task after the correct channel is confirmed.
-        scanner_->start_scan();
-        node_fsm_->on_scan_requested();
-    }
-    else {
-        // HUB can start accepting pair requests immediately since it doesn't need to discover the channel first.
-        pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
-        node_fsm_->on_pairing_requested();
+    NodeState old_state = node_fsm_->get_state();
+    bool has_peers = !peer_manager_->get_all().empty();
+    node_fsm_->on_pairing_requested(has_peers);
+    NodeState new_state = node_fsm_->get_state();
+
+    if (old_state != new_state) {
+        handle_state_transition(old_state, new_state);
     }
 
     return ESP_OK;
@@ -460,10 +461,10 @@ void EspNowManager::rx_task(void* arg)
                         // when SCANNING is sucessfull. The peer is add to the peer manager so we check if node
                         // has peer and call on_pairing_timeout.
                         // TODO: remove this after full refactor, pairing done is notified to rx_task
-                        if (!self->pairing_manager_->is_active()) {
-                            bool has_peers = !self->peer_manager_->get_all().empty();
-                            self->node_fsm_->on_pairing_timeout(has_peers);
-                        }
+                        // if (!self->pairing_manager_->is_active()) {
+                        //     bool has_peers = !self->peer_manager_->get_all().empty();
+                        //     self->node_fsm_->on_pairing_timeout(has_peers);
+                        // }
                     }
                 }
             }
@@ -473,10 +474,10 @@ void EspNowManager::rx_task(void* arg)
         // on_pairing_timeout is called before the scan is completed, the node will go to IDLE instead of
         // OPERATIONAL.
         // TODO: remove this after full refactor, pairing done is notified to rx_task
-        if (self->config_.node_type == ReservedTypes::HUB && !self->pairing_manager_->is_active()) {
-            bool has_peers = !self->peer_manager_->get_all().empty();
-            self->node_fsm_->on_pairing_timeout(has_peers);
-        }
+        // if (self->config_.node_type == ReservedTypes::HUB && !self->pairing_manager_->is_active()) {
+        //     bool has_peers = !self->peer_manager_->get_all().empty();
+        //     self->node_fsm_->on_pairing_timeout(has_peers);
+        // }
 
         // Tick submodules to handle timers
         NodeState current_state = self->node_fsm_->get_state();
@@ -595,43 +596,41 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
 {
     // If we receive NOTIFY_MAX_FAILURES from TxManager::tx_task()
     if ((notifications & NOTIFY_MAX_FAILURES) == NOTIFY_MAX_FAILURES) {
-        // Signal DiscoveryManager to start scanning
-        scanner_->start_scan();
-        // Signal FSM to handle NodeState
+        NodeState old_state = node_fsm_->get_state();
         node_fsm_->on_scan_requested();
+        handle_state_transition(old_state, node_fsm_->get_state());
     }
 
-    // NOTIFY_CHANNEL_FOUND is set by DiscoveryManager::discovery_tas()
+    // NOTIFY_CHANNEL_FOUND is set by DiscoveryManager::discovery_task()
     if ((notifications & NOTIFY_CHANNEL_FOUND) == NOTIFY_CHANNEL_FOUND) {
-        // Calls to scan stop if not stoped itself yet
-        scanner_->stop_scan();
         // Calls get_channel() to get the channel where the HUB was found
         config_.wifi_channel = scanner_->get_channel();
 
-        // Channel confirmed now safe to take actions
-        auto action =
-            node_fsm_->on_channel_found(config_.node_type == ReservedTypes::HUB, !peer_manager_->get_all().empty());
-
-        if (action == ChannelFoundAction::START_PAIRING) {
-            pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
-        }
-        else if (action == ChannelFoundAction::STORE_CHANNEL) {
-            storage_->store_channel(config_.wifi_channel);
-        }
+        NodeState old_state = node_fsm_->get_state();
+        node_fsm_->on_channel_found();
+        handle_state_transition(old_state, node_fsm_->get_state());
     }
 
     // NOTIFY_PAIRING_DONE is set by PairingManager::notify_rx_task_pairing_done()
     if ((notifications & NOTIFY_PAIRING_DONE) == NOTIFY_PAIRING_DONE) {
         bool has_peers = !peer_manager_->get_all().empty();
-        node_fsm_->on_pairing_timeout(has_peers);
+        // For now, we consider it a "success" if it's OPERATIONAL, but we could refine this
+        bool success = (node_fsm_->get_state() == NodeState::PAIRING && has_peers);
+
+        NodeState old_state = node_fsm_->get_state();
+        node_fsm_->on_pairing_timeout(success, has_peers);
+        handle_state_transition(old_state, node_fsm_->get_state());
     }
 
     // NOTIFY_SCAN_FAILED is set by DiscoveryManager::discovery_task()
     if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
-        node_fsm_->on_scan_failed(pairing_manager_->is_active(), !peer_manager_->get_all().empty());
+        bool has_peers = !peer_manager_->get_all().empty();
+        NodeState old_state = node_fsm_->get_state();
+        node_fsm_->on_scan_failed(has_peers);
+        handle_state_transition(old_state, node_fsm_->get_state());
     }
 
-    // NOTIFY_CHANNEL_CHANGED is set by on_channel_changed_cb()
+    // If NOTIFY_CHANNEL_CHANGED is set by on_channel_changed_cb()
     if ((notifications & NOTIFY_CHANNEL_CHANGED) == NOTIFY_CHANNEL_CHANGED) {
         uint8_t channel = last_found_channel_.load();
         config_.wifi_channel = channel;
@@ -713,7 +712,7 @@ esp_err_t EspNowManager::init_pairing_manager()
     if (pairing_manager_ == nullptr) {
         return ESP_FAIL;
     }
-    return pairing_manager_->init(config_.node_id, config_.node_type);
+    return pairing_manager_->init(config_.node_id, config_.node_type, rx_task_handle_);
 }
 
 esp_err_t EspNowManager::init_channel_monitor()
@@ -740,6 +739,48 @@ void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo>& peers)
         peer_info.ifidx = WIFI_IF_STA;
         peer_info.encrypt = false;
         hal_wifi_->hal_esp_now_add_peer(&peer_info);
+    }
+}
+
+void EspNowManager::handle_state_transition(NodeState old_state, NodeState new_state)
+{
+    if (old_state == new_state) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Reacting to state change: %d -> %d", static_cast<int>(old_state), static_cast<int>(new_state));
+
+    switch (new_state) {
+    case NodeState::PAIRING_SCAN:
+    case NodeState::RECOVERY_SCAN:
+        scanner_->start_scan();
+        break;
+
+    case NodeState::PAIRING:
+        if (scanner_->is_scanning()) {
+            scanner_->stop_scan();
+        }
+        pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
+        break;
+
+    case NodeState::OPERATIONAL:
+        if (scanner_->is_scanning()) {
+            scanner_->stop_scan();
+        }
+        // If we just rediscovered the channel, store it
+        if (old_state == NodeState::RECOVERY_SCAN || old_state == NodeState::PAIRING_SCAN) {
+            storage_->store_channel(config_.wifi_channel);
+        }
+        break;
+
+    case NodeState::IDLE:
+        if (scanner_->is_scanning()) {
+            scanner_->stop_scan();
+        }
+        break;
+
+    default:
+        break;
     }
 }
 
