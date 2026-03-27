@@ -214,6 +214,7 @@ void EspNowManager::deinit()
         tx_manager_->deinit();
     }
     if (heartbeat_manager_ != nullptr) {
+        // Deinit no more exists because heartbeat_manager_ uses tick() instead of freeRTOS timers
         // heartbeat_manager_->deinit();
     }
 
@@ -262,18 +263,18 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
     // Only non-HUB nodes need to scan for the channel first.
     // HUB is already on the correct channel and only needs to accept requests.
     if (config_.node_type != ReservedTypes::HUB) {
-        // Non-HUB nodes need to scan for the channel first.
-        // Force TxManager into scanning so the correct channel is discovered
-        // before pair requests are sent. Pairing starts after scan result arrives.
-        // pairing_manager_->start() is called from rx_task after the correct channel is confirmed.
-        // tx_manager_->notify_scanning(); //TODO: insert new discovery manager notify method
+        // Non-HUB nodes need to scan for the channel first. Call to start scanning so the correct channel is discovered
+        // before pair requests are sent. Pairing starts after scan result arrives. pairing_manager_->start() is called
+        // from rx_task after the correct channel is confirmed.
+        scanner_->start_scan();
+        node_fsm_->on_scan_requested();
     }
     else {
         // HUB can start accepting pair requests immediately since it doesn't need to discover the channel first.
         pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
+        node_fsm_->on_pairing_requested();
     }
 
-    node_fsm_->on_pairing_requested();
     return ESP_OK;
 }
 
@@ -458,6 +459,7 @@ void EspNowManager::rx_task(void* arg)
                         // A NODE ends its pairing time (!is_active) immediately when it receives a PAIR_RESPONSE
                         // when SCANNING is sucessfull. The peer is add to the peer manager so we check if node
                         // has peer and call on_pairing_timeout.
+                        // TODO: remove this after full refactor, pairing done is notified to rx_task
                         if (!self->pairing_manager_->is_active()) {
                             bool has_peers = !self->peer_manager_->get_all().empty();
                             self->node_fsm_->on_pairing_timeout(has_peers);
@@ -470,6 +472,7 @@ void EspNowManager::rx_task(void* arg)
         // Non_HUB cannot be handled here because the scanning process is not instantaneous and if
         // on_pairing_timeout is called before the scan is completed, the node will go to IDLE instead of
         // OPERATIONAL.
+        // TODO: remove this after full refactor, pairing done is notified to rx_task
         if (self->config_.node_type == ReservedTypes::HUB && !self->pairing_manager_->is_active()) {
             bool has_peers = !self->peer_manager_->get_all().empty();
             self->node_fsm_->on_pairing_timeout(has_peers);
@@ -500,22 +503,28 @@ void EspNowManager::rx_task(void* arg)
 
 void EspNowManager::on_channel_found_cb(uint8_t channel)
 {
-    last_found_channel_.store(channel);
-    hal_freertos_->task_notify(rx_task_handle_, NOTIFY_CHANNEL_FOUND, eSetBits);
+    // TODO: Not used anymore, DiscoveryManager::discovery_task() sends NOTIFY_CHANNEL_FOUND
+    // and DiscoveryManager::get_channel() is called to get the channel where the HUB was found
+    // last_found_channel_.store(channel);
+    // hal_freertos_->task_notify(rx_task_handle_, NOTIFY_CHANNEL_FOUND, eSetBits);
 }
 
 void EspNowManager::on_scan_failed_cb()
 {
-    hal_freertos_->task_notify(rx_task_handle_, NOTIFY_SCAN_FAILED, eSetBits);
+    // TODO: Not used anymore, NOTIFY_SCAN_FAILED called internally by discovery_task
+    // hal_freertos_->task_notify(rx_task_handle_, NOTIFY_SCAN_FAILED, eSetBits);
 }
 
 void EspNowManager::on_scan_started_cb()
 {
-    hal_freertos_->task_notify(rx_task_handle_, NOTIFY_START_SCAN, eSetBits);
+    // TODO: Not used anymore, EspNowManager handles scan started internally
+    // hal_freertos_->task_notify(rx_task_handle_, NOTIFY_START_SCAN, eSetBits);
 }
 
 void EspNowManager::on_channel_changed_cb(uint8_t channel)
 {
+    // TODO: Use this callback or pass the rx_task to ChannelMonitor, so it notify rx_task directly?
+    // implement get_channel() method in ChannelMonitor if we dont use this callback anymore
     last_found_channel_.store(channel);
     hal_freertos_->task_notify(rx_task_handle_, NOTIFY_CHANNEL_CHANGED, eSetBits);
 }
@@ -584,33 +593,44 @@ AppMessage EspNowManager::build_app_message(const DecodedPacket& decoded)
 
 void EspNowManager::handle_notifications(uint32_t notifications, bool& should_stop)
 {
-    // Entered scanning state — TxManager is actively searching for the HUB.
-    if ((notifications & NOTIFY_START_SCAN) == NOTIFY_START_SCAN) {
+    // If we receive NOTIFY_MAX_FAILURES from TxManager::tx_task()
+    if ((notifications & NOTIFY_MAX_FAILURES) == NOTIFY_MAX_FAILURES) {
+        // Signal DiscoveryManager to start scanning
+        scanner_->start_scan();
+        // Signal FSM to handle NodeState
         node_fsm_->on_scan_requested();
     }
-    // NOTIFY_CHANNEL_FOUND is set by on_channel_found_cb()
+
+    // NOTIFY_CHANNEL_FOUND is set by DiscoveryManager::discovery_tas()
     if ((notifications & NOTIFY_CHANNEL_FOUND) == NOTIFY_CHANNEL_FOUND) {
-        config_.wifi_channel = last_found_channel_.load();
-        // Channel confirmed now safe to start pairing if NodeState::PAIRING
-        NodeState current_state = node_fsm_->get_state();
-        if (current_state == NodeState::PAIRING || current_state == NodeState::SCANNING) {
-            if (config_.node_type != ReservedTypes::HUB) {
-                pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
-            }
+        // Calls to scan stop if not stoped itself yet
+        scanner_->stop_scan();
+        // Calls get_channel() to get the channel where the HUB was found
+        config_.wifi_channel = scanner_->get_channel();
+
+        // Channel confirmed now safe to take actions
+        auto action =
+            node_fsm_->on_channel_found(config_.node_type == ReservedTypes::HUB, !peer_manager_->get_all().empty());
+
+        if (action == ChannelFoundAction::START_PAIRING) {
+            pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
         }
-        // If we are in OPERATIONAL state, it means we have found the HUB
-        else if (current_state == NodeState::OPERATIONAL) {
+        else if (action == ChannelFoundAction::STORE_CHANNEL) {
             storage_->store_channel(config_.wifi_channel);
         }
-
-        // Let FSM decide next state after channel found
-        // TODO: on_channel_found(bool is_hub, bool has_peers), are we passing hardcoded is_hub value?
-        node_fsm_->on_channel_found(config_.node_type == ReservedTypes::HUB, !peer_manager_->get_all().empty());
     }
-    // NOTIFY_SCAN_FAILED is set by on_scan_failed_cb()
+
+    // NOTIFY_PAIRING_DONE is set by PairingManager::notify_rx_task_pairing_done()
+    if ((notifications & NOTIFY_PAIRING_DONE) == NOTIFY_PAIRING_DONE) {
+        bool has_peers = !peer_manager_->get_all().empty();
+        node_fsm_->on_pairing_timeout(has_peers);
+    }
+
+    // NOTIFY_SCAN_FAILED is set by DiscoveryManager::discovery_task()
     if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
         node_fsm_->on_scan_failed(pairing_manager_->is_active(), !peer_manager_->get_all().empty());
     }
+
     // NOTIFY_CHANNEL_CHANGED is set by on_channel_changed_cb()
     if ((notifications & NOTIFY_CHANNEL_CHANGED) == NOTIFY_CHANNEL_CHANGED) {
         uint8_t channel = last_found_channel_.load();
@@ -619,6 +639,7 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
         storage_->store_channel(channel);
         ESP_LOGI(TAG, "Channel changed to %d", channel);
     }
+
     // If NOTIFY_STOP is set, we break the loop and exit the task.
     if (notifications & NOTIFY_STOP) {
         should_stop = true;
@@ -674,16 +695,8 @@ esp_err_t EspNowManager::init_discovery_manager()
     if (scanner_ == nullptr) {
         return ESP_FAIL;
     }
-    esp_err_t ret;
-    if (config_.node_type == ReservedTypes::HUB) {
-        ret = scanner_->init(
-            config_.node_id, config_.node_type, rx_task_handle_, config_.priority_rx_task, config_.stack_size_rx_task);
-    }
-    else {
-        ret = scanner_->init(
-            config_.node_id, config_.node_type, rx_task_handle_, config_.priority_rx_task, config_.stack_size_rx_task);
-    }
-    return ret;
+    return scanner_->init(
+        config_.node_id, config_.node_type, rx_task_handle_, config_.priority_rx_task, config_.stack_size_rx_task);
 }
 
 esp_err_t EspNowManager::init_heartbeat_manager()

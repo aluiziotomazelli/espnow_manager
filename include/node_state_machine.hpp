@@ -21,7 +21,7 @@ public:
     esp_err_t on_pairing_requested() override;
     esp_err_t on_pairing_timeout(bool success) override;
     esp_err_t on_scan_requested() override;
-    esp_err_t on_channel_found(bool is_hub, bool has_peers) override;
+    ChannelFoundAction on_channel_found(bool is_hub, bool has_peers) override;
     esp_err_t on_scan_failed(bool is_pairing_active, bool has_peers) override;
 
 private:
