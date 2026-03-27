@@ -3,7 +3,7 @@
 | TEST NAME                 | STATUS | Lines   | Functions | Branchs |
 |---------------------------|--------|---------|-----------|---------|
 | test_espnow_driver        |  OK    |  100%   |   100%    |  100%   |
-| test_espnow_manager       |      |         |           |         |
+| test_espnow_manager       |        |         |           |         |
 | test_discovery_manager    |  OK    |  97.6%  |   100%    |  98.2%  |
 | test_heartbeat_manager    |  OK    |  100%   |   100%    |  100%   |
 | test_message_codec        |  OK    |  100%   |   100%    |  100%   |

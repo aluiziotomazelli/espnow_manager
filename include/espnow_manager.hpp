@@ -160,9 +160,6 @@ protected:
     TaskHandle_t rx_task_handle_ = nullptr;
 
     /** @brief IChannelObserver implementation */
-    void on_channel_found_cb(uint8_t channel) override;
-    void on_scan_failed_cb() override;
-    void on_scan_started_cb() override;
     void on_channel_changed_cb(uint8_t channel) override;
 
     // --- Private Methods ---

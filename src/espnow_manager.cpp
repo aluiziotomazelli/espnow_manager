@@ -502,26 +502,6 @@ void EspNowManager::rx_task(void* arg)
 // IChannelObserver implementation for DiscoveryManager callbacks
 // =========================================================================================
 
-void EspNowManager::on_channel_found_cb(uint8_t channel)
-{
-    // TODO: Not used anymore, DiscoveryManager::discovery_task() sends NOTIFY_CHANNEL_FOUND
-    // and DiscoveryManager::get_channel() is called to get the channel where the HUB was found
-    // last_found_channel_.store(channel);
-    // hal_freertos_->task_notify(rx_task_handle_, NOTIFY_CHANNEL_FOUND, eSetBits);
-}
-
-void EspNowManager::on_scan_failed_cb()
-{
-    // TODO: Not used anymore, NOTIFY_SCAN_FAILED called internally by discovery_task
-    // hal_freertos_->task_notify(rx_task_handle_, NOTIFY_SCAN_FAILED, eSetBits);
-}
-
-void EspNowManager::on_scan_started_cb()
-{
-    // TODO: Not used anymore, EspNowManager handles scan started internally
-    // hal_freertos_->task_notify(rx_task_handle_, NOTIFY_START_SCAN, eSetBits);
-}
-
 void EspNowManager::on_channel_changed_cb(uint8_t channel)
 {
     // TODO: Use this callback or pass the rx_task to ChannelMonitor, so it notify rx_task directly?
@@ -645,6 +625,48 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
     }
 }
 
+void EspNowManager::handle_state_transition(NodeState old_state, NodeState new_state)
+{
+    if (old_state == new_state) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Reacting to state change: %d -> %d", static_cast<int>(old_state), static_cast<int>(new_state));
+
+    switch (new_state) {
+    case NodeState::PAIRING_SCAN:
+    case NodeState::RECOVERY_SCAN:
+        scanner_->start_scan();
+        break;
+
+    case NodeState::PAIRING:
+        if (scanner_->is_scanning()) {
+            scanner_->stop_scan();
+        }
+        pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
+        break;
+
+    case NodeState::OPERATIONAL:
+        if (scanner_->is_scanning()) {
+            scanner_->stop_scan();
+        }
+        // If we just rediscovered the channel, store it
+        if (old_state == NodeState::RECOVERY_SCAN || old_state == NodeState::PAIRING_SCAN) {
+            storage_->store_channel(config_.wifi_channel);
+        }
+        break;
+
+    case NodeState::IDLE:
+        if (scanner_->is_scanning()) {
+            scanner_->stop_scan();
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
 // ==================================================================
 // Init helpers
 // ==================================================================
@@ -739,48 +761,6 @@ void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo>& peers)
         peer_info.ifidx = WIFI_IF_STA;
         peer_info.encrypt = false;
         hal_wifi_->hal_esp_now_add_peer(&peer_info);
-    }
-}
-
-void EspNowManager::handle_state_transition(NodeState old_state, NodeState new_state)
-{
-    if (old_state == new_state) {
-        return;
-    }
-
-    ESP_LOGI(TAG, "Reacting to state change: %d -> %d", static_cast<int>(old_state), static_cast<int>(new_state));
-
-    switch (new_state) {
-    case NodeState::PAIRING_SCAN:
-    case NodeState::RECOVERY_SCAN:
-        scanner_->start_scan();
-        break;
-
-    case NodeState::PAIRING:
-        if (scanner_->is_scanning()) {
-            scanner_->stop_scan();
-        }
-        pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
-        break;
-
-    case NodeState::OPERATIONAL:
-        if (scanner_->is_scanning()) {
-            scanner_->stop_scan();
-        }
-        // If we just rediscovered the channel, store it
-        if (old_state == NodeState::RECOVERY_SCAN || old_state == NodeState::PAIRING_SCAN) {
-            storage_->store_channel(config_.wifi_channel);
-        }
-        break;
-
-    case NodeState::IDLE:
-        if (scanner_->is_scanning()) {
-            scanner_->stop_scan();
-        }
-        break;
-
-    default:
-        break;
     }
 }
 

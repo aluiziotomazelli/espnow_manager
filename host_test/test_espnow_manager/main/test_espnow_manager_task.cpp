@@ -72,9 +72,6 @@ public:
         }
     }
 
-    void on_channel_found_cb(uint8_t ch) override { EspNowManager::on_channel_found_cb(ch); }
-    void on_scan_failed_cb() override { EspNowManager::on_scan_failed_cb(); }
-    void on_scan_started_cb() override { EspNowManager::on_scan_started_cb(); }
     void on_channel_changed_cb(uint8_t ch) override { EspNowManager::on_channel_changed_cb(ch); }
 
     std::optional<MessageHeader> get_last_header_ack() const { return last_header_requiring_ack_; }
@@ -233,76 +230,6 @@ protected:
         vTaskDelay(pdMS_TO_TICKS(delay_ms));
     }
 };
-
-// ===========================================================================
-// rx_task — NOTIFY_CHANNEL_FOUND
-// ===========================================================================
-
-TEST_F(EspNowManagerTaskTest, ChannelFoundStartsPairingForNode)
-{
-    init_and_wait();
-    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
-
-    EXPECT_CALL(*pairing_mgr_, start(_, _)).Times(1);
-
-    sut_->on_channel_found_cb(6);
-    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
-
-    EXPECT_EQ(sut_->get_node_state(), NodeState::PAIRING);
-}
-
-TEST_F(EspNowManagerTaskTest, ChannelFoundPersistsForHubInOperationalState)
-{
-    init_and_wait();
-    sut_->set_node_state_operational(); // Force OPERATIONAL
-
-    // For HUB in operational state, finding a channel (e.g. via internal scan if ever implemented or manual trigger)
-    // should trigger storage.
-    EXPECT_CALL(*storage_, store_channel(6)).Times(1);
-
-    sut_->on_channel_found_cb(6);
-    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
-}
-
-TEST_F(EspNowManagerTaskTest, ChannelFoundForOperationalNodeStoresChannel)
-{
-    // Test gap G: OPERATIONAL non-HUB node finding channel should store it
-    init_and_wait();
-    sut_->set_node_state_operational();
-
-    EXPECT_CALL(*storage_, store_channel(6)).Times(1);
-
-    sut_->on_channel_found_cb(6);
-    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
-}
-
-// ===========================================================================
-// rx_task — NOTIFY_SCAN_FAILED
-// ===========================================================================
-
-TEST_F(EspNowManagerTaskTest, ScanFailedSendsToPairingState)
-{
-    init_and_wait();
-    sut_->set_node_state_operational();
-
-    sut_->on_scan_failed_cb();
-    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
-
-    // SCAN_FAILED while in OPERATIONAL sends the node to PAIRING
-    // (Actual outcome depends on Mock setup or real FSM, but we test the delegation here)
-}
-
-// ===========================================================================
-// rx_task — NOTIFY_SCANNING
-// ===========================================================================
-
-TEST_F(EspNowManagerTaskTest, ScanStartedTransitionsToScanning)
-{
-    init_and_wait();
-
-    sut_->on_scan_started_cb();
-    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
-}
 
 // ===========================================================================
 // rx_task — NOTIFY_CHANNEL_CHANGED

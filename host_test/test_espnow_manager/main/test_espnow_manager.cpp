@@ -120,9 +120,6 @@ public:
         // If already OPERATIONAL, do nothing
     }
 
-    void on_channel_found_cb(uint8_t channel) { EspNowManager::on_channel_found_cb(channel); }
-    void on_scan_failed_cb() { EspNowManager::on_scan_failed_cb(); }
-    void on_scan_started_cb() { EspNowManager::on_scan_started_cb(); }
     void on_channel_changed_cb(uint8_t channel) { EspNowManager::on_channel_changed_cb(channel); }
 };
 
@@ -880,25 +877,15 @@ TEST_F(EspNowManagerTest, StartPairingNotOperationalReturnsInvalidState)
 
 TEST_F(EspNowManagerTest, StartPairingWithoutPeersTransitionsToPairingScan)
 {
-    // Init with no peers -> PAIRING_SCAN state
+    // Init with no peers -> PAIRING_SCAN state, then transition to OPERATIONAL
     init_sut();
-    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING_SCAN);
-    
-    // From PAIRING_SCAN, on_pairing_requested is not valid (only IDLE/OPERATIONAL can request pairing)
-    // We need to transition to IDLE first. Since on_scan_failed_cb() is deprecated,
-    // we manually trigger the state transition by calling handle_notifications indirectly.
-    // For this test, we'll use set_node_state_operational() then deinit to get to IDLE.
-    
-    // First, go to OPERATIONAL by simulating peers present
     sut_->set_node_state_operational();
     ASSERT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
-    
-    // Now deinit to go to UNINITIALIZED, then we need a different approach
-    // Actually, let's just test from OPERATIONAL state without peers
+
     // Mock peer_manager to return empty list (has_peers = false)
     etl::vector<PeerInfo, MAX_PEERS> empty_peers;
     ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(empty_peers));
-    
+
     // From OPERATIONAL without peers, request pairing -> PAIRING_SCAN
     EXPECT_CALL(*scanner_, start_scan()).Times(1);
     ASSERT_EQ(sut_->start_pairing(100), ESP_OK);

@@ -13,24 +13,6 @@ public:
     virtual ~IChannelObserver() = default;
 
     /**
-     * @brief Called when a Hub is discovered on a specific channel.
-     * @param channel The WiFi channel where the Hub was found.
-     */
-    virtual void on_channel_found_cb(uint8_t channel) = 0;
-
-    /**
-     * @brief Called when a channel scan fails to find any Hub.
-     */
-    virtual void on_scan_failed_cb() = 0;
-
-    /**
-     * @brief Called when a channel scan starts.
-     *
-     * This callback can be used to trigger any necessary actions on EspNowManager
-     */
-    virtual void on_scan_started_cb() = 0;
-
-    /**
      * @brief Called when the WiFi channel has changed.
      */
     virtual void on_channel_changed_cb(uint8_t new_channel) = 0;
