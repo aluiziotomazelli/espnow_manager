@@ -14,17 +14,17 @@ using ::testing::SetArgPointee;
 class MockPersistenceBackend : public IPersistenceBackend
 {
 public:
-    MOCK_METHOD(esp_err_t, load, (void *data, size_t size), (override));
-    MOCK_METHOD(esp_err_t, save, (const void *data, size_t size), (override));
+    MOCK_METHOD(esp_err_t, load, (void* data, size_t size), (override));
+    MOCK_METHOD(esp_err_t, save, (const void* data, size_t size), (override));
 };
 
 class StorageManagerTest : public ::testing::Test
 {
 protected:
-    MockPersistenceBackend *rtc_peer_mock;
-    MockPersistenceBackend *nvs_peer_mock;
-    MockPersistenceBackend *rtc_channel_mock;
-    MockPersistenceBackend *nvs_channel_mock;
+    MockPersistenceBackend* rtc_peer_mock;
+    MockPersistenceBackend* nvs_peer_mock;
+    MockPersistenceBackend* rtc_channel_mock;
+    MockPersistenceBackend* nvs_channel_mock;
     std::unique_ptr<StorageManager> manager;
 
     uint8_t channel = 0;
@@ -90,7 +90,7 @@ TEST_F(StorageManagerTest, ChannelLoadingFromRtcWhenValid)
     auto valid_data = create_valid_persistent_channel(6);
 
     // RTC returns valid data
-    ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -106,7 +106,7 @@ TEST_F(StorageManagerTest, ChannelLoadingFromNvsWhenRtcFails)
     auto valid_data = create_valid_persistent_channel(6);
 
     ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault(Return(ESP_FAIL));
-    EXPECT_CALL(*nvs_channel_mock, load(_, _)).WillOnce([&](void *data, size_t size) {
+    EXPECT_CALL(*nvs_channel_mock, load(_, _)).WillOnce([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -127,11 +127,11 @@ TEST_F(StorageManagerTest, ChannelLoadingInvalidMagicReturnsError)
     auto valid_data = create_valid_persistent_channel(6);
     valid_data.magic = 0xDEADBEEF;
 
-    ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
-    EXPECT_CALL(*nvs_channel_mock, load(_, _)).WillOnce([&](void *data, size_t size) {
+    EXPECT_CALL(*nvs_channel_mock, load(_, _)).WillOnce([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -143,11 +143,11 @@ TEST_F(StorageManagerTest, ChannelLoadingInvalidCrcReturnsError)
     auto valid_data = create_valid_persistent_channel(6);
     valid_data.crc = 0xDEADBEEF;
 
-    ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
-    EXPECT_CALL(*nvs_channel_mock, load(_, _)).WillOnce([&](void *data, size_t size) {
+    EXPECT_CALL(*nvs_channel_mock, load(_, _)).WillOnce([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -161,7 +161,7 @@ TEST_F(StorageManagerTest, ChannelLoadingFromNvsWithChannelSyncsRtc)
     // RTC fails to load data
     ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault(Return(ESP_FAIL));
     // NVS returns valid data
-    EXPECT_CALL(*nvs_channel_mock, load(_, _)).WillOnce([&](void *data, size_t size) {
+    EXPECT_CALL(*nvs_channel_mock, load(_, _)).WillOnce([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -186,7 +186,7 @@ TEST_F(StorageManagerTest, SaveSameChannelDoesNotSave)
     auto valid_data = create_valid_persistent_channel(6);
 
     // RTC returns the same channel
-    ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -197,8 +197,6 @@ TEST_F(StorageManagerTest, SaveSameChannelDoesNotSave)
 
 TEST_F(StorageManagerTest, SaveSameChannelButRtcFailsToLoadCallsSave)
 {
-    auto valid_data = create_valid_persistent_channel(6);
-
     // RTC fails to load data
     ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault(Return(ESP_FAIL));
 
@@ -224,7 +222,7 @@ TEST_F(StorageManagerTest, LoadPeersFromRtcWhenValid)
     auto valid_data = create_valid_persistent_peers(6);
 
     // RTC returns valid data
-    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -244,7 +242,7 @@ TEST_F(StorageManagerTest, LoadPeersFromNvsWhenRtcFails)
     ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault(Return(ESP_FAIL));
 
     // Fallback to NVS
-    EXPECT_CALL(*nvs_peer_mock, load(_, _)).WillOnce([&](void *data, size_t size) {
+    EXPECT_CALL(*nvs_peer_mock, load(_, _)).WillOnce([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -265,11 +263,11 @@ TEST_F(StorageManagerTest, LoadPeersInvalidMagicReturnsError)
     auto valid_data = create_valid_persistent_peers(6);
     valid_data.magic = 0xDEADBEEF;
 
-    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
-    EXPECT_CALL(*nvs_peer_mock, load(_, _)).WillOnce([&](void *data, size_t size) {
+    EXPECT_CALL(*nvs_peer_mock, load(_, _)).WillOnce([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -281,11 +279,11 @@ TEST_F(StorageManagerTest, LoadPeersInvalidVersionReturnsError)
     auto valid_data = create_valid_persistent_peers(6);
     valid_data.version = 0xDEAD;
 
-    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
-    EXPECT_CALL(*nvs_peer_mock, load(_, _)).WillOnce([&](void *data, size_t size) {
+    EXPECT_CALL(*nvs_peer_mock, load(_, _)).WillOnce([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -297,11 +295,11 @@ TEST_F(StorageManagerTest, LoadPeersInvalidCrcReturnsError)
     auto valid_data = create_valid_persistent_peers(6);
     valid_data.crc = 0xDEADBEEF;
 
-    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
-    EXPECT_CALL(*nvs_peer_mock, load(_, _)).WillOnce([&](void *data, size_t size) {
+    EXPECT_CALL(*nvs_peer_mock, load(_, _)).WillOnce([&](void* data, size_t size) {
         memcpy(data, &valid_data, size);
         return ESP_OK;
     });
@@ -324,7 +322,7 @@ TEST_F(StorageManagerTest, LoadTruncatesWhenDataExceedsVectorCapacity)
     // 2. Mock NVS to return this oversized data
     // RTC fails to force NVS path
     EXPECT_CALL(*rtc_peer_mock, load(_, _)).Times(1).WillOnce(Return(ESP_FAIL));
-    EXPECT_CALL(*nvs_peer_mock, load(_, _)).Times(1).WillOnce([&](void *data, size_t size) {
+    EXPECT_CALL(*nvs_peer_mock, load(_, _)).Times(1).WillOnce([&](void* data, size_t size) {
         memcpy(data, &oversized_peers_data, size);
         return ESP_OK;
     });
@@ -352,7 +350,7 @@ TEST_F(StorageManagerTest, LoadPeersFromNvsWithPeersSyncsRtc)
     // RTC fails to load data
     ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault(Return(ESP_FAIL));
     // NVS returns valid data
-    ON_CALL(*nvs_peer_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*nvs_peer_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &peers_data, size);
         return ESP_OK;
     });
@@ -384,7 +382,7 @@ TEST_F(StorageManagerTest, SaveSamePeersDoesNotSave)
     peers_data.crc = manager->calculate_crc(peers_data); // Calculate the CRC of the peers data
 
     // RTC returns the same PersistentPeers data
-    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &peers_data, size);
         return ESP_OK;
     });
@@ -401,7 +399,7 @@ TEST_F(StorageManagerTest, SaveSamePeersWithForceNvsCommitSavesToNvs)
     peers_data.crc = manager->calculate_crc(peers_data); // Calculate the CRC of the peers data
 
     // RTC returns the same PersistentPeers data
-    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
+    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
         memcpy(data, &peers_data, size);
         return ESP_OK;
     });
@@ -421,7 +419,7 @@ TEST_F(StorageManagerTest, SavePeersWithMorePeersThanMaxTruncatesPeersAtMax)
     peers_data.crc = manager->calculate_crc(peers_data);
 
     // Save via RTC
-    ON_CALL(*rtc_peer_mock, save(_, _)).WillByDefault([&](const void *data, size_t size) {
+    ON_CALL(*rtc_peer_mock, save(_, _)).WillByDefault([&](const void* data, size_t size) {
         memcpy(&peers_data, data, size);
         return ESP_OK;
     });
@@ -444,35 +442,3 @@ TEST_F(StorageManagerTest, SaveSamePeersButRtcFailsToLoadCallsSave)
     EXPECT_CALL(*nvs_peer_mock, save(_, _)).Times(1); // NVS is called because RTC failed to check if data is dirty
     EXPECT_EQ(ESP_OK, manager->store_peers(peers, false));
 }
-
-// // TEST_F(StorageManagerTest, LoadFromNvsWithPeersSyncsRtc)
-// // {
-// //     auto peers_to_save = create_test_peers(2);
-// //     PersistentData nvs_data = {};
-// //     nvs_data.magic = PersistentData::MAGIC;
-// //     nvs_data.version = PersistentData::VERSION;
-// //     nvs_data.wifi_channel = 11;
-// //     nvs_data.num_peers = 2;
-// //     nvs_data.peers[0] = peers_to_save[0];
-// //     nvs_data.peers[1] = peers_to_save[1];
-// //     nvs_data.crc = StorageManager::calculate_crc(nvs_data);
-
-// //     // First load from RTC will fail
-// //     ON_CALL(*rtc_mock, load(_, _)).WillByDefault(Return(ESP_FAIL));
-// //     // NVS returns valid data
-// //     ON_CALL(*nvs_mock, load(_, _)).WillByDefault([&](void *data, size_t size) {
-// //         memcpy(data, &nvs_data, size);
-// //         return ESP_OK;
-// //     });
-
-// //     // RTC must be synced with NVS
-// //     EXPECT_CALL(*rtc_mock, save(_, _)).Times(1);
-
-// //     uint8_t ch = 0;
-// //     etl::vector<PersistentPeer, MAX_PEERS> loaded;
-
-// //     ASSERT_EQ(ESP_OK, manager->load(ch, loaded));           // call load
-// //     EXPECT_EQ(11, ch);                                      // channel should be synced
-// //     ASSERT_EQ(2u, loaded.size());                           // peers should be synced
-// //     EXPECT_EQ(peers_to_save[0].node_id, loaded[0].node_id); // peers should be synced
-// // }
