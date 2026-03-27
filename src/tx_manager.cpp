@@ -20,8 +20,8 @@ TxManager::TxManager(
     , ack_timeout_ms_(ack_timeout_ms)
     , task_done_semaphore_(nullptr)
     , tx_queue_(nullptr)
-    , tx_task_handle_(nullptr)
     , ack_timeout_timer_(nullptr)
+    , tx_task_handle_(nullptr)
 {
 }
 

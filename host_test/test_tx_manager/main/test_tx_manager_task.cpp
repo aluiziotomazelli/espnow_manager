@@ -30,19 +30,18 @@ protected:
     std::unique_ptr<NiceMock<MockTxStateMachine>> fsm_owned;
     std::unique_ptr<NiceMock<MockWiFiHAL>> hal_owned;
     std::unique_ptr<NiceMock<MockMessageCodec>> codec_owned;
-    std::unique_ptr<NiceMock<MockDiscoveryManager>> scanner_owned;
 
     // Raw pointers to use in tests
     NiceMock<MockTxStateMachine>* fsm;
     NiceMock<MockWiFiHAL>* hal;
     NiceMock<MockMessageCodec>* codec;
-    NiceMock<MockDiscoveryManager>* scanner;
 
     RealFreeRTOSHAL freertos_hal;
     std::unique_ptr<TxManager> manager;
 
     TxState current_state = TxState::IDLE;
     std::optional<PendingAck> pending_ack = std::nullopt;
+    TaskHandle_t fake_rx_task = reinterpret_cast<TaskHandle_t>(0x6);
 
     uint32_t ack_timeout_ms = 50;
     uint32_t delay_ms = 20;
@@ -93,14 +92,15 @@ protected:
         // Codec defaults
         ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
 
-        // Scanner defaults — hub not found
-        ON_CALL(*scanner, start_scan()).WillByDefault(Return(IDiscoveryManager::ScanResult{1, false}));
-
         manager = std::make_unique<TxManager>(*fsm_owned, *hal_owned, freertos_hal, *codec_owned, ack_timeout_ms);
     }
 
     void TearDown() override
     {
+        if (real_rx_task_handle) {
+            vTaskDelete(real_rx_task_handle);
+            real_rx_task_handle = nullptr;
+        }
         manager->deinit();
         vTaskDelay(pdMS_TO_TICKS(50)); // give task time to exit cleanly
         manager.reset();               // destroy TxManager before mocks
@@ -110,8 +110,28 @@ protected:
     // Helper: init and give task time to start and block
     void init_and_wait()
     {
-        ASSERT_EQ(ESP_OK, manager->init(4096, 5));
+        ASSERT_EQ(ESP_OK, manager->init(4096, 5, fake_rx_task));
         vTaskDelay(pdMS_TO_TICKS(20));
+    }
+
+    bool rx_task_notified = false;
+    TaskHandle_t real_rx_task_handle = nullptr;
+    void make_real_rx_task()
+    {
+        xTaskCreate(
+            [](void* arg) {
+                auto* self = static_cast<TxManagerTaskTest*>(arg);
+                while (true) {
+                    if (xTaskNotifyWait(0, 0, nullptr, portMAX_DELAY)) {
+                        self->rx_task_notified = true;
+                    }
+                }
+            },
+            "RxTask",
+            2048,
+            this,
+            5,
+            &real_rx_task_handle);
     }
 
     // Helper: build a minimal DecodedTxPacket
@@ -206,6 +226,36 @@ TEST_F(TxManagerTaskTest, IdleStateNotifyPhysicalFailCallsFsmOnPhysicalFail)
 
     manager->notify_physical_fail();
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, OnPhysicalFailReturningTrueCallsNotifyMaxFailuresOnRxTask)
+{
+    make_real_rx_task();
+    ASSERT_EQ(ESP_OK, manager->init(4096, 5, real_rx_task_handle));
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    EXPECT_CALL(*fsm, on_physical_fail()).WillOnce(Return(true));
+
+    manager->notify_physical_fail();
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+
+    EXPECT_TRUE(rx_task_notified);
+}
+
+TEST_F(TxManagerTaskTest, NotifyStopStopsTaskAndCleansTheTaskHandle)
+{
+    init_and_wait();
+
+    // Get tx_task_handle
+    TaskHandle_t tx_task_handle = manager->get_task_handle();
+
+    // Manually notify the task to stop
+    xTaskNotify(tx_task_handle, NOTIFY_STOP, eSetBits);
+
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+
+    // Task should break, stop, clear resources and set task handle to null
+    EXPECT_EQ(nullptr, manager->get_task_handle());
 }
 
 // =============================================================================

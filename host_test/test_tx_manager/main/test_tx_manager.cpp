@@ -29,6 +29,7 @@ protected:
     SemaphoreHandle_t fake_semaphore = reinterpret_cast<SemaphoreHandle_t>(0x3);
     TaskHandle_t fake_task = reinterpret_cast<TaskHandle_t>(0x4);
     SemaphoreHandle_t fake_mutex = reinterpret_cast<SemaphoreHandle_t>(0x5);
+    TaskHandle_t fake_rx_task = reinterpret_cast<TaskHandle_t>(0x6);
 
     void SetUp() override
     {
@@ -74,7 +75,7 @@ protected:
 
 TEST_F(TxManagerTest, InitSetsTaskHandle)
 {
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
     ASSERT_EQ(fake_task, manager->get_task_handle());
     deinit_after_init();
 }
@@ -85,13 +86,18 @@ TEST_F(TxManagerTest, InitCallsAllCreateFunctions)
     EXPECT_CALL(freertos_hal, semaphore_create_binary()).Times(1);
     EXPECT_CALL(freertos_hal, timer_create(_, _, _, _, _)).Times(1);
     EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _)).Times(1);
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
+}
+
+TEST_F(TxManagerTest, InitWithoutRxTaskHandleFails)
+{
+    EXPECT_EQ(ESP_ERR_INVALID_ARG, manager->init(1000, 1, nullptr));
 }
 
 TEST_F(TxManagerTest, InitQueueCreationFailsReturnsError)
 {
     EXPECT_CALL(freertos_hal, queue_create(_, _)).Times(1).WillOnce(Return(nullptr));
-    EXPECT_EQ(ESP_ERR_NO_MEM, manager->init(1000, 1));
+    EXPECT_EQ(ESP_ERR_NO_MEM, manager->init(1000, 1, fake_rx_task));
 }
 
 TEST_F(TxManagerTest, InitSemaphoreCreationFailsReturnsErrorAndCallsDeinit)
@@ -99,7 +105,7 @@ TEST_F(TxManagerTest, InitSemaphoreCreationFailsReturnsErrorAndCallsDeinit)
     EXPECT_CALL(freertos_hal, semaphore_create_binary()).Times(1).WillOnce(Return(nullptr)); // Simulate error
     EXPECT_CALL(freertos_hal, queue_delete(_)).Times(1); // Must be called on deinit()
 
-    EXPECT_EQ(ESP_ERR_NO_MEM, manager->init(1000, 1));
+    EXPECT_EQ(ESP_ERR_NO_MEM, manager->init(1000, 1, fake_rx_task));
 }
 
 TEST_F(TxManagerTest, InitTimerCreationFailsReturnsError)
@@ -107,7 +113,7 @@ TEST_F(TxManagerTest, InitTimerCreationFailsReturnsError)
     EXPECT_CALL(freertos_hal, timer_create(_, _, _, _, _)).Times(1).WillOnce(Return(nullptr)); // Simulate error
     EXPECT_CALL(freertos_hal, queue_delete(_)).Times(1); // Must be called on deinit()
 
-    EXPECT_EQ(ESP_ERR_NO_MEM, manager->init(1000, 1));
+    EXPECT_EQ(ESP_ERR_NO_MEM, manager->init(1000, 1, fake_rx_task));
 }
 
 TEST_F(TxManagerTest, InitTaskCreationFailsReturnsError)
@@ -115,7 +121,7 @@ TEST_F(TxManagerTest, InitTaskCreationFailsReturnsError)
     EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _)).Times(1).WillOnce(Return(pdFAIL)); // Simulate error
     EXPECT_CALL(freertos_hal, queue_delete(_)).Times(1); // Must be called on deinit()
 
-    EXPECT_EQ(ESP_ERR_NO_MEM, manager->init(1000, 1));
+    EXPECT_EQ(ESP_ERR_NO_MEM, manager->init(1000, 1, fake_rx_task));
 }
 
 // ===================================================
@@ -124,24 +130,24 @@ TEST_F(TxManagerTest, InitTaskCreationFailsReturnsError)
 
 TEST_F(TxManagerTest, DeinitCallsAllDeleteFunctions)
 {
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
 
     EXPECT_CALL(freertos_hal, task_notify(fake_task, _, _)).Times(1);
     EXPECT_CALL(freertos_hal, queue_send(_, _, _)).Times(1);
     EXPECT_CALL(freertos_hal, semaphore_take(_, _)).Times(1);
     EXPECT_CALL(freertos_hal, task_delete(fake_task)).Times(1);
-    EXPECT_CALL(freertos_hal, semaphore_delete(_)).Times(2);
+    EXPECT_CALL(freertos_hal, semaphore_delete(_)).Times(1);
     EXPECT_CALL(freertos_hal, queue_delete(_)).Times(1);
     EXPECT_CALL(freertos_hal, timer_delete(_, _)).Times(1);
 
-    EXPECT_EQ(ESP_OK, manager->deinit());
+    manager->deinit();
 }
 
 TEST_F(TxManagerTest, DeinitWithoutTaskHandleDoesNotTryToDeleteTask)
 {
     ON_CALL(freertos_hal, task_create(_, _, _, _, _, _))
         .WillByDefault(DoAll(SetArgPointee<5>(nullptr), Return(pdPASS))); // Simulate no task handle
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
 
     // With task_handle the deinit
     EXPECT_CALL(freertos_hal, task_notify(_, _, _)).Times(0); // Does not try to notify taks
@@ -150,17 +156,17 @@ TEST_F(TxManagerTest, DeinitWithoutTaskHandleDoesNotTryToDeleteTask)
     EXPECT_CALL(freertos_hal, task_delete(_)).Times(0);       // Does not try to delete task
     EXPECT_CALL(freertos_hal, queue_delete(_)).Times(1);      // But still tries to delete queue
 
-    EXPECT_EQ(ESP_OK, manager->deinit());
+    manager->deinit();
 }
 
 TEST_F(TxManagerTest, FailToTakeSemaphoreStillDeletesTask)
 {
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
 
     EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillRepeatedly(Return(pdFAIL)); // Simulate semaphore take failure
     EXPECT_CALL(freertos_hal, task_delete(_)).Times(1);                             // But still tries to delete task
 
-    EXPECT_EQ(ESP_OK, manager->deinit());
+    manager->deinit();
 }
 
 // ===================================================
@@ -169,7 +175,7 @@ TEST_F(TxManagerTest, FailToTakeSemaphoreStillDeletesTask)
 
 TEST_F(TxManagerTest, NotifyPhysicalFailCallsTaskNotify)
 {
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
     EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_PHYSICAL_FAIL, _)).Times(1);
     manager->notify_physical_fail();
     deinit_after_init();
@@ -177,14 +183,14 @@ TEST_F(TxManagerTest, NotifyPhysicalFailCallsTaskNotify)
 
 TEST_F(TxManagerTest, NotifyLinKAliveCallsTaskNotify)
 {
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
     EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_LINK_ALIVE, _)).Times(1);
     manager->notify_link_alive();
 }
 
 TEST_F(TxManagerTest, NotifyLogicalAckCallsTaskNotify)
 {
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
     EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_LOGICAL_ACK, _)).Times(1);
     manager->notify_logical_ack();
 }
@@ -193,7 +199,7 @@ TEST_F(TxManagerTest, NotifyWithoutTaskHandleDoesNotCallTaskNotify)
 {
     ON_CALL(freertos_hal, task_create(_, _, _, _, _, _))
         .WillByDefault(DoAll(SetArgPointee<5>(nullptr), Return(pdPASS))); // Simulate no task handle
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
 
     EXPECT_CALL(freertos_hal, task_notify(_, _, _)).Times(0);
 
@@ -215,7 +221,7 @@ TEST_F(TxManagerTest, QueuePacketWithoutQueueReturnsError)
 
 TEST_F(TxManagerTest, QueuePacketCallsQueueSend)
 {
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));               // Initialize first
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task)); // Initialize first
     DecodedTxPacket packet = {};                             // Queue packet
     EXPECT_CALL(freertos_hal, queue_send(_, _, _)).Times(1); // Must call queue send
     EXPECT_EQ(ESP_OK, manager->queue_packet(packet));        // Queue packet
@@ -225,7 +231,7 @@ TEST_F(TxManagerTest, QueuePacketWithoutTaskHandleDoesNotTryToNotifyTask)
 {
     ON_CALL(freertos_hal, task_create(_, _, _, _, _, _))
         .WillByDefault(DoAll(SetArgPointee<5>(nullptr), Return(pdPASS))); // Simulate no task handle
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
 
     DecodedTxPacket packet = {};
     EXPECT_CALL(freertos_hal, task_notify(_, _, _)).Times(0); // Must not try to notify task
@@ -234,7 +240,7 @@ TEST_F(TxManagerTest, QueuePacketWithoutTaskHandleDoesNotTryToNotifyTask)
 
 TEST_F(TxManagerTest, QueueSendFailOnQueuePacketReturnsError)
 {
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1));
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
     DecodedTxPacket packet = {};
     ON_CALL(freertos_hal, queue_send(_, _, _)).WillByDefault(Return(pdFAIL)); // Simulate queue send failure
     EXPECT_EQ(ESP_FAIL, manager->queue_packet(packet));                       // Must return error
