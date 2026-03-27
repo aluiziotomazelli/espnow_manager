@@ -39,7 +39,7 @@ static constexpr NodeId kNodeId = 0x05;
 static constexpr NodeId kHubId = ReservedIds::HUB;
 static constexpr NodeType kNodeType = 0x02; // non-HUB
 static constexpr PayloadType kPayloadType = 0x02;
-static constexpr uint32_t delay_ms = 10;    // time to let tasks process
+static constexpr uint32_t delay_ms = 10; // time to let tasks process
 // Slightly longer than queue_receive timeout (100ms) to guarantee
 // the rx_dispatch_task has completed at least one full loop iteration
 // and processed any pending notifications.
@@ -519,23 +519,21 @@ TEST_F(EspNowManagerTaskTest, AckTimeoutTriggersRetryAndScanning)
     // STEP 1b: Setup peer MAC address for find_mac to return
     // This is required because send_data calls peer_manager_->find_mac()
     uint8_t peer_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
-    ON_CALL(*peer_mgr_, find_mac(kHubId, _))
-        .WillByDefault([peer_mac](NodeId, uint8_t *out_mac) {
-            memcpy(out_mac, peer_mac, 6);
-            return true;
-        });
+    ON_CALL(*peer_mgr_, find_mac(kHubId, _)).WillByDefault([peer_mac](NodeId, uint8_t *out_mac) {
+        memcpy(out_mac, peer_mac, 6);
+        return true;
+    });
 
     // STEP 2: Configure mock to simulate transmission failures
     // When queue_packet is called, notify TxManager of physical failure
     // This simulates the scenario where packet cannot be transmitted
     // Return ESP_OK to allow queuing, but notify_physical_fail triggers retry logic
-    EXPECT_CALL(*tx_mgr_, queue_packet(_))
-        .WillRepeatedly([this](const DecodedTxPacket &) {
-            // Simulate physical transmission failure (WiFi HAL fail)
-            // The packet is queued successfully, but transmission will fail
-            tx_mgr_->notify_physical_fail();
-            return ESP_OK;  // Queuing succeeded, transmission will fail asynchronously
-        });
+    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillRepeatedly([this](const DecodedTxPacket &) {
+        // Simulate physical transmission failure (WiFi HAL fail)
+        // The packet is queued successfully, but transmission will fail
+        tx_mgr_->notify_physical_fail();
+        return ESP_OK; // Queuing succeeded, transmission will fail asynchronously
+    });
 
     // STEP 3: Send packet REQUIRING ACK
     // This triggers the timeout/retry flow

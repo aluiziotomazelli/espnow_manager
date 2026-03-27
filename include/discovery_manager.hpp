@@ -29,6 +29,19 @@ public:
     void set_channel(uint8_t channel) override;
     uint8_t get_channel() const override { return current_channel_; };
 
+protected:
+    // Scan Probe helpers
+    esp_err_t send_scan_probe();
+    bool hub_was_found();
+    bool should_stop_scan();
+    MessageHeader make_probe_header();
+    esp_err_t scan_channel();
+
+    // Scan Response helpers
+    esp_err_t send_scan_response();
+    MessageHeader make_response_header();
+    TaskHandle_t get_task_handle() { return discovery_task_handle_; }
+
 private:
     // Dependencies
     IWiFiHAL& hal_wifi_;
@@ -42,16 +55,6 @@ private:
 
     TaskHandle_t rx_task_handle_ = nullptr;
 
-    // Scan Probe helpers
-    esp_err_t send_scan_probe();
-    bool hub_was_found();
-    bool should_stop_scan();
-    MessageHeader make_probe_header();
-    esp_err_t scan_channel();
-
-    // Scan Response helpers
-    esp_err_t send_scan_response();
-    MessageHeader make_response_header();
     NodeId destination_node_id_;
 
     void notify_rx_task(uint32_t notification);

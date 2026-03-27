@@ -123,21 +123,21 @@ void DiscoveryManager::discovery_task()
 
     while (!should_stop) {
         // Wait blocked for any notification
-        if (hal_freertos_.task_notify_wait(0, NOTIFY_ALL, &notifications, portMAX_DELAY) == pdPASS) {
-            if ((notifications & NOTIFY_STOP) == NOTIFY_STOP) {
-                should_stop = true;
+        hal_freertos_.task_notify_wait(0, NOTIFY_ALL, &notifications, portMAX_DELAY);
+
+        if ((notifications & NOTIFY_STOP) == NOTIFY_STOP) {
+            should_stop = true;
+        }
+        if ((notifications & NOTIFY_START_SCAN) == NOTIFY_START_SCAN) {
+            if (scan_channel() == ESP_OK) {
+                notify_rx_task(NOTIFY_CHANNEL_FOUND);
             }
-            if ((notifications & NOTIFY_START_SCAN) == NOTIFY_START_SCAN) {
-                if (scan_channel() == ESP_OK) {
-                    notify_rx_task(NOTIFY_CHANNEL_FOUND);
-                }
-                else {
-                    notify_rx_task(NOTIFY_SCAN_FAILED);
-                }
+            else {
+                notify_rx_task(NOTIFY_SCAN_FAILED);
             }
-            if ((notifications & NOTIFY_SCAN_RESPONSE) == NOTIFY_SCAN_RESPONSE) {
-                send_scan_response();
-            }
+        }
+        if ((notifications & NOTIFY_SCAN_RESPONSE) == NOTIFY_SCAN_RESPONSE) {
+            send_scan_response();
         }
     }
 
@@ -153,11 +153,6 @@ void DiscoveryManager::discovery_task()
 
 esp_err_t DiscoveryManager::scan_channel()
 {
-    if (!node_ready_) {
-        ESP_LOGE(TAG, "DiscoveryManager not initialized properly. Call init() before scan().");
-        return ESP_ERR_INVALID_STATE;
-    }
-
     ESP_LOGI(TAG, "Starting channel scan to find Hub.");
     is_scanning_.store(true);
     esp_err_t ret = ESP_FAIL;
@@ -168,17 +163,15 @@ esp_err_t DiscoveryManager::scan_channel()
         ESP_LOGD(TAG, "Scanning channel %d", channel);
 
         // Set wifi channel to make probes attempts on this channel
-        ret = hal_wifi_.wifi_set_channel(channel);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to set WiFi channel to %d: %s", channel, esp_err_to_name(ret));
+        if (hal_wifi_.wifi_set_channel(channel) != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to set WiFi channel to %d", channel);
             continue;
         }
 
         // We made SCAN_CHANNEL_ATTEMPTS per channel
         for (uint8_t attempt = 0; attempt < SCAN_CHANNEL_ATTEMPTS && ret != ESP_OK; attempt++) {
             // Send probe on channel
-            ret = send_scan_probe();
-            if (ret != ESP_OK) {
+            if (send_scan_probe() != ESP_OK) {
                 continue;
             }
 
@@ -229,24 +222,15 @@ MessageHeader DiscoveryManager::make_probe_header()
 bool DiscoveryManager::hub_was_found()
 {
     uint32_t notifications = 0;
-    if (hal_freertos_.task_notify_wait(0, NOTIFY_LINK_ALIVE, &notifications, pdMS_TO_TICKS(SCAN_CHANNEL_TIMEOUT_MS)) ==
-        pdPASS) {
-        if ((notifications & NOTIFY_LINK_ALIVE) == NOTIFY_LINK_ALIVE) {
-            return true;
-        }
-    }
-    return false;
+    hal_freertos_.task_notify_wait(0, NOTIFY_LINK_ALIVE, &notifications, pdMS_TO_TICKS(SCAN_CHANNEL_TIMEOUT_MS));
+    return (notifications & NOTIFY_LINK_ALIVE) == NOTIFY_LINK_ALIVE;
 }
 
 bool DiscoveryManager::should_stop_scan()
 {
     uint32_t notifications = 0;
-    if (hal_freertos_.task_notify_wait(0, NOTIFY_STOP_SCAN, &notifications, 0) == pdPASS) {
-        if ((notifications & NOTIFY_STOP_SCAN) == NOTIFY_STOP_SCAN) {
-            return true;
-        }
-    }
-    return false;
+    hal_freertos_.task_notify_wait(0, NOTIFY_STOP_SCAN, &notifications, 0);
+    return (notifications & NOTIFY_STOP_SCAN) == NOTIFY_STOP_SCAN;
 }
 
 void DiscoveryManager::notify_rx_task(uint32_t notification)
