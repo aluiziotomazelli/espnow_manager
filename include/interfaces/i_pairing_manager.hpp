@@ -19,7 +19,7 @@ public:
     virtual ~IPairingManager() = default;
 
     /** @internal */
-    virtual esp_err_t init(NodeId id, NodeType type) = 0;
+    virtual esp_err_t init(NodeId id, NodeType type, TaskHandle_t rx_task_handle) = 0;
 
     /** @internal */
     template <
@@ -28,9 +28,9 @@ public:
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
 
-    esp_err_t init(T1 type, T2 id)
+    esp_err_t init(T1 type, T2 id, TaskHandle_t rx_task_handle)
     {
-        return init(static_cast<NodeId>(id), static_cast<NodeType>(type));
+        return init(static_cast<NodeId>(id), static_cast<NodeType>(type), rx_task_handle);
     }
 
     virtual void tick(uint64_t now_ms) = 0;
@@ -42,8 +42,8 @@ public:
     virtual bool is_active() const = 0;
 
     /** @internal */
-    virtual void handle_request(const DecodedPacket &decoded) = 0;
+    virtual void handle_request(const DecodedPacket& decoded) = 0;
 
     /** @internal */
-    virtual void handle_response(const DecodedPacket &decoded) = 0;
+    virtual void handle_response(const DecodedPacket& decoded) = 0;
 };

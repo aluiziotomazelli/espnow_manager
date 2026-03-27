@@ -8,18 +8,20 @@
 #include "pairing_manager.hpp"
 #include "protocol_types.hpp"
 
-static const char *TAG = "PairingMgr";
+static const char* TAG = "PairingMgr";
 
-PairingManager::PairingManager(ITxManager &tx_mgr, IPeerManager &peer_mgr)
+PairingManager::PairingManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, IFreeRTOSHAL& hal_freertos)
     : tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
+    , hal_freertos_(hal_freertos)
 {
 }
 
-esp_err_t PairingManager::init(NodeId id, NodeType type)
+esp_err_t PairingManager::init(NodeId id, NodeType type, TaskHandle_t rx_task_handle)
 {
     my_id_ = id;
     my_type_ = type;
+    rx_task_handle_ = rx_task_handle;
     is_initialized_ = true;
     return ESP_OK;
 }
@@ -33,6 +35,7 @@ void PairingManager::tick(uint64_t now_ms)
     if (now_ms - started_at_ms_ >= timeout_ms_) {
         is_active_ = false;
         ESP_LOGI(TAG, "Pairing timed out.");
+        notify_rx_task_pairing_done();
         return;
     }
     if (my_type_ != ReservedTypes::HUB && now_ms - last_request_ms_ >= periodic_interval_ms_) {
@@ -59,7 +62,7 @@ esp_err_t PairingManager::start(uint32_t timeout_ms, uint64_t now_ms)
     return ESP_OK;
 }
 
-void PairingManager::handle_request(const DecodedPacket &decoded)
+void PairingManager::handle_request(const DecodedPacket& decoded)
 {
     // Only initialized and  active pairing session processes requests
     if (!is_initialized_ || !is_active_) {
@@ -70,9 +73,9 @@ void PairingManager::handle_request(const DecodedPacket &decoded)
         return;
     }
 
-    const MessageHeader &header = decoded.header;
+    const MessageHeader& header = decoded.header;
     // PairRequest is packed — safe to reinterpret raw data directly
-    const PairRequest *req = reinterpret_cast<const PairRequest *>(decoded.raw.data);
+    const PairRequest* req = reinterpret_cast<const PairRequest*>(decoded.raw.data);
 
     ESP_LOGI(TAG, "Pair request from Node ID %d", (int)header.sender_node_id);
 
@@ -105,7 +108,7 @@ void PairingManager::handle_request(const DecodedPacket &decoded)
     tx_mgr_.queue_packet(tx_packet);
 }
 
-void PairingManager::handle_response(const DecodedPacket &decoded)
+void PairingManager::handle_response(const DecodedPacket& decoded)
 {
     // Only initialized and active pairing session processes requests
     if (!is_initialized_ || !is_active_) {
@@ -116,11 +119,12 @@ void PairingManager::handle_response(const DecodedPacket &decoded)
         return;
     }
 
-    const PairResponse *resp = reinterpret_cast<const PairResponse *>(decoded.raw.data);
+    const PairResponse* resp = reinterpret_cast<const PairResponse*>(decoded.raw.data);
     if (resp->status == PairStatus::ACCEPTED) {
         ESP_LOGI(TAG, "Pairing accepted by Hub");
         peer_mgr_.add(decoded.header.sender_node_id, decoded.raw.src_mac, decoded.header.sender_type);
         is_active_ = false;
+        notify_rx_task_pairing_done();
     }
 }
 
@@ -149,4 +153,11 @@ void PairingManager::send_pair_request()
 bool PairingManager::is_active() const
 {
     return is_active_;
+}
+
+void PairingManager::notify_rx_task_pairing_done()
+{
+    if (rx_task_handle_ != nullptr) {
+        hal_freertos_.task_notify(rx_task_handle_, NOTIFY_PAIRING_DONE, eSetBits);
+    }
 }
