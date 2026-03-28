@@ -3,6 +3,11 @@
 // Task-based tests — real FreeRTOS tasks are created by EspNowManager::init()
 // via the injected RealFreeRTOSHAL. All hardware-dependent components
 // (WiFi, Timer, ESP-NOW driver) remain mocked since the host has no hardware.
+//
+// NodeStateMachine is also mocked (MockNodeStateMachine) — the mock constructor
+// registers ON_CALL defaults that mirror real FSM transitions, so state advances
+// naturally without needing the real implementation. Individual tests can
+// override specific ON_CALL entries when they need non-default behaviour.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -13,20 +18,19 @@
 #include "mock_heartbeat_manager.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_message_router.hpp"
+#include "mock_node_state_machine.hpp"
 #include "mock_pairing_manager.hpp"
 #include "mock_peer_manager.hpp"
-#include "mock_tx_manager.hpp"
-#include "mock_tx_state_machine.hpp"
-#include "node_state_machine.hpp"
 #include "mock_storage_manager.hpp"
 #include "mock_channel_monitor.hpp"
+#include "mock_tx_manager.hpp"
+#include "mock_tx_state_machine.hpp"
 #include "hal_real_freertos.hpp"
 
 #include "espnow_manager.hpp"
 #include "protocol_types.hpp"
 
 using ::testing::_;
-using ::testing::AnyNumber;
 using ::testing::AtLeast;
 using ::testing::NiceMock;
 using ::testing::Return;
@@ -34,22 +38,21 @@ using ::testing::Return;
 // ---------------------------------------------------------------------------
 // Test constants
 // ---------------------------------------------------------------------------
-
 static constexpr NodeId kNodeId = 0x05;
 static constexpr NodeId kHubId = ReservedIds::HUB;
 static constexpr NodeType kNodeType = 0x02; // non-HUB
 static constexpr PayloadType kPayloadType = 0x02;
-static constexpr uint32_t delay_ms = 10; // time to let tasks process
+static constexpr uint32_t delay_ms = 10;
+
 // Slightly longer than queue_receive timeout (100ms) to guarantee
-// the rx_dispatch_task has completed at least one full loop iteration
-// and processed any pending notifications.
-// Must be > pdMS_TO_TICKS(100) — the queue_receive timeout in rx_dispatch_task
+// the rx_task has completed at least one full loop iteration and
+// processed any pending notifications.
 static constexpr uint32_t notify_delay_ms = 105;
 
 static constexpr uint8_t rx_queue_length = 30;
 
 // ---------------------------------------------------------------------------
-// Testable subclass — exposes protected callbacks for direct test invocation
+// Testable subclass — exposes internal handles for direct test manipulation
 // ---------------------------------------------------------------------------
 class EspNowManagerTestable : public EspNowManager
 {
@@ -57,36 +60,20 @@ public:
     using EspNowManager::ack_mutex_;
     using EspNowManager::EspNowManager;
     using EspNowManager::node_fsm_;
-
-    void set_node_state_operational()
-    {
-        if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
-            node_fsm_->on_init(true);
-        }
-        else if (node_fsm_->get_state() == NodeState::PAIRING) {
-            node_fsm_->on_pairing_timeout(true);
-        }
-        else if (node_fsm_->get_state() == NodeState::IDLE) {
-            node_fsm_->on_pairing_requested();
-            node_fsm_->on_pairing_timeout(true);
-        }
-    }
-
-    void on_channel_changed_cb(uint8_t ch) override { EspNowManager::on_channel_changed_cb(ch); }
-
-    std::optional<MessageHeader> get_last_header_ack() const { return last_header_requiring_ack_; }
-
-    // Expose protected members for testing
     using EspNowManager::rx_queue_handle_;
     using EspNowManager::rx_task_handle_;
+
+    std::optional<MessageHeader> get_last_header_ack() const { return last_header_requiring_ack_; }
 };
 
 // ---------------------------------------------------------------------------
 // Fixture
 //
 // RealFreeRTOSHAL is injected so EspNowManager::init() creates real tasks,
-// queues and mutex via create_task(), create_queue(), create_mutex().
-// All other dependencies remain mocked.
+// queues and mutex. MockNodeStateMachine is used instead of the real FSM —
+// its constructor registers ON_CALL defaults that mirror real transitions,
+// so tests that call  node_fsm_->set_state(nodestate::operational);() or trigger notifications
+// get realistic state progression without depending on the real FSM.
 //
 // TearDown calls deinit() which signals tasks to stop and waits up to 1s
 // for graceful exit before force-deleting them.
@@ -94,7 +81,6 @@ public:
 class EspNowManagerTaskTest : public ::testing::Test
 {
 protected:
-    // Raw pointers for test access — owned by sut_
     NiceMock<MockStorageManager>* storage_;
     NiceMock<MockEspNowDriver>* driver_;
     NiceMock<MockTimerHAL>* hal_timer_;
@@ -108,9 +94,11 @@ protected:
     NiceMock<MockHeartbeatManager>* heartbeat_mgr_;
     NiceMock<MockPairingManager>* pairing_mgr_;
     NiceMock<MockMessageRouter>* message_router_;
-    INodeStateMachine* node_fsm_;
+    NiceMock<MockNodeStateMachine>* node_fsm_;
 
     std::unique_ptr<EspNowManagerTestable> sut_;
+
+    QueueHandle_t app_queue_handle;
 
     void SetUp() override
     {
@@ -127,9 +115,8 @@ protected:
         auto heartbeat_mgr = std::make_unique<NiceMock<MockHeartbeatManager>>();
         auto pairing_mgr = std::make_unique<NiceMock<MockPairingManager>>();
         auto message_router = std::make_unique<NiceMock<MockMessageRouter>>();
-        auto node_fsm = std::make_unique<NodeStateMachine>();
+        auto node_fsm = std::make_unique<NiceMock<MockNodeStateMachine>>();
 
-        // Save raw pointers before ownership is transferred to sut_
         storage_ = storage.get();
         driver_ = driver.get();
         hal_timer_ = hal_timer.get();
@@ -143,36 +130,35 @@ protected:
         heartbeat_mgr_ = heartbeat_mgr.get();
         pairing_mgr_ = pairing_mgr.get();
         message_router_ = message_router.get();
-        node_fsm_ = node_fsm.get(); // Save raw pointer to the real NodeStateMachine
+        node_fsm_ = node_fsm.get();
 
-        // EspNowDriver succeeds by default — no real WiFi needed on host
+        // EspNowDriver succeeds — no real WiFi on host
         ON_CALL(*driver_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*driver_, deinit()).WillByDefault(Return(ESP_OK));
 
-        // storage: load_channel succeeds by default
+        // Storage defaults
         ON_CALL(*storage_, load_channel(_)).WillByDefault(Return(ESP_OK));
         ON_CALL(*storage_, store_channel(_)).WillByDefault(Return(ESP_OK));
 
-        // peer_mgr: empty list by default — node starts in PAIRING
+        // peer_mgr: empty list → init transitions to PAIRING_SCAN
         ON_CALL(*peer_mgr_, load_peers_from_storage()).WillByDefault(Return(ESP_OK));
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
-        // submodule inits succeed by default
+        // Submodule inits succeed
         ON_CALL(*tx_mgr_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*scanner_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*pairing_mgr_, init(_, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*pairing_mgr_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*channel_monitor_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(nullptr));
 
-        // hal_timer_: get_time_ms() is called by rx_task via tick()
+        // Timer: get_time_us() called by rx_task via tick()
         ON_CALL(*hal_timer_, get_time_us()).WillByDefault(Return(0));
 
         sut_ = std::make_unique<EspNowManagerTestable>(
             std::move(storage),
             std::move(hal_wifi),
             std::move(hal_timer),
-            // RealFreeRTOSHAL — creates real tasks, queues and mutex in init()
-            std::make_unique<RealFreeRTOSHAL>(),
+            std::make_unique<RealFreeRTOSHAL>(), // real FreeRTOS — creates actual tasks
             std::move(driver),
             std::move(peer_mgr),
             std::move(codec),
@@ -188,14 +174,20 @@ protected:
 
     void TearDown() override
     {
+        if (sut_->rx_queue_handle_ != nullptr) {
+            xQueueReset(sut_->rx_queue_handle_); // drena pacotes pendentes
+        }
         sut_->deinit();
-        // Give tasks time to exit cleanly after deinit() signals stop
         vTaskDelay(pdMS_TO_TICKS(delay_ms));
-        sut_.reset(); // destroy SUT before mocks
+        sut_.reset();
+        if (app_queue_handle != nullptr) {
+            vQueueDelete(app_queue_handle);
+            app_queue_handle = nullptr;
+        }
     }
 
     // -----------------------------------------------------------------------
-    // Helper: init sut_ with a valid config and give tasks time to start.
+    // Helper: init with a valid non-HUB config and let tasks start
     // -----------------------------------------------------------------------
     void init_and_wait()
     {
@@ -203,11 +195,11 @@ protected:
         cfg.node_id = kNodeId;
         cfg.node_type = kNodeType;
         cfg.wifi_channel = 1;
-        QueueHandle_t q = xQueueCreate(10, sizeof(AppMessage)); // app queue
-        if (q == nullptr) {
+        app_queue_handle = xQueueCreate(10, sizeof(AppMessage));
+        if (app_queue_handle == nullptr) {
             ADD_FAILURE() << "xQueueCreate failed for app_rx_queue";
         }
-        cfg.app_rx_queue = q;
+        cfg.app_rx_queue = app_queue_handle;
         cfg.rx_queue_length = rx_queue_length;
         cfg.stack_size_rx_task = 2048;
         cfg.priority_rx_task = 5;
@@ -216,18 +208,26 @@ protected:
 
         esp_err_t err = sut_->init(cfg);
         if (err != ESP_OK) {
-            ADD_FAILURE() << "sut_->init(cfg) failed with error: " << esp_err_to_name(err) << " (0x" << std::hex << err
-                          << ")";
+            ADD_FAILURE() << "sut_->init(cfg) failed: " << esp_err_to_name(err);
         }
-        vTaskDelay(pdMS_TO_TICKS(delay_ms)); // let tasks start and block
+        vTaskDelay(pdMS_TO_TICKS(delay_ms));
     }
 
+    // -----------------------------------------------------------------------
+    // Helper: enqueue a minimal RxPacket and wait for the rx_task to process it
+    // -----------------------------------------------------------------------
     void receive_valid_rx_packet()
     {
         RxPacket packet{};
-        packet.len = sizeof(MessageHeader) + 1;
+        packet.len = sizeof(MessageHeader) + CRC_SIZE;
+        // packet.len = sizeof(MessageHeader) + 1;
         xQueueSend(sut_->rx_queue_handle_, &packet, 0);
-        vTaskDelay(pdMS_TO_TICKS(delay_ms));
+        vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+    }
+
+    void send_notification_to_rx_task(uint32_t notification)
+    {
+        xTaskNotify(sut_->rx_task_handle_, notification, eSetBits);
     }
 };
 
@@ -240,123 +240,244 @@ TEST_F(EspNowManagerTaskTest, ChannelChangedUpdatesConfigAndStorage)
     init_and_wait();
 
     uint8_t new_channel = 11;
+    // On channel change notification, EspNowManager updates its channel getting the new channel from ChannelMonitor
+    ON_CALL(*channel_monitor_, get_wifi_channel()).WillByDefault(Return(new_channel));
+
     EXPECT_CALL(*storage_, store_channel(new_channel)).Times(1);
     EXPECT_CALL(*scanner_, set_channel(new_channel)).Times(1);
 
-    sut_->on_channel_changed_cb(new_channel);
+    // ChannelMonitor send a direct to task notification when detects a channel change
+    send_notification_to_rx_task(NOTIFY_CHANNEL_CHANGED);
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
 }
 
 // ===========================================================================
-// rx_task — tick() called when PAIRING
+// rx_task — tick() behaviour per NodeState
 // ===========================================================================
 
-TEST_F(EspNowManagerTaskTest, RxTaskCallsSubmoduleTicks)
+TEST_F(EspNowManagerTaskTest, RxTaskCallsPairingTickWhenPairing)
 {
     init_and_wait();
+    // After init with no peers: PAIRING_SCAN
+    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING_SCAN);
+
+    // Advance to PAIRING so pairing_mgr_->tick() is exercised
+    sut_->node_fsm_->on_channel_found(); // PAIRING_SCAN → PAIRING
     ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
 
-    // tick() is called every loop iteration when NodeState == PAIRING.
     EXPECT_CALL(*pairing_mgr_, tick(_)).Times(AtLeast(1));
     EXPECT_CALL(*channel_monitor_, tick(_)).Times(AtLeast(1));
-
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
 }
 
-// ===========================================================================
-// rx_task — tick() NOT called when OPERATIONAL
-// ===========================================================================
+TEST_F(EspNowManagerTaskTest, RxTaskCallsChannelMonitorTickWhenPairingScan)
+{
+    init_and_wait();
+    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING_SCAN);
+
+    // pairing_mgr_->tick() must NOT be called — pairing hasn't started yet
+    EXPECT_CALL(*pairing_mgr_, tick(_)).Times(0);
+    EXPECT_CALL(*channel_monitor_, tick(_)).Times(AtLeast(1));
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+}
+
+TEST_F(EspNowManagerTaskTest, RxTaskCallsHeartbeatTickWhenOperational)
+{
+    init_and_wait();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+
+    ASSERT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
+
+    // Let rx_task complete one full loop from the PAIRING_SCAN phase first
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+    ::testing::Mock::VerifyAndClearExpectations(heartbeat_mgr_);
+    ::testing::Mock::VerifyAndClearExpectations(pairing_mgr_);
+
+    EXPECT_CALL(*heartbeat_mgr_, tick(_)).Times(AtLeast(1));
+    EXPECT_CALL(*pairing_mgr_, tick(_)).Times(0);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+}
 
 TEST_F(EspNowManagerTaskTest, RxTaskDoesNotCallPairingTickWhenOperational)
 {
     init_and_wait();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
-    // 1. Transition to OPERATIONAL
-    sut_->set_node_state_operational();
-
-    // Give plenty of time for the rx_task to finish its 100ms queue_receive and see the state change
+    // Wait for rx_task to complete the queue_receive timeout and observe new state
     vTaskDelay(pdMS_TO_TICKS(500));
-
-    // Clear expectations from the PAIRING phase during init_and_wait
     ::testing::Mock::VerifyAndClearExpectations(pairing_mgr_);
 
-    // 4. Now verify it stays at 0
     EXPECT_CALL(*pairing_mgr_, tick(_)).Times(0);
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
 }
 
 // ===========================================================================
-// rx_task — HUB pairing timeout handling
+// rx_task — NOTIFY_PAIRING_DONE
 // ===========================================================================
 
-TEST_F(EspNowManagerTaskTest, HubPairingTimeoutTransitionsState)
+TEST_F(EspNowManagerTaskTest, PairingDoneWithNoPeersTransitionsToIdle)
 {
-    // Test gap E: HUB pairing timeout branch in rx_task (lines 474-476)
-    // Initialize as HUB
-    EspNowConfig cfg{};
-    cfg.node_id = ReservedIds::HUB;
-    cfg.node_type = ReservedTypes::HUB;
-    cfg.wifi_channel = 1;
-    QueueHandle_t q = xQueueCreate(10, sizeof(AppMessage));
-    ASSERT_NE(q, nullptr);
-    cfg.app_rx_queue = q;
-    cfg.rx_queue_length = rx_queue_length;
-    cfg.stack_size_rx_task = 2048;
-    cfg.priority_rx_task = 5;
-    cfg.stack_size_tx_task = 2048;
-    cfg.priority_tx_task = 5;
+    init_and_wait();
 
-    ASSERT_EQ(sut_->init(cfg), ESP_OK);
-    vTaskDelay(pdMS_TO_TICKS(delay_ms));
-
-    // Start pairing (HUB doesn't need to scan)
-    EXPECT_EQ(sut_->start_pairing(100), ESP_OK); // Short timeout
+    // Advance to PAIRING so on_pairing_timeout is valid
+    sut_->node_fsm_->on_channel_found(); // PAIRING_SCAN → PAIRING
     ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
 
-    // Wait for pairing to timeout (pairing_mgr_->is_active() returns false after timeout)
-    // The rx_task checks HUB pairing timeout at lines 474-476
-    vTaskDelay(pdMS_TO_TICKS(150));
+    // No peers — pairing failed
+    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
-    // After timeout with no peers, should transition to IDLE
-    // Note: This test verifies the rx_task loop processes HUB pairing timeout
-    NodeState state = sut_->get_node_state();
-    EXPECT_TRUE(state == NodeState::IDLE || state == NodeState::PAIRING);
+    xTaskNotify(sut_->rx_task_handle_, NOTIFY_PAIRING_DONE, eSetBits);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+
+    EXPECT_EQ(sut_->get_node_state(), NodeState::IDLE);
 }
 
-// ===========================================================================
-// RxPackets tests
-// ===========================================================================
-
-TEST_F(EspNowManagerTaskTest, RxDispatchDoesNotRouteInvalidCrcPackets)
+TEST_F(EspNowManagerTaskTest, PairingDoneWithPeersTransitionsToOperational)
 {
     init_and_wait();
 
-    // codec must validate CRC and decode header successfully
-    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(false));
+    sut_->node_fsm_->on_channel_found(); // PAIRING_SCAN → PAIRING
+    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
 
-    EXPECT_CALL(*message_router_, handle_packet(_)).Times(0); // No packet should be routed
+    // Has peers — pairing succeeded
+    etl::vector<PeerInfo, MAX_PEERS> peers;
+    PeerInfo p{};
+    p.node_id = kHubId;
+    peers.push_back(p);
+    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+
+    send_notification_to_rx_task(NOTIFY_PAIRING_DONE);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+
+    EXPECT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
+}
+
+// ===========================================================================
+// rx_task — NOTIFY_STOP
+// ===========================================================================
+
+TEST_F(EspNowManagerTaskTest, NotifyStopDeletesRxTasAndClearHandle)
+{
+    init_and_wait();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+
+    send_notification_to_rx_task(NOTIFY_STOP);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+
+    EXPECT_EQ(sut_->rx_task_handle_, nullptr);
+}
+
+// ===========================================================================
+// rx_task — NOTIFY_CHANNEL_FOUND
+// ===========================================================================
+
+TEST_F(EspNowManagerTaskTest, ChannelFoundFromPairingScanTransitionsToPairing)
+{
+    init_and_wait();
+    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING_SCAN);
+
+    // DiscoveryManager signals channel found
+    ON_CALL(*scanner_, get_channel()).WillByDefault(Return(6));
+
+    send_notification_to_rx_task(NOTIFY_CHANNEL_FOUND);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+
+    EXPECT_EQ(sut_->get_node_state(), NodeState::PAIRING);
+}
+
+TEST_F(EspNowManagerTaskTest, ChannelFoundCallsPairingManagerStart)
+{
+    init_and_wait();
+    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING_SCAN);
+
+    ON_CALL(*scanner_, get_channel()).WillByDefault(Return(6));
+    ON_CALL(*scanner_, is_scanning()).WillByDefault(Return(false));
+
+    EXPECT_CALL(*pairing_mgr_, start(_, _)).Times(1);
+
+    send_notification_to_rx_task(NOTIFY_CHANNEL_FOUND);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+}
+
+TEST_F(EspNowManagerTaskTest, ChannelFoundFromRecoveryScanTransitionsToOperational)
+{
+    init_and_wait();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+
+    // Simulate link loss → RECOVERY_SCAN
+    sut_->node_fsm_->on_scan_requested();
+    ASSERT_EQ(sut_->get_node_state(), NodeState::RECOVERY_SCAN);
+
+    ON_CALL(*scanner_, get_channel()).WillByDefault(Return(6));
+
+    send_notification_to_rx_task(NOTIFY_CHANNEL_FOUND);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+
+    EXPECT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
+}
+
+// ===========================================================================
+// rx_task — NOTIFY_SCAN_FAILED
+// ===========================================================================
+
+TEST_F(EspNowManagerTaskTest, ScanFailedTransitionsToIdle)
+{
+    init_and_wait();
+    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING_SCAN);
+
+    send_notification_to_rx_task(NOTIFY_SCAN_FAILED);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+
+    EXPECT_EQ(sut_->get_node_state(), NodeState::IDLE);
+}
+
+// ===========================================================================
+// rx_task — NOTIFY_MAX_FAILURES
+// ===========================================================================
+
+TEST_F(EspNowManagerTaskTest, MaxFailuresFromOperationalTransitionsToRecoveryScan)
+{
+    init_and_wait();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+    ASSERT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
+
+    EXPECT_CALL(*scanner_, start_scan()).Times(1);
+
+    send_notification_to_rx_task(NOTIFY_MAX_FAILURES);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+
+    EXPECT_EQ(sut_->get_node_state(), NodeState::RECOVERY_SCAN);
+}
+
+// ===========================================================================
+// rx_task — RxPacket processing
+// ===========================================================================
+
+TEST_F(EspNowManagerTaskTest, InvalidCrcPacketIsNotRouted)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(false));
+    EXPECT_CALL(*message_router_, handle_packet(_)).Times(0);
 
     receive_valid_rx_packet();
 }
 
-TEST_F(EspNowManagerTaskTest, RxDispatchDoesNotRouteIfCodecFailsToDecodeHeader)
+TEST_F(EspNowManagerTaskTest, FailedHeaderDecodeIsNotRouted)
 {
     init_and_wait();
 
-    // codec must validate CRC and decode header successfully
     ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
     ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(std::nullopt));
-
-    EXPECT_CALL(*message_router_, handle_packet(_)).Times(0); // No packet should be routed
+    EXPECT_CALL(*message_router_, handle_packet(_)).Times(0);
 
     receive_valid_rx_packet();
 }
 
-TEST_F(EspNowManagerTaskTest, PacketRequiringAckIsStored)
+TEST_F(EspNowManagerTaskTest, DataPacketRequiringAckStoresHeader)
 {
     init_and_wait();
 
-    // codec must validate CRC and decode header successfully
     ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
     MessageHeader header{};
     header.msg_type = MessageType::DATA;
@@ -364,123 +485,194 @@ TEST_F(EspNowManagerTaskTest, PacketRequiringAckIsStored)
     header.sender_node_id = kNodeId;
     ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
 
-    // DATA type goes to app_rx_queue directly
-
     receive_valid_rx_packet();
 
-    auto decoded_header = sut_->get_last_header_ack();
-    EXPECT_TRUE(decoded_header.has_value());
-    EXPECT_EQ(decoded_header->msg_type, MessageType::DATA);
-    EXPECT_EQ(decoded_header->sender_node_id, kNodeId);
+    auto stored = sut_->get_last_header_ack();
+    EXPECT_TRUE(stored.has_value());
+    EXPECT_EQ(stored->msg_type, MessageType::DATA);
+    EXPECT_EQ(stored->sender_node_id, kNodeId);
 }
 
-TEST_F(EspNowManagerTaskTest, PacketNotRequiringAckDoesNotStoreHeader)
+TEST_F(EspNowManagerTaskTest, DataPacketNotRequiringAckDoesNotStoreHeader)
 {
-    // Test gap F: Verify packets without ACK flag don't store header
     init_and_wait();
 
     ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
     MessageHeader header{};
     header.msg_type = MessageType::DATA;
-    header.requires_ack = false; // No ACK required
-    header.sender_node_id = kNodeId;
+    header.requires_ack = false;
     ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
 
     receive_valid_rx_packet();
 
-    // Header should NOT be stored since requires_ack is false
-    auto decoded_header = sut_->get_last_header_ack();
-    EXPECT_FALSE(decoded_header.has_value());
+    EXPECT_FALSE(sut_->get_last_header_ack().has_value());
 }
 
-TEST_F(EspNowManagerTaskTest, RxDispatchTaskDropsPacketWhenQueueFull)
+TEST_F(EspNowManagerTaskTest, ProtocolPacketIsRoutedViaMessageRouter)
 {
     init_and_wait();
 
     ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::HEARTBEAT; // protocol-internal type
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
 
-    // Normal packets
+    EXPECT_CALL(*message_router_, handle_packet(_)).Times(1);
+
+    receive_valid_rx_packet();
+}
+
+TEST_F(EspNowManagerTaskTest, ValidPacketNotifiesTxManagerLinkAlive)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::DATA;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    EXPECT_CALL(*tx_mgr_, notify_link_alive()).Times(AtLeast(1));
+
+    receive_valid_rx_packet();
+}
+
+TEST_F(EspNowManagerTaskTest, QueueFullDropsExtraPackets)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
     MessageHeader header{};
     ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
 
-    vTaskSuspend(sut_->rx_task_handle_); // Suspend so it cannot consume from the queue before we check
+    // Suspend rx_task so it cannot drain the queue while we fill it
+    vTaskSuspend(sut_->rx_task_handle_);
 
-    // Prepare RxPacket to send
     RxPacket packet{};
     packet.len = sizeof(MessageHeader) + 1;
-    // Fill the queue completely
     for (int i = 0; i < rx_queue_length; ++i) {
         xQueueSend(sut_->rx_queue_handle_, &packet, 0);
     }
-    // One extra packet should be dropped
-    BaseType_t result = xQueueSend(sut_->rx_queue_handle_, &packet, 0);
-    EXPECT_EQ(result, errQUEUE_FULL); // confirms it was rejected at queue level
 
+    // One extra must be rejected at queue level
+    BaseType_t result = xQueueSend(sut_->rx_queue_handle_, &packet, 0);
+    EXPECT_EQ(result, errQUEUE_FULL);
     EXPECT_EQ(uxQueueMessagesWaiting(sut_->rx_queue_handle_), rx_queue_length);
 
-    vTaskResume(sut_->rx_task_handle_);  // Resume so task can consume the packets
-    vTaskDelay(pdMS_TO_TICKS(delay_ms)); // Lets wait to rx_task process
+    vTaskResume(sut_->rx_task_handle_);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     EXPECT_EQ(uxQueueMessagesWaiting(sut_->rx_queue_handle_), 0);
 }
 
 // ===========================================================================
-// Behavior tests
+// Behavior scenarios
 // ===========================================================================
 
-TEST_F(EspNowManagerTaskTest, AckTimeoutTriggersRetryAndScanning)
+TEST_F(EspNowManagerTaskTest, DataPacketIsNotRouted)
 {
-    // ========================================================================
-    // Objective: Verify ACK timeout flow works correctly:
-    // 1. Send packet with require_ack=true
-    // 2. Physical transmission failures (MAX_FAILURES)
-    // 3. Transition to SCANNING state after retries exhausted
-    // ========================================================================
-
-    // STEP 1: Initialize in OPERATIONAL state
-    // Need a valid peer to send data
     init_and_wait();
-    sut_->set_node_state_operational();
-    ASSERT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
 
-    // STEP 1b: Setup peer MAC address for find_mac to return
-    // This is required because send_data calls peer_manager_->find_mac()
-    uint8_t peer_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
-    ON_CALL(*peer_mgr_, find_mac(kHubId, _)).WillByDefault([peer_mac](NodeId, uint8_t* out_mac) {
-        memcpy(out_mac, peer_mac, 6);
-        return true;
-    });
+    // DATA packets should go to app_rx_queue, never to the router
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::DATA;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
 
-    // STEP 2: Configure mock to simulate transmission failures
-    // When queue_packet is called, notify TxManager of physical failure
-    // This simulates the scenario where packet cannot be transmitted
-    // Return ESP_OK to allow queuing, but notify_physical_fail triggers retry logic
-    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillRepeatedly([this](const DecodedTxPacket&) {
-        // Simulate physical transmission failure (WiFi HAL fail)
-        // The packet is queued successfully, but transmission will fail
-        tx_mgr_->notify_physical_fail();
-        return ESP_OK; // Queuing succeeded, transmission will fail asynchronously
-    });
+    EXPECT_CALL(*message_router_, handle_packet(_)).Times(0);
 
-    // STEP 3: Send packet REQUIRING ACK
-    // This triggers the timeout/retry flow
-    uint8_t payload[] = {0x01, 0x02};
-    EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, payload, 2, true), ESP_OK);
+    receive_valid_rx_packet();
+}
 
-    // STEP 4: Wait sufficient time for multiple retries
-    // LOGICAL_ACK_TIMEOUT_MS = 500ms, MAX_FAILURES = 3
-    // After 3 failures, TxManager should enter SCANNING
-    // Add 200ms safety margin
-    constexpr uint32_t timeout_ms = (LOGICAL_ACK_TIMEOUT_MS * MAX_FAILURES) + 200;
-    vTaskDelay(pdMS_TO_TICKS(timeout_ms));
+TEST_F(EspNowManagerTaskTest, CommandPacketIsNotRouted)
+{
+    init_and_wait();
 
-    // STEP 5: Verify transition to SCANNING
-    // After exhausting retries without ACK, node should search for alternative channel
-    NodeState state = sut_->get_node_state();
-    EXPECT_TRUE(state == NodeState::SCANNING || state == NodeState::OPERATIONAL)
-        << "Expected SCANNING after timeout, got state: " << static_cast<int>(state);
+    // DATA packets should go to app_rx_queue, never to the router
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::COMMAND;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
 
-    // STEP 6: Verify TxManager was notified to enter scanning
-    // At least one notification should occur after MAX_FAILURES
-    // (Exact count depends on TxManager FSM implementation)
+    EXPECT_CALL(*message_router_, handle_packet(_)).Times(0);
+
+    receive_valid_rx_packet();
+}
+
+TEST_F(EspNowManagerTaskTest, DataPacketIsDeliveredToAppQueue)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::DATA;
+    header.sender_node_id = kNodeId;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    receive_valid_rx_packet();
+
+    AppMessage msg{};
+    EXPECT_EQ(xQueueReceive(app_queue_handle, &msg, pdMS_TO_TICKS(50)), pdTRUE);
+    EXPECT_EQ(msg.sender_id, kNodeId);
+    EXPECT_EQ(msg.payload_len, 0);
+    EXPECT_EQ(msg.msg_type, MessageType::DATA);
+}
+
+TEST_F(EspNowManagerTaskTest, CommandPacketIsDeliveredToAppQueue)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::COMMAND;
+    header.sender_node_id = kNodeId;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    receive_valid_rx_packet();
+
+    AppMessage msg{};
+    EXPECT_EQ(xQueueReceive(app_queue_handle, &msg, pdMS_TO_TICKS(50)), pdTRUE);
+    EXPECT_EQ(msg.sender_id, kNodeId);
+    EXPECT_EQ(msg.payload_len, 0);
+    EXPECT_EQ(msg.msg_type, MessageType::COMMAND);
+}
+
+TEST_F(EspNowManagerTaskTest, DataPacketWithRequiresAckDeliveredToAppQueueAndStoresHeader)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::DATA;
+    header.requires_ack = true;
+    header.sender_node_id = kNodeId;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    receive_valid_rx_packet();
+
+    // Verify delivered to app queue
+    AppMessage msg{};
+    EXPECT_EQ(xQueueReceive(app_queue_handle, &msg, pdMS_TO_TICKS(50)), pdTRUE);
+    EXPECT_EQ(msg.sender_id, kNodeId);
+
+    // Verify header stored for confirm_reception
+    auto stored = sut_->get_last_header_ack();
+    EXPECT_TRUE(stored.has_value());
+    EXPECT_EQ(stored->sender_node_id, kNodeId);
+    EXPECT_TRUE(stored->requires_ack);
+}
+
+TEST_F(EspNowManagerTaskTest, ProtocolPacketDoesNotReachAppQueue)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::HEARTBEAT;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    receive_valid_rx_packet();
+
+    // App queue must remain empty — protocol packets go to router only
+    AppMessage msg{};
+    EXPECT_EQ(xQueueReceive(app_queue_handle, &msg, pdMS_TO_TICKS(50)), pdFALSE);
 }
