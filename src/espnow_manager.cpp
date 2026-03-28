@@ -250,6 +250,10 @@ void EspNowManager::deinit()
         espnow_driver_->deinit();
     }
 
+    if (scanner_ != nullptr) {
+        scanner_->deinit();
+    }
+
     // Reset state
     esp_now_initialized_ = false;
     last_header_requiring_ack_.reset();
@@ -260,6 +264,8 @@ void EspNowManager::deinit()
 
 esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 {
+    // TODO: on_pairing_requested already check if node is uninitialized,
+    // acepts only IDLE or OPERATIONAL state
     if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -272,6 +278,7 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
     node_fsm_->on_pairing_requested(has_peers);
     NodeState new_state = node_fsm_->get_state();
 
+    //
     if (old_state != new_state) {
         handle_state_transition(old_state, new_state);
     }
@@ -583,16 +590,16 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
     // NOTIFY_PAIRING_DONE is set by PairingManager::notify_rx_task_pairing_done()
     if ((notifications & NOTIFY_PAIRING_DONE) == NOTIFY_PAIRING_DONE) {
         bool has_peers = !peer_manager_->get_all().empty();
-        // For now, we consider it a "success" if it's OPERATIONAL, but we could refine this
-        bool success = (node_fsm_->get_state() == NodeState::PAIRING && has_peers);
 
         NodeState old_state = node_fsm_->get_state();
-        node_fsm_->on_pairing_timeout(success, has_peers);
+        node_fsm_->on_pairing_timeout(has_peers);
         handle_state_transition(old_state, node_fsm_->get_state());
     }
 
     // NOTIFY_SCAN_FAILED is set by DiscoveryManager::discovery_task()
     if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
+        // By now, with or without peers, the node goes to IDLE, but
+        // we check here if we change NodeStateMachine later
         bool has_peers = !peer_manager_->get_all().empty();
         NodeState old_state = node_fsm_->get_state();
         node_fsm_->on_scan_failed(has_peers);

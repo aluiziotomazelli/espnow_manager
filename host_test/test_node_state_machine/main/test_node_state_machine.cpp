@@ -129,12 +129,12 @@ TEST_F(NodeStateMachineTest, ScanFailedInRecoveryScanTransitionsToIdle)
 // 5. Pairing Completion
 // = ==================================
 
-// Successful pairing always leads to OPERATIONAL.
+// Successful pairing (has_peers = true) leads to OPERATIONAL.
 TEST_F(NodeStateMachineTest, PairingSucceededTransitionsToOperational)
 {
     fsm.on_init(false);
     fsm.on_channel_found(); // PAIRING
-    EXPECT_EQ(fsm.on_pairing_timeout(true, false), ESP_OK);
+    EXPECT_EQ(fsm.on_pairing_timeout(true), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::OPERATIONAL);
 }
 
@@ -143,7 +143,7 @@ TEST_F(NodeStateMachineTest, PairingFailedWithoutPeersTransitionsToIdle)
 {
     fsm.on_init(false);
     fsm.on_channel_found(); // PAIRING
-    EXPECT_EQ(fsm.on_pairing_timeout(false, false), ESP_OK);
+    EXPECT_EQ(fsm.on_pairing_timeout(false), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::IDLE);
 }
 
@@ -152,7 +152,7 @@ TEST_F(NodeStateMachineTest, PairingFailedWithPeersTransitionsToOperational)
 {
     fsm.on_init(true);
     fsm.on_pairing_requested(true); // PAIRING
-    EXPECT_EQ(fsm.on_pairing_timeout(false, true), ESP_OK);
+    EXPECT_EQ(fsm.on_pairing_timeout(true), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::OPERATIONAL);
 }
 

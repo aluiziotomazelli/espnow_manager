@@ -152,9 +152,9 @@ protected:
     std::unique_ptr<INodeStateMachine> node_fsm_;          ///< Pointer to node state machine
 
     bool esp_now_initialized_ = false;
-    std::optional<MessageHeader> last_header_requiring_ack_{};
+    std::optional<MessageHeader> last_header_requiring_ack_{}; // protected
 
-    SemaphoreHandle_t ack_mutex_ = nullptr;
+    SemaphoreHandle_t ack_mutex_ = nullptr; // protected
     QueueHandle_t rx_queue_handle_ = nullptr;
     TaskHandle_t rx_task_handle_ = nullptr;
 
@@ -192,7 +192,7 @@ protected:
     // Task functions
     static void rx_task(void* arg);
 
-    void handle_notifications(uint32_t notifications, bool& should_stop);
+    void handle_notifications(uint32_t notifications, bool& should_stop); // protected
     void handle_state_transition(NodeState old_state, NodeState new_state);
     static AppMessage build_app_message(const DecodedPacket& decoded);
 
