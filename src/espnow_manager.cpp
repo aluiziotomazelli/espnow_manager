@@ -702,6 +702,8 @@ esp_err_t EspNowManager::create_task()
 
 esp_err_t EspNowManager::init_tx_manager()
 {
+    // TODO: remove nullptr guards, since the objects are not optional, they are passed as reference
+    // to the constructor, the compiler should complain if they are not initialized.
     if (tx_manager_ == nullptr) {
         return ESP_FAIL;
     }
