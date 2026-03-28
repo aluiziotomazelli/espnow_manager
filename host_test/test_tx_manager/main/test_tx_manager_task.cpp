@@ -97,14 +97,13 @@ protected:
 
     void TearDown() override
     {
+        manager->deinit();
+        vTaskDelay(pdMS_TO_TICKS(50)); // give task time to exit cleanly
+        manager.reset();               // destroy TxManager before mocks
         if (real_rx_task_handle) {
             vTaskDelete(real_rx_task_handle);
             real_rx_task_handle = nullptr;
         }
-        manager->deinit();
-        vTaskDelay(pdMS_TO_TICKS(50)); // give task time to exit cleanly
-        manager.reset();               // destroy TxManager before mocks
-        // Mocks are destroyed automatically
     }
 
     // Helper: init and give task time to start and block
@@ -114,16 +113,19 @@ protected:
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
-    bool rx_task_notified = false;
+    bool notify_max_failures = false;
     TaskHandle_t real_rx_task_handle = nullptr;
     void make_real_rx_task()
     {
         xTaskCreate(
             [](void* arg) {
                 auto* self = static_cast<TxManagerTaskTest*>(arg);
+                uint32_t notifications = 0;
                 while (true) {
-                    if (xTaskNotifyWait(0, 0, nullptr, portMAX_DELAY)) {
-                        self->rx_task_notified = true;
+                    if (xTaskNotifyWait(0, NOTIFY_ALL, &notifications, portMAX_DELAY)) {
+                        if (notifications & NOTIFY_MAX_FAILURES) {
+                            self->notify_max_failures = true;
+                        }
                     }
                 }
             },
@@ -230,16 +232,22 @@ TEST_F(TxManagerTaskTest, IdleStateNotifyPhysicalFailCallsFsmOnPhysicalFail)
 
 TEST_F(TxManagerTaskTest, OnPhysicalFailReturningTrueCallsNotifyMaxFailuresOnRxTask)
 {
+    // Create a real rx task defined on the test class
     make_real_rx_task();
+
+    // Init with the real task handle
     ASSERT_EQ(ESP_OK, manager->init(4096, 5, real_rx_task_handle));
     vTaskDelay(pdMS_TO_TICKS(20));
 
+    // On physical fail returns true if the number of failures is greater than max_failures
     EXPECT_CALL(*fsm, on_physical_fail()).WillOnce(Return(true));
 
+    // Trigger the notification
     manager->notify_physical_fail();
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
-    EXPECT_TRUE(rx_task_notified);
+    // Real rx task will be notifyed and turns the flag true
+    EXPECT_TRUE(notify_max_failures);
 }
 
 TEST_F(TxManagerTaskTest, NotifyStopStopsTaskAndCleansTheTaskHandle)
