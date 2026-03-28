@@ -18,9 +18,9 @@
 #include "mock_peer_manager.hpp"
 #include "mock_tx_manager.hpp"
 #include "mock_tx_state_machine.hpp"
-#include "node_state_machine.hpp"
 #include "mock_storage_manager.hpp"
 #include "mock_channel_monitor.hpp"
+#include "mock_node_state_machine.hpp"
 
 #include "espnow_manager.hpp"
 
@@ -58,6 +58,9 @@ static constexpr AckStatus kAckStatus = AckStatus::OK;
 static constexpr uint32_t kHeartbeatIntervalMs = 1000;
 static constexpr uint8_t kMac[6] = {0};
 
+// Used in handle_notifications tests
+bool should_stop = false;
+
 // ---------------------------------------------------------------------------
 // Helper: minimal valid EspNowConfig
 // app_rx_queue must be non-null to pass the guard in init().
@@ -91,36 +94,15 @@ public:
     std::optional<MessageHeader> get_last_header() { return last_header_requiring_ack_; }
 
     using EspNowManager::ack_mutex_;
-    using EspNowManager::node_fsm_;
+    using EspNowManager::build_app_message;
+    using EspNowManager::handle_notifications;
 
     void set_node_state_operational()
     {
         // Force transition to OPERATIONAL state for testing purposes
-        // This simulates a node that has peers and is fully operational
-        NodeState current = node_fsm_->get_state();
-        
-        if (current == NodeState::UNINITIALIZED) {
-            node_fsm_->on_init(true);  // Initialize with peers -> OPERATIONAL
-        }
-        else if (current == NodeState::PAIRING_SCAN || current == NodeState::RECOVERY_SCAN) {
-            // First go to IDLE (simulating scan failed with peers)
-            node_fsm_->on_scan_failed(true);  // has_peers = true -> IDLE
-            // Then request pairing (with peers -> PAIRING)
-            node_fsm_->on_pairing_requested(true);
-            // Complete pairing successfully -> OPERATIONAL
-            node_fsm_->on_pairing_timeout(true, true);
-        }
-        else if (current == NodeState::IDLE) {
-            node_fsm_->on_pairing_requested(true);
-            node_fsm_->on_pairing_timeout(true, true);
-        }
-        else if (current == NodeState::PAIRING) {
-            node_fsm_->on_pairing_timeout(true, true);
-        }
-        // If already OPERATIONAL, do nothing
+        node_fsm_->on_init(true); // UNINITIALIZED → OPERATIONAL via mock
+        ack_mutex_ = fake_mutex;  // necessary for confirm_reception
     }
-
-    void on_channel_changed_cb(uint8_t channel) { EspNowManager::on_channel_changed_cb(channel); }
 };
 
 // ---------------------------------------------------------------------------
@@ -153,6 +135,7 @@ protected:
     NiceMock<MockPairingManager>* pairing_mgr_;
     NiceMock<MockMessageRouter>* message_router_;
     NiceMock<MockChannelMonitor>* channel_monitor_;
+    NiceMock<MockNodeStateMachine>* node_fsm_;
 
     std::unique_ptr<EspNowManagerTestable> sut_;
 
@@ -172,7 +155,7 @@ protected:
         auto heartbeat_mgr = std::make_unique<NiceMock<MockHeartbeatManager>>();
         auto pairing_mgr = std::make_unique<NiceMock<MockPairingManager>>();
         auto message_router = std::make_unique<NiceMock<MockMessageRouter>>();
-        auto node_fsm = std::make_unique<NodeStateMachine>();
+        auto node_fsm = std::make_unique<NiceMock<MockNodeStateMachine>>();
 
         // Save raw pointers before ownership is transferred to sut_
         storage_ = storage.get();
@@ -189,9 +172,19 @@ protected:
         heartbeat_mgr_ = heartbeat_mgr.get();
         pairing_mgr_ = pairing_mgr.get();
         message_router_ = message_router.get();
+        node_fsm_ = node_fsm.get();
 
-        // peer_mgr: empty list by default — node starts in PAIRING state
+        // Clear the variable between tests
+        should_stop = false;
+
+        // peer_mgr: empty list by default — NodeFSM starts on PAIRING_SCAN
         ON_CALL(*peer_mgr_, load_peers_from_storage()).WillByDefault(Return(ESP_OK));
+
+        // To deinit forcing the node state to uninitialized
+        ON_CALL(*node_fsm_, on_deinit()).WillByDefault(::testing::Invoke([this]() {
+            node_fsm_->set_state(NodeState::UNINITIALIZED);
+            return ESP_OK;
+        }));
 
         // storage: load_channel succeeds by default
         ON_CALL(*storage_, load_channel(_)).WillByDefault(Return(ESP_OK));
@@ -258,6 +251,15 @@ protected:
         init_sut();
         sut_->set_node_state_operational();
     }
+
+    void add_peer_to_storage()
+    {
+        etl::vector<PeerInfo, MAX_PEERS> peers;
+        PeerInfo p{};
+        p.node_id = ReservedIds::HUB;
+        peers.push_back(p);
+        ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+    }
 };
 
 // ===========================================================================
@@ -305,11 +307,7 @@ TEST_F(EspNowManagerTest, InitWithNoPeersTransitionsToPairingScan)
 TEST_F(EspNowManagerTest, InitWithPeersTransitionsToOperational)
 {
     // peer_mgr returns one peer — node is already associated
-    etl::vector<PeerInfo, MAX_PEERS> peers;
-    PeerInfo p{}; // Default initializes all members to 0/false
-    p.node_id = ReservedIds::HUB;
-    peers.push_back(p);
-    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+    add_peer_to_storage();
 
     // add_peers_to_espnow(_) will call hal_esp_now_add_peer(_)
     EXPECT_CALL(*hal_wifi_, hal_esp_now_add_peer(_)).WillOnce(Return(ESP_OK));
@@ -509,12 +507,8 @@ TEST_F(EspNowManagerTest, DeinitDoesNotDeleteNullTaskHandles)
 TEST_F(EspNowManagerTest, DeinitCallsAllDeleteFunctions)
 {
     // setup a peer so that deinit calls del_peer
-    etl::vector<PeerInfo, MAX_PEERS> peers;
-    PeerInfo p{}; // Default initializes all members to 0/false
-    p.node_id = ReservedIds::HUB;
-    peers.push_back(p);
-    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
     init_operational_sut();
+    add_peer_to_storage();
 
     EXPECT_CALL(*tx_mgr_, deinit()).Times(1);
     EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(1);
@@ -529,6 +523,7 @@ TEST_F(EspNowManagerTest, DeinitCallsAllDeleteFunctions)
 TEST_F(EspNowManagerTest, DeinitTransitionsToUninitialized)
 {
     init_sut();
+
     EXPECT_TRUE(sut_->is_initialized());
     sut_->deinit();
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
@@ -559,12 +554,8 @@ TEST_F(EspNowManagerTest, DeinitCallsEspNowDriverDeinit)
 TEST_F(EspNowManagerTest, DeinitWithPeersCallsDeletePeers)
 {
     // peer_mgr returns one peer
-    etl::vector<PeerInfo, MAX_PEERS> peers;
-    PeerInfo p{}; // Default initializes all members to 0/false
-    p.node_id = ReservedIds::HUB;
-    peers.push_back(p);
-    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
     init_sut();
+    add_peer_to_storage();
 
     // esp_now_del_peer is called if peer list is not empty
     EXPECT_CALL(*hal_wifi_, hal_esp_now_del_peer(_)).WillOnce(Return(ESP_OK));
@@ -597,13 +588,9 @@ TEST_F(EspNowManagerTest, SendToNonExistentPeerReturnsNotFound)
 TEST_F(EspNowManagerTest, SendToExistentPeerCallsQueuePacket)
 {
     init_sut();
-    sut_->set_node_state_operational();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
-    PeerInfo peer{}; // Default initializes all members to 0/false
-    peer.node_id = kHubId;
-    etl::vector<PeerInfo, MAX_PEERS> peers;
-    peers.push_back(peer);
-    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+    add_peer_to_storage();
 
     EXPECT_CALL(*tx_mgr_, queue_packet(_)).Times(2);
 
@@ -614,13 +601,9 @@ TEST_F(EspNowManagerTest, SendToExistentPeerCallsQueuePacket)
 TEST_F(EspNowManagerTest, FailureToQueuePacketReturnsFail)
 {
     init_sut();
-    sut_->set_node_state_operational();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
-    PeerInfo peer{}; // Default initializes all members to 0/false
-    peer.node_id = kHubId;
-    etl::vector<PeerInfo, MAX_PEERS> peers;
-    peers.push_back(peer);
-    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+    add_peer_to_storage();
 
     EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillRepeatedly(Return(ESP_FAIL));
 
@@ -631,13 +614,9 @@ TEST_F(EspNowManagerTest, FailureToQueuePacketReturnsFail)
 TEST_F(EspNowManagerTest, SendDataWithPayloadCopiesData)
 {
     init_sut();
-    sut_->set_node_state_operational();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
-    PeerInfo peer{};
-    peer.node_id = kHubId;
-    etl::vector<PeerInfo, MAX_PEERS> peers;
-    peers.push_back(peer);
-    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+    add_peer_to_storage();
 
     uint8_t test_payload[] = {0x01, 0x02, 0x03, 0x04, 0x05};
 
@@ -655,16 +634,27 @@ TEST_F(EspNowManagerTest, SendDataWithPayloadCopiesData)
     EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, test_payload, 5), ESP_OK);
 }
 
+TEST_F(EspNowManagerTest, SendDataWithoutPayloadSendsHeaderOnly)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+
+    add_peer_to_storage();
+
+    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillOnce([](const DecodedTxPacket& pkt) {
+        EXPECT_EQ(pkt.payload_len, 0);
+        return ESP_OK;
+    });
+
+    EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, nullptr, 0), ESP_OK);
+}
+
 TEST_F(EspNowManagerTest, SendDataWithOversizedPayloadReturnsInvalidArg)
 {
     init_sut();
-    sut_->set_node_state_operational();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
-    PeerInfo peer{};
-    peer.node_id = kHubId;
-    etl::vector<PeerInfo, MAX_PEERS> peers;
-    peers.push_back(peer);
-    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+    add_peer_to_storage();
 
     // Payload larger than MAX_PAYLOAD_SIZE should be rejected
     uint8_t large_payload[MAX_PAYLOAD_SIZE + 10] = {};
@@ -684,8 +674,7 @@ TEST_F(EspNowManagerTest, ConfirmReceptionNonOperationalStateReturnsInvalidState
 TEST_F(EspNowManagerTest, ConfirmReceptionFailingToAquireMutexReturnsTimeout)
 {
     init_sut();
-    sut_->set_node_state_operational();
-    EXPECT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
     // Fail to take the semaphore
     ON_CALL(*hal_freertos_, semaphore_take(_, _)).WillByDefault(Return(pdFALSE));
@@ -695,7 +684,7 @@ TEST_F(EspNowManagerTest, ConfirmReceptionFailingToAquireMutexReturnsTimeout)
 TEST_F(EspNowManagerTest, ConfirmReceptionHeaderWithoutValueReturnsInvalidState)
 {
     init_sut();
-    sut_->set_node_state_operational();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
     MessageHeader header{};         // Declare a header
     header.sender_node_id = kHubId; // Set a valid sender node id
@@ -708,7 +697,7 @@ TEST_F(EspNowManagerTest, ConfirmReceptionHeaderWithoutValueReturnsInvalidState)
 TEST_F(EspNowManagerTest, ConfirmReceptionNonExistentPeerReturnsNotFound)
 {
     init_sut();
-    sut_->set_node_state_operational();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
     MessageHeader header{};
     header.sender_node_id = kHubId;
@@ -723,10 +712,29 @@ TEST_F(EspNowManagerTest, ConfirmReceptionNonExistentPeerReturnsNotFound)
     EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_NOT_FOUND);
 }
 
+TEST_F(EspNowManagerTest, ConfirmReceptionNonExistentPeerResetsLastHeaderRequiringAck)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+
+    MessageHeader header{};
+    header.sender_node_id = kHubId;
+    header.sequence_number = 42;
+    sut_->set_last_header(header);
+
+    // Semaphore take succeeds, find_mac fails
+    ON_CALL(*hal_freertos_, semaphore_take(_, _)).WillByDefault(Return(pdTRUE));
+    ON_CALL(*hal_freertos_, semaphore_give(_)).WillByDefault(Return(pdTRUE));
+    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(false));
+
+    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_NOT_FOUND);
+    EXPECT_FALSE(sut_->get_last_header().has_value());
+}
+
 TEST_F(EspNowManagerTest, ConfirmReceptionEnqueueFailureReturnsFail)
 {
     init_sut();
-    sut_->set_node_state_operational();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
     MessageHeader header{};
     header.sender_node_id = kHubId;
@@ -745,7 +753,7 @@ TEST_F(EspNowManagerTest, ConfirmReceptionEnqueueFailureReturnsFail)
 TEST_F(EspNowManagerTest, ConfirmReceptionSuccess)
 {
     init_sut();
-    sut_->set_node_state_operational();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
     MessageHeader header{};
     header.sender_node_id = kHubId;
@@ -782,6 +790,28 @@ TEST_F(EspNowManagerTest, ConfirmReceptionResetsHeaderWhenPeerNotFound)
     EXPECT_FALSE(last_header.has_value());
 }
 
+TEST_F(EspNowManagerTest, ConfirmReceptionResetsLasHeaderRequiringAck)
+{
+    init_operational_sut();
+
+    MessageHeader header{};
+    header.sender_node_id = kHubId;
+    header.sequence_number = 42;
+    sut_->set_last_header(header);
+
+    // Semaphore take/give succeeds, find_mac succeeds, queue_packet succeeds
+    EXPECT_CALL(*hal_freertos_, semaphore_take(_, _)).WillOnce(Return(pdTRUE));
+    EXPECT_CALL(*hal_freertos_, semaphore_give(_)).WillOnce(Return(pdTRUE));
+    EXPECT_CALL(*peer_mgr_, find_mac(_, _)).WillOnce(Return(true));
+    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
+
+    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_OK);
+
+    // Verify header was reset
+    auto last_header = sut_->get_last_header();
+    EXPECT_FALSE(last_header.has_value());
+}
+
 // ===========================================================================
 // getters
 // ===========================================================================
@@ -795,7 +825,7 @@ TEST_F(EspNowManagerTest, GetPeersCallsPeerManagerGetAll)
 TEST_F(EspNowManagerTest, GetOfflinePeersCallsPeerManagerGetOffline)
 {
     init_sut();
-    sut_->set_node_state_operational();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
     // get_offline_peers() calls peer_manager_->get_offline(get_time_ms())
     // Use wildcard matcher for the timestamp parameter
@@ -837,31 +867,20 @@ TEST_F(EspNowManagerTest, RemovePeerReturnsPeerManagerFailure)
 }
 
 // ===========================================================================
-// Callbacks - IChannelObserver implementation
-// Note: These callbacks are being refactored. Tests removed pending changes.
-// ===========================================================================
-
-// ===========================================================================
 // start_pairing
 // ===========================================================================
 
 TEST_F(EspNowManagerTest, StartPairingWithPeersTransitionsToPairingAndCallsPairingManagerStart)
 {
     init_sut();
-    sut_->set_node_state_operational();
-
-    // Mock peer_manager to return non-empty list (has_peers = true)
-    etl::vector<PeerInfo, MAX_PEERS> peers;
-    PeerInfo p{};
-    p.node_id = ReservedIds::HUB;
-    peers.push_back(p);
-    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+    add_peer_to_storage();
 
     // scanner_->is_scanning() is checked before calling pairing_manager_->start()
     ON_CALL(*scanner_, is_scanning()).WillByDefault(Return(false));
 
     uint32_t pairing_timeout_ms = 10000;
-    
+
     // When node has peers and requests pairing, it transitions to PAIRING state
     // and pairing_manager_->start() is called
     EXPECT_CALL(*pairing_mgr_, start(pairing_timeout_ms, _)).Times(1);
@@ -879,12 +898,7 @@ TEST_F(EspNowManagerTest, StartPairingWithoutPeersTransitionsToPairingScan)
 {
     // Init with no peers -> PAIRING_SCAN state, then transition to OPERATIONAL
     init_sut();
-    sut_->set_node_state_operational();
-    ASSERT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
-
-    // Mock peer_manager to return empty list (has_peers = false)
-    etl::vector<PeerInfo, MAX_PEERS> empty_peers;
-    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(empty_peers));
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
     // From OPERATIONAL without peers, request pairing -> PAIRING_SCAN
     EXPECT_CALL(*scanner_, start_scan()).Times(1);
@@ -900,15 +914,10 @@ TEST_F(EspNowManagerTest, StartPairingForHubCallsPairingManagerStart)
     ASSERT_EQ(sut_->init(cfg), ESP_OK);
 
     // Transition to OPERATIONAL first so we can test start_pairing()
-    sut_->set_node_state_operational();
-    ASSERT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
+    node_fsm_->set_state(NodeState::OPERATIONAL);
 
     // Mock peer_manager to return non-empty list (has_peers = true)
-    etl::vector<PeerInfo, MAX_PEERS> peers;
-    PeerInfo p{};
-    p.node_id = ReservedIds::HUB;
-    peers.push_back(p);
-    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+    add_peer_to_storage();
 
     // scanner_->is_scanning() is checked before calling pairing_manager_->start()
     ON_CALL(*scanner_, is_scanning()).WillByDefault(Return(false));
@@ -917,4 +926,180 @@ TEST_F(EspNowManagerTest, StartPairingForHubCallsPairingManagerStart)
     EXPECT_CALL(*pairing_mgr_, start(30000, _)).Times(1);
     EXPECT_EQ(sut_->start_pairing(30000), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::PAIRING);
+}
+
+TEST_F(EspNowManagerTest, StartPairingWhileScanningCallsStopScan)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+
+    add_peer_to_storage();
+
+    // scanner_->is_scanning() is checked before calling pairing_manager_->start()
+    ON_CALL(*scanner_, is_scanning()).WillByDefault(Return(true));
+
+    // For HUB with peers, pairing_manager_->start() should be called directly
+    EXPECT_CALL(*pairing_mgr_, start(30000, _)).Times(1);
+    EXPECT_EQ(sut_->start_pairing(30000), ESP_OK);
+}
+
+// ===========================================================================
+// Notifications EspNowManager::handle_notifications
+// ===========================================================================
+
+TEST_F(EspNowManagerTest, NotifyMaxFailuresCallsOnScanRequested)
+{
+    init_sut();
+    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(1);
+    sut_->handle_notifications(NOTIFY_MAX_FAILURES, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyMaxFailuresCallsStartScan)
+{
+    init_sut();
+    EXPECT_CALL(*scanner_, start_scan()).Times(1);
+    sut_->handle_notifications(NOTIFY_MAX_FAILURES, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyChannelFoundCallsScannerGetChannel)
+{
+    init_sut();
+    EXPECT_CALL(*scanner_, get_channel()).Times(1);
+    sut_->handle_notifications(NOTIFY_CHANNEL_FOUND, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyChannelFoundCallsOnChannelFound)
+{
+    init_sut();
+    EXPECT_CALL(*node_fsm_, on_channel_found()).Times(1);
+    sut_->handle_notifications(NOTIFY_CHANNEL_FOUND, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyChannelFoundCallsStopScan)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::RECOVERY_SCAN);
+
+    // If scanner is scanning, it should stop
+    ON_CALL(*scanner_, is_scanning()).WillByDefault(Return(true));
+    EXPECT_CALL(*scanner_, stop_scan()).Times(1);
+    sut_->handle_notifications(NOTIFY_CHANNEL_FOUND, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyChannelFoundCallsStoreChannel)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::RECOVERY_SCAN);
+
+    EXPECT_CALL(*storage_, store_channel(_)).Times(1);
+    sut_->handle_notifications(NOTIFY_CHANNEL_FOUND, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyPairingDoneCallsOnPairingTimeout)
+{
+    init_sut();
+    EXPECT_CALL(*node_fsm_, on_pairing_timeout(_)).Times(1);
+    sut_->handle_notifications(NOTIFY_PAIRING_DONE, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyPairingDoneCheckForPeers)
+{
+    init_sut();
+    EXPECT_CALL(*peer_mgr_, get_all()).Times(1);
+    sut_->handle_notifications(NOTIFY_PAIRING_DONE, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyScanFailedCallsOnScanFailed)
+{
+    init_sut();
+    EXPECT_CALL(*node_fsm_, on_scan_failed(_)).Times(1);
+    sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyScanFailedCallsStopScan)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::RECOVERY_SCAN);
+
+    // If scanner is scanning, it should stop
+    ON_CALL(*scanner_, is_scanning()).WillByDefault(Return(true));
+    EXPECT_CALL(*scanner_, stop_scan()).Times(1);
+    sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyScanFailedCheckForPeers)
+{
+    init_sut();
+    EXPECT_CALL(*peer_mgr_, get_all()).Times(1);
+    sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyChannelChangedChecksCurrentChannel)
+{
+    init_sut();
+    EXPECT_CALL(*channel_monitor_, get_wifi_channel()).Times(1);
+    sut_->handle_notifications(NOTIFY_CHANNEL_CHANGED, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyChannelChangedPropagatesChannel)
+{
+    init_sut();
+    EXPECT_CALL(*storage_, store_channel(_)).Times(1);
+    EXPECT_CALL(*scanner_, set_channel(_)).Times(1);
+    sut_->handle_notifications(NOTIFY_CHANNEL_CHANGED, should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyStopTurnsShouldStopTrue)
+{
+    init_sut();
+
+    sut_->handle_notifications(NOTIFY_STOP, should_stop);
+    ASSERT_TRUE(should_stop);
+}
+
+// ===========================================================================
+// AppMessage build_app_message
+// ===========================================================================
+
+TEST_F(EspNowManagerTest, BuildAppMessageWithDataPayloadCreatesAppMessage)
+{
+    DecodedPacket decoded_packet{};
+    decoded_packet.header.sender_node_id = kHubId;
+    decoded_packet.header.sender_type = kNodeType;
+    decoded_packet.header.payload_type = kPayloadType;
+    decoded_packet.header.requires_ack = true;
+
+    // Test payload
+    uint8_t test_payload[] = {0x01, 0x02, 0x03};
+    size_t payload_len = sizeof(test_payload);
+
+    // Build raw.data with header + payload + CRC (simulated)
+    // First, copy the header to the beginning of the buffer
+    memcpy(decoded_packet.raw.data, &decoded_packet.header, sizeof(MessageHeader));
+
+    // Then, copy the payload after the header
+    memcpy(decoded_packet.raw.data + sizeof(MessageHeader), test_payload, payload_len);
+
+    // Calculate the CRC (optional, not used by build_app_message)
+    uint16_t crc = 0xABCD;
+    memcpy(decoded_packet.raw.data + sizeof(MessageHeader) + payload_len, &crc, CRC_SIZE);
+
+    // Total packet size
+    decoded_packet.raw.len = sizeof(MessageHeader) + payload_len + CRC_SIZE;
+
+    // Source MAC address
+    uint8_t src_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    memcpy(decoded_packet.raw.src_mac, src_mac, 6);
+
+    // Call the method
+    AppMessage app_msg = sut_->build_app_message(decoded_packet);
+
+    // Verifications
+    EXPECT_EQ(app_msg.sender_id, kHubId);
+    EXPECT_EQ(app_msg.sender_type, kNodeType);
+    EXPECT_EQ(app_msg.payload_type, kPayloadType);
+    EXPECT_TRUE(app_msg.requires_ack);
+    EXPECT_EQ(app_msg.payload_len, payload_len);
+    EXPECT_EQ(memcmp(app_msg.src_mac, src_mac, 6), 0);
+    EXPECT_EQ(memcmp(app_msg.payload, test_payload, payload_len), 0);
 }
