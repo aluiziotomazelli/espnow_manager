@@ -11,7 +11,7 @@
 
 /**
  * @interface IStorageManager
- * @brief Higher-level storage management for peers and config (internal)
+ * @brief Higher-level storage management for peers and config.
  * @internal
  */
 class IStorageManager
@@ -20,16 +20,16 @@ public:
     virtual ~IStorageManager() = default;
 
     /**
-     * @brief Loads the wifi channel from storage.
-     * @param channel Output for the loaded wifi channel.
+     * @brief Loads the WiFi channel from storage.
+     * @param channel Output for the loaded WiFi channel.
      * @return ESP_OK if loaded successfully, error otherwise.
      * @internal
      */
     virtual esp_err_t load_channel(uint8_t &channel) = 0;
 
     /**
-     * @brief Stores the wifi channel to storage.
-     * @param channel The wifi channel to store.
+     * @brief Stores the WiFi channel to storage.
+     * @param channel The WiFi channel to store.
      * @return ESP_OK if stored successfully, error otherwise.
      * @internal
      */
@@ -46,6 +46,7 @@ public:
     /**
      * @brief Stores the peers to storage.
      * @param peers The peers to store.
+     * @param force_nvs_commit Force NVS commit after store.
      * @return ESP_OK if stored successfully, error otherwise.
      * @internal
      */

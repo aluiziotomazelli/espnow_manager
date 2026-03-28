@@ -10,7 +10,7 @@
 
 /**
  * @interface IPairingManager
- * @brief Pairing logic for connecting nodes to HUB (internal)
+ * @brief Pairing logic for connecting nodes to HUB.
  * @internal
  */
 class IPairingManager
@@ -18,7 +18,13 @@ class IPairingManager
 public:
     virtual ~IPairingManager() = default;
 
-    /** @internal */
+    /**
+     * @brief Initializes the pairing manager.
+     * @param id Node ID.
+     * @param type Node type.
+     * @param rx_task_handle RX task handle for notifications.
+     * @return ESP_OK on success.
+     */
     virtual esp_err_t init(NodeId id, NodeType type, TaskHandle_t rx_task_handle) = 0;
 
     /** @internal */
@@ -35,12 +41,23 @@ public:
 
     virtual void tick(uint64_t now_ms) = 0;
 
-    /** @internal */
+    /**
+     * @brief Starts the pairing process.
+     * @param timeout_ms Timeout in milliseconds.
+     * @param now_ms Current time in milliseconds.
+     * @return ESP_OK on success.
+     */
     virtual esp_err_t start(uint32_t timeout_ms, uint64_t now_ms) = 0;
 
-    /** @internal */
+    /**
+     * @brief Handles incoming pair request packets.
+     * @param decoded Decoded packet.
+     */
     virtual void handle_request(const DecodedPacket& decoded) = 0;
 
-    /** @internal */
+    /**
+     * @brief Handles incoming pair response packets.
+     * @param decoded Decoded packet.
+     */
     virtual void handle_response(const DecodedPacket& decoded) = 0;
 };

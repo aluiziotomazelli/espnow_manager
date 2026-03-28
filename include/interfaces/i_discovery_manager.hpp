@@ -8,20 +8,13 @@
 
 /**
  * @interface IDiscoveryManager
- * @brief WiFi channel scanning and discovery probe handling (internal)
+ * @brief WiFi channel scanning and discovery probe handling.
  * @internal
  */
 class IDiscoveryManager
 {
 public:
     virtual ~IDiscoveryManager() = default;
-
-    // /** @internal */
-    // struct ScanResult
-    // {
-    //     uint8_t channel;
-    //     bool hub_found;
-    // };
 
     /**
      * @brief Initialize the discovery manager.

@@ -5,8 +5,7 @@
 
 /**
  * @interface IMessageRouter
- * @brief Routing of received packets to appropriate managers or app queue
- * (internal)
+ * @brief Routing of received packets to appropriate managers or app queue.
  * @internal
  */
 class IMessageRouter

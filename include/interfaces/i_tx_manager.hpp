@@ -28,7 +28,7 @@ public:
     virtual ~ITxManager() = default;
 
     /**
-     * @brief Initialize the TxManager and start the background task.
+     * @brief Initializes the TxManager and starts the background task.
      * @param stack_size Stack size for the background TX task.
      * @param priority Priority for the background TX task.
      * @param rx_task_handle Handle of the RX task (used for synchronization/notifications).
@@ -38,20 +38,21 @@ public:
     virtual esp_err_t init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle) = 0;
 
     /**
-     * @brief Stop the background task and clean up resources.
+     * @brief Stops the background task and clean up resources.
      * @internal
      */
     virtual void deinit() = 0;
 
     /**
-     * @brief Add a packet to the transmission queue.
+     * @brief Adds a packet to the transmission queue.
      * @param packet The decoded packet to be sent.
-     * @return ESP_OK if queued successfully, ESP_ERR_NO_MEM if queue is full.
+     * @return ESP_OK if queued successfully.
+     * @return ESP_ERR_NO_MEM if queue is full.
      */
     virtual esp_err_t queue_packet(const DecodedTxPacket& packet) = 0;
 
     /**
-     * @brief Notify the manager about a physical layer transmission failure.
+     * @brief Notifies the manager about a physical layer transmission failure.
      *
      * This is typically called from the ESP-NOW send callback when status is FAIL.
      * It triggers retransmission or failure handling in the state machine.
@@ -60,7 +61,7 @@ public:
     virtual void notify_physical_fail() = 0;
 
     /**
-     * @brief Notify the manager that a peer is still alive/reachable.
+     * @brief Notifies the manager that a peer is still alive/reachable.
      *
      * Called when any packet is received from a peer, indicating the link is active.
      * Resets failure counters for that peer.
@@ -69,7 +70,7 @@ public:
     virtual void notify_link_alive() = 0;
 
     /**
-     * @brief Notify the manager that a logical ACK has been received.
+     * @brief Notifies the manager that a logical ACK has been received.
      *
      * Called by the RX path when a protocol-level ACK arrives for a pending packet.
      * @internal
@@ -77,7 +78,7 @@ public:
     virtual void notify_logical_ack() = 0;
 
     /**
-     * @brief Get the background task handle.
+     * @brief Gets the background task handle.
      * @return TaskHandle_t of the TX task.
      * @internal
      */

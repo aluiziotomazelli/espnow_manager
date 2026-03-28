@@ -10,7 +10,7 @@
 
 /**
  * @interface IHeartbeatManager
- * @brief Heartbeat generation and monitoring (internal)
+ * @brief Heartbeat generation and monitoring.
  * @internal
  */
 class IHeartbeatManager
@@ -18,7 +18,12 @@ class IHeartbeatManager
 public:
     virtual ~IHeartbeatManager() = default;
 
-    /** @internal */
+    /**
+     * @brief Initializes the heartbeat manager.
+     * @param id Node ID.
+     * @param type Node type.
+     * @param interval_ms Heartbeat interval in milliseconds.
+     */
     virtual void init(NodeId id, NodeType type, uint32_t interval_ms) = 0;
 
     template <
@@ -35,9 +40,14 @@ public:
 
     virtual void set_interval_ms(uint32_t heartbeat_interval_ms) = 0;
 
-    /** @internal */
+    /**
+     * @brief Handles incoming heartbeat response packets.
+     */
     virtual void handle_response() = 0;
 
-    /** @internal */
+    /**
+     * @brief Handles incoming heartbeat request packets.
+     * @param decoded Decoded packet.
+     */
     virtual void handle_request(const DecodedPacket &decoded) = 0;
 };
