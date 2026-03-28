@@ -5,6 +5,7 @@
 #include "mock_message_codec.hpp"
 #include "mock_peer_manager.hpp"
 #include "mock_tx_manager.hpp"
+#include "mock_hal_freertos.hpp"
 
 #include "pairing_manager.hpp"
 
@@ -25,6 +26,25 @@ static constexpr NodeId kHubId = ReservedIds::HUB;
 static constexpr NodeType kHubType = ReservedTypes::HUB;
 static constexpr uint64_t kT0 = 1000; // arbitrary start timestamp
 
+// Fake TaskHandle for tests
+static int fake_task_storage = 0;
+static TaskHandle_t fake_rx_task = reinterpret_cast<TaskHandle_t>(&fake_task_storage);
+
+// ---------------------------------------------------------------------------
+// Testable PairingManager — exposes protected is_active_ for testing
+// ---------------------------------------------------------------------------
+class TestablePairingManager : public PairingManager
+{
+public:
+    TestablePairingManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, IFreeRTOSHAL& hal_freertos)
+        : PairingManager(tx_mgr, peer_mgr, hal_freertos)
+    {
+    }
+
+    bool get_is_active() const { return is_active_; }
+    void set_is_active(bool active) { is_active_ = active; }
+};
+
 // ---------------------------------------------------------------------------
 // Fixture — non-HUB node
 //
@@ -39,14 +59,15 @@ class PairingManagerTest : public ::testing::Test
 protected:
     NiceMock<MockTxManager> tx_mgr_;
     NiceMock<MockPeerManager> peer_mgr_;
+    NiceMock<MockFreeRTOSHAL> hal_freertos_;
     NiceMock<MockMessageCodec> codec_; // Kept for Mock setup if needed by helper
 
-    std::unique_ptr<PairingManager> sut_;
+    std::unique_ptr<TestablePairingManager> sut_;
 
     void SetUp() override
     {
-        sut_ = std::make_unique<PairingManager>(tx_mgr_, peer_mgr_);
-        sut_->init(kNodeId, kNodeType);
+        sut_ = std::make_unique<TestablePairingManager>(tx_mgr_, peer_mgr_, hal_freertos_);
+        sut_->init(kNodeId, kNodeType, fake_rx_task);
     }
 
     // -----------------------------------------------------------------------
@@ -98,14 +119,15 @@ class PairingManagerHubTest : public ::testing::Test
 protected:
     NiceMock<MockTxManager> tx_mgr_;
     NiceMock<MockPeerManager> peer_mgr_;
+    NiceMock<MockFreeRTOSHAL> hal_freertos_;
     NiceMock<MockMessageCodec> codec_;
 
-    std::unique_ptr<PairingManager> sut_;
+    std::unique_ptr<TestablePairingManager> sut_;
 
     void SetUp() override
     {
-        sut_ = std::make_unique<PairingManager>(tx_mgr_, peer_mgr_);
-        sut_->init(kHubId, kHubType);
+        sut_ = std::make_unique<TestablePairingManager>(tx_mgr_, peer_mgr_, hal_freertos_);
+        sut_->init(kHubId, kHubType, fake_rx_task);
     }
 
     static DecodedPacket make_decoded_pair_request(NodeId sender_id, NodeType sender_type)
@@ -131,13 +153,26 @@ protected:
 
 TEST_F(PairingManagerTest, InitReturnsOk)
 {
-    PairingManager pm(tx_mgr_, peer_mgr_);
-    EXPECT_EQ(pm.init(kNodeId, kNodeType), ESP_OK);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
+    EXPECT_EQ(pm.init(kNodeId, kNodeType, fake_rx_task), ESP_OK);
+}
+
+TEST_F(PairingManagerTest, InitReturnsInvalidArgIfRxTaskHandleIsNull)
+{
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
+    // Pass nullptr as rx_task_handle — should return ESP_ERR_INVALID_ARG
+    EXPECT_EQ(pm.init(kNodeId, kNodeType, nullptr), ESP_ERR_INVALID_ARG);
+}
+
+TEST_F(PairingManagerTest, InitReturnsInvalidStateIfAlreadyInitialized)
+{
+    // sut_ is already initialized in SetUp()
+    EXPECT_EQ(sut_->init(kNodeId, kNodeType, fake_rx_task), ESP_ERR_INVALID_STATE);
 }
 
 TEST_F(PairingManagerTest, NotActiveAfterInit)
 {
-    EXPECT_FALSE(sut_->is_active());
+    EXPECT_FALSE(sut_->get_is_active());
 }
 
 // ===========================================================================
@@ -146,7 +181,7 @@ TEST_F(PairingManagerTest, NotActiveAfterInit)
 
 TEST_F(PairingManagerTest, StartFailsIfNotInitialized)
 {
-    PairingManager pm(tx_mgr_, peer_mgr_);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
     // init() not called — is_initialized_ is false
     EXPECT_EQ(pm.start(PAIRING_TIMEOUT_MS, kT0), ESP_ERR_INVALID_STATE);
 }
@@ -160,7 +195,7 @@ TEST_F(PairingManagerTest, StartFailsIfAlreadyActive)
 TEST_F(PairingManagerTest, StartActivatesPairing)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
-    EXPECT_TRUE(sut_->is_active());
+    EXPECT_TRUE(sut_->get_is_active());
 }
 
 TEST_F(PairingManagerTest, StartSendsInitialPairRequest)
@@ -177,7 +212,7 @@ TEST_F(PairingManagerHubTest, StartDoesNotSendPairRequest)
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
 
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
-    EXPECT_TRUE(sut_->is_active());
+    EXPECT_TRUE(sut_->get_is_active());
 }
 
 // ===========================================================================
@@ -189,12 +224,12 @@ TEST_F(PairingManagerTest, TickDoesNothingIfNotActive)
     // No start() called — tick() should be a no-op
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
     sut_->tick(kT0 + PAIRING_TIMEOUT_MS + 1);
-    EXPECT_FALSE(sut_->is_active());
+    EXPECT_FALSE(sut_->get_is_active());
 }
 
 TEST_F(PairingManagerTest, TickDoesNothingIfNotInitialized)
 {
-    PairingManager pm(tx_mgr_, peer_mgr_);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
     pm.tick(kT0 + PAIRING_TIMEOUT_MS + 1);
 }
@@ -202,10 +237,10 @@ TEST_F(PairingManagerTest, TickDoesNothingIfNotInitialized)
 TEST_F(PairingManagerTest, TickTimesOutWhenTimeoutExceeded)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
-    EXPECT_TRUE(sut_->is_active());
+    EXPECT_TRUE(sut_->get_is_active());
 
     sut_->tick(kT0 + PAIRING_TIMEOUT_MS);
-    EXPECT_FALSE(sut_->is_active());
+    EXPECT_FALSE(sut_->get_is_active());
 }
 
 TEST_F(PairingManagerTest, TickDoesNotTimeOutBeforeTimeout)
@@ -213,7 +248,7 @@ TEST_F(PairingManagerTest, TickDoesNotTimeOutBeforeTimeout)
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
     sut_->tick(kT0 + PAIRING_TIMEOUT_MS - 1);
-    EXPECT_TRUE(sut_->is_active());
+    EXPECT_TRUE(sut_->get_is_active());
 }
 
 TEST_F(PairingManagerTest, TickSendsPeriodicRequestAfterInterval)
@@ -267,7 +302,7 @@ TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotActive)
 
 TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotInitialized)
 {
-    PairingManager pm(tx_mgr_, peer_mgr_);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
     // In actual implementation, it returns early before any logic if not initialized
     auto decoded = make_decoded_pair_response();
     pm.handle_response(decoded);
@@ -280,7 +315,19 @@ TEST_F(PairingManagerTest, HandleResponseAcceptedDeactivatesPairing)
     auto decoded = make_decoded_pair_response(PairStatus::ACCEPTED);
     sut_->handle_response(decoded);
 
-    EXPECT_FALSE(sut_->is_active());
+    EXPECT_FALSE(sut_->get_is_active());
+}
+
+TEST_F(PairingManagerTest, HandleResponseAcceptedNotifiesRxTask)
+{
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
+
+    // When pairing succeeds, notify_rx_task_pairing_done() should be called
+    // which calls hal_freertos_.task_notify(rx_task_handle_, NOTIFY_PAIRING_DONE, _)
+    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PAIRING_DONE, _)).Times(1);
+
+    auto decoded = make_decoded_pair_response(PairStatus::ACCEPTED);
+    sut_->handle_response(decoded);
 }
 
 TEST_F(PairingManagerTest, HandleResponseAcceptedAddsPeer)
@@ -300,7 +347,7 @@ TEST_F(PairingManagerTest, HandleResponseRejectedKeepsPairingActive)
     auto decoded = make_decoded_pair_response(PairStatus::REJECTED_NOT_ALLOWED);
     sut_->handle_response(decoded);
 
-    EXPECT_TRUE(sut_->is_active());
+    EXPECT_TRUE(sut_->get_is_active());
 }
 
 TEST_F(PairingManagerHubTest, HandleResponseIgnoredByHub)
@@ -313,7 +360,7 @@ TEST_F(PairingManagerHubTest, HandleResponseIgnoredByHub)
     auto decoded =
         make_decoded_pair_request(kNodeId, kNodeType); // Wrong type for response but HUB should ignore anyway
     sut_->handle_response(decoded);
-    EXPECT_TRUE(sut_->is_active());
+    EXPECT_TRUE(sut_->get_is_active());
 }
 
 // ===========================================================================
@@ -328,7 +375,7 @@ TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotActive)
 
 TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotInitialized)
 {
-    PairingManager pm(tx_mgr_, peer_mgr_);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
     auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
     pm.handle_request(decoded);
 }

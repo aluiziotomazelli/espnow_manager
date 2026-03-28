@@ -25,6 +25,7 @@ public:
 protected:
     void send_pair_request();
     void on_timeout();
+    bool is_active_ = false;
 
 private:
     ITxManager& tx_mgr_;
@@ -35,7 +36,6 @@ private:
     NodeId my_id_;
 
     bool is_initialized_ = false;
-    bool is_active_ = false;
     uint8_t current_channel_ = 1;
 
     TaskHandle_t rx_task_handle_;
