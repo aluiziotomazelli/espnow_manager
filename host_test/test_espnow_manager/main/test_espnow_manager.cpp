@@ -96,12 +96,14 @@ public:
     using EspNowManager::ack_mutex_;
     using EspNowManager::build_app_message;
     using EspNowManager::handle_notifications;
+    using EspNowManager::node_fsm_;
 
     void set_node_state_operational()
     {
         // Force transition to OPERATIONAL state for testing purposes
-        node_fsm_->on_init(true); // UNINITIALIZED → OPERATIONAL via mock
-        ack_mutex_ = fake_mutex;  // necessary for confirm_reception
+        // Uses MockNodeStateMachine which defaults to returning OPERATIONAL on on_init(true)
+        node_fsm_->on_init(true);
+        ack_mutex_ = fake_mutex; // Necessary for confirm_reception tests
     }
 };
 
@@ -691,7 +693,7 @@ TEST_F(EspNowManagerTest, ConfirmReceptionHeaderWithoutValueReturnsInvalidState)
     sut_->set_last_header(header);  // Set the header
     sut_->reset_last_header();      // Reset the header
 
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_INVALID_STATE); // Return invalid state error
+    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_INVALID_STATE);
 }
 
 TEST_F(EspNowManagerTest, ConfirmReceptionNonExistentPeerReturnsNotFound)
@@ -790,7 +792,7 @@ TEST_F(EspNowManagerTest, ConfirmReceptionResetsHeaderWhenPeerNotFound)
     EXPECT_FALSE(last_header.has_value());
 }
 
-TEST_F(EspNowManagerTest, ConfirmReceptionResetsLasHeaderRequiringAck)
+TEST_F(EspNowManagerTest, ConfirmReceptionResetsLastHeaderRequiringAck)
 {
     init_operational_sut();
 
@@ -944,11 +946,15 @@ TEST_F(EspNowManagerTest, StartPairingWhileScanningCallsStopScan)
 }
 
 // ===========================================================================
-// Notifications EspNowManager::handle_notifications
+// Notifications — EspNowManager::handle_notifications()
+//
+// These tests verify that handle_notifications() correctly dispatches
+// notification flags to the appropriate submodules (NodeFSM, Scanner, Storage, etc.)
 // ===========================================================================
 
 TEST_F(EspNowManagerTest, NotifyMaxFailuresCallsOnScanRequested)
 {
+    // NOTIFY_MAX_FAILURES → NodeFSM: on_scan_requested()
     init_sut();
     EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(1);
     sut_->handle_notifications(NOTIFY_MAX_FAILURES, should_stop);
@@ -956,6 +962,7 @@ TEST_F(EspNowManagerTest, NotifyMaxFailuresCallsOnScanRequested)
 
 TEST_F(EspNowManagerTest, NotifyMaxFailuresCallsStartScan)
 {
+    // NOTIFY_MAX_FAILURES → Scanner: start_scan() (via state transition to RECOVERY_SCAN)
     init_sut();
     EXPECT_CALL(*scanner_, start_scan()).Times(1);
     sut_->handle_notifications(NOTIFY_MAX_FAILURES, should_stop);
@@ -963,6 +970,7 @@ TEST_F(EspNowManagerTest, NotifyMaxFailuresCallsStartScan)
 
 TEST_F(EspNowManagerTest, NotifyChannelFoundCallsScannerGetChannel)
 {
+    // NOTIFY_CHANNEL_FOUND → Scanner: get_channel() to retrieve discovered channel
     init_sut();
     EXPECT_CALL(*scanner_, get_channel()).Times(1);
     sut_->handle_notifications(NOTIFY_CHANNEL_FOUND, should_stop);
@@ -970,6 +978,7 @@ TEST_F(EspNowManagerTest, NotifyChannelFoundCallsScannerGetChannel)
 
 TEST_F(EspNowManagerTest, NotifyChannelFoundCallsOnChannelFound)
 {
+    // NOTIFY_CHANNEL_FOUND → NodeFSM: on_channel_found() to transition state
     init_sut();
     EXPECT_CALL(*node_fsm_, on_channel_found()).Times(1);
     sut_->handle_notifications(NOTIFY_CHANNEL_FOUND, should_stop);
@@ -977,10 +986,10 @@ TEST_F(EspNowManagerTest, NotifyChannelFoundCallsOnChannelFound)
 
 TEST_F(EspNowManagerTest, NotifyChannelFoundCallsStopScan)
 {
+    // NOTIFY_CHANNEL_FOUND + scanner is scanning → stop_scan()
     init_sut();
     node_fsm_->set_state(NodeState::RECOVERY_SCAN);
 
-    // If scanner is scanning, it should stop
     ON_CALL(*scanner_, is_scanning()).WillByDefault(Return(true));
     EXPECT_CALL(*scanner_, stop_scan()).Times(1);
     sut_->handle_notifications(NOTIFY_CHANNEL_FOUND, should_stop);
@@ -988,6 +997,7 @@ TEST_F(EspNowManagerTest, NotifyChannelFoundCallsStopScan)
 
 TEST_F(EspNowManagerTest, NotifyChannelFoundCallsStoreChannel)
 {
+    // NOTIFY_CHANNEL_FOUND + RECOVERY_SCAN → store_channel() to persist discovered channel
     init_sut();
     node_fsm_->set_state(NodeState::RECOVERY_SCAN);
 
@@ -997,6 +1007,7 @@ TEST_F(EspNowManagerTest, NotifyChannelFoundCallsStoreChannel)
 
 TEST_F(EspNowManagerTest, NotifyPairingDoneCallsOnPairingTimeout)
 {
+    // NOTIFY_PAIRING_DONE → NodeFSM: on_pairing_timeout(has_peers)
     init_sut();
     EXPECT_CALL(*node_fsm_, on_pairing_timeout(_)).Times(1);
     sut_->handle_notifications(NOTIFY_PAIRING_DONE, should_stop);
@@ -1004,6 +1015,7 @@ TEST_F(EspNowManagerTest, NotifyPairingDoneCallsOnPairingTimeout)
 
 TEST_F(EspNowManagerTest, NotifyPairingDoneCheckForPeers)
 {
+    // NOTIFY_PAIRING_DONE → check peers to determine has_peers parameter
     init_sut();
     EXPECT_CALL(*peer_mgr_, get_all()).Times(1);
     sut_->handle_notifications(NOTIFY_PAIRING_DONE, should_stop);
@@ -1011,6 +1023,7 @@ TEST_F(EspNowManagerTest, NotifyPairingDoneCheckForPeers)
 
 TEST_F(EspNowManagerTest, NotifyScanFailedCallsOnScanFailed)
 {
+    // NOTIFY_SCAN_FAILED → NodeFSM: on_scan_failed(has_peers)
     init_sut();
     EXPECT_CALL(*node_fsm_, on_scan_failed(_)).Times(1);
     sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
@@ -1018,10 +1031,10 @@ TEST_F(EspNowManagerTest, NotifyScanFailedCallsOnScanFailed)
 
 TEST_F(EspNowManagerTest, NotifyScanFailedCallsStopScan)
 {
+    // NOTIFY_SCAN_FAILED + scanner is scanning → stop_scan()
     init_sut();
     node_fsm_->set_state(NodeState::RECOVERY_SCAN);
 
-    // If scanner is scanning, it should stop
     ON_CALL(*scanner_, is_scanning()).WillByDefault(Return(true));
     EXPECT_CALL(*scanner_, stop_scan()).Times(1);
     sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
@@ -1029,6 +1042,7 @@ TEST_F(EspNowManagerTest, NotifyScanFailedCallsStopScan)
 
 TEST_F(EspNowManagerTest, NotifyScanFailedCheckForPeers)
 {
+    // NOTIFY_SCAN_FAILED → check peers to determine has_peers parameter
     init_sut();
     EXPECT_CALL(*peer_mgr_, get_all()).Times(1);
     sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
@@ -1036,6 +1050,7 @@ TEST_F(EspNowManagerTest, NotifyScanFailedCheckForPeers)
 
 TEST_F(EspNowManagerTest, NotifyChannelChangedChecksCurrentChannel)
 {
+    // NOTIFY_CHANNEL_CHANGED → ChannelMonitor: get_wifi_channel() to get new channel
     init_sut();
     EXPECT_CALL(*channel_monitor_, get_wifi_channel()).Times(1);
     sut_->handle_notifications(NOTIFY_CHANNEL_CHANGED, should_stop);
@@ -1043,6 +1058,7 @@ TEST_F(EspNowManagerTest, NotifyChannelChangedChecksCurrentChannel)
 
 TEST_F(EspNowManagerTest, NotifyChannelChangedPropagatesChannel)
 {
+    // NOTIFY_CHANNEL_CHANGED → Storage: store_channel() + Scanner: set_channel()
     init_sut();
     EXPECT_CALL(*storage_, store_channel(_)).Times(1);
     EXPECT_CALL(*scanner_, set_channel(_)).Times(1);
@@ -1051,6 +1067,7 @@ TEST_F(EspNowManagerTest, NotifyChannelChangedPropagatesChannel)
 
 TEST_F(EspNowManagerTest, NotifyStopTurnsShouldStopTrue)
 {
+    // NOTIFY_STOP → set should_stop = true (signals rx_task to exit)
     init_sut();
 
     sut_->handle_notifications(NOTIFY_STOP, should_stop);
@@ -1058,11 +1075,14 @@ TEST_F(EspNowManagerTest, NotifyStopTurnsShouldStopTrue)
 }
 
 // ===========================================================================
-// AppMessage build_app_message
+// AppMessage — build_app_message()
+//
+// Verifies correct extraction of fields from DecodedPacket to AppMessage
 // ===========================================================================
 
 TEST_F(EspNowManagerTest, BuildAppMessageWithDataPayloadCreatesAppMessage)
 {
+    // Setup decoded packet with header, payload, and CRC
     DecodedPacket decoded_packet{};
     decoded_packet.header.sender_node_id = kHubId;
     decoded_packet.header.sender_type = kNodeType;
@@ -1073,14 +1093,11 @@ TEST_F(EspNowManagerTest, BuildAppMessageWithDataPayloadCreatesAppMessage)
     uint8_t test_payload[] = {0x01, 0x02, 0x03};
     size_t payload_len = sizeof(test_payload);
 
-    // Build raw.data with header + payload + CRC (simulated)
-    // First, copy the header to the beginning of the buffer
+    // Build raw.data: header + payload + CRC
     memcpy(decoded_packet.raw.data, &decoded_packet.header, sizeof(MessageHeader));
-
-    // Then, copy the payload after the header
     memcpy(decoded_packet.raw.data + sizeof(MessageHeader), test_payload, payload_len);
 
-    // Calculate the CRC (optional, not used by build_app_message)
+    // CRC (simulated, not used by build_app_message)
     uint16_t crc = 0xABCD;
     memcpy(decoded_packet.raw.data + sizeof(MessageHeader) + payload_len, &crc, CRC_SIZE);
 
@@ -1094,7 +1111,7 @@ TEST_F(EspNowManagerTest, BuildAppMessageWithDataPayloadCreatesAppMessage)
     // Call the method
     AppMessage app_msg = sut_->build_app_message(decoded_packet);
 
-    // Verifications
+    // Verifications — all fields should be correctly extracted
     EXPECT_EQ(app_msg.sender_id, kHubId);
     EXPECT_EQ(app_msg.sender_type, kNodeType);
     EXPECT_EQ(app_msg.payload_type, kPayloadType);
