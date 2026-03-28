@@ -124,11 +124,11 @@ public:
     // Status
     // ========================================
 
-    /** @copydoc IEspNowManager::is_initialized */
-    bool is_initialized() const override;
-
     /** @copydoc IEspNowManager::get_node_state */
     NodeState get_node_state() const override;
+
+    /** @copydoc IEspNowManager::is_initialized */
+    bool is_initialized() const override;
 
 protected:
     // --- Private Members ---

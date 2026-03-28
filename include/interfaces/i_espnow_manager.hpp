@@ -53,7 +53,7 @@ public:
      * @note This method must be called before any other operation.
      * @note On fail, deinit() is called automatically.
      */
-    virtual esp_err_t init(const EspNowConfig &config) = 0;
+    virtual esp_err_t init(const EspNowConfig& config) = 0;
 
     /**
      * @brief Deinitialize the ESP-NOW Manager
@@ -95,7 +95,7 @@ public:
     virtual esp_err_t send_data(
         NodeId dest_node_id,
         PayloadType payload_type,
-        const void *payload,
+        const void* payload,
         size_t len,
         bool require_ack = false) = 0;
 
@@ -111,7 +111,7 @@ public:
         typename T2,
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(PayloadType)>>
-    esp_err_t send_data(T1 dest_node_id, T2 payload_type, const void *payload, size_t len, bool require_ack = false)
+    esp_err_t send_data(T1 dest_node_id, T2 payload_type, const void* payload, size_t len, bool require_ack = false)
     {
         return send_data(
             static_cast<NodeId>(dest_node_id), static_cast<PayloadType>(payload_type), payload, len, require_ack);
@@ -143,7 +143,7 @@ public:
     virtual esp_err_t send_command(
         NodeId dest_node_id,
         CommandType command_type,
-        const void *payload,
+        const void* payload,
         size_t len,
         bool require_ack = false) = 0;
 
@@ -155,7 +155,7 @@ public:
      */
     template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
     esp_err_t
-    send_command(T dest_node_id, CommandType command_type, const void *payload, size_t len, bool require_ack = false)
+    send_command(T dest_node_id, CommandType command_type, const void* payload, size_t len, bool require_ack = false)
     {
         return send_command(static_cast<NodeId>(dest_node_id), command_type, payload, len, require_ack);
     }
@@ -199,7 +199,7 @@ public:
      *
      * @warning ESP-NOW hardware limit is 20 peers, but 1 is reserved for broadcast
      */
-    virtual esp_err_t add_peer(NodeId node_id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms) = 0;
+    virtual esp_err_t add_peer(NodeId node_id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms) = 0;
 
     /**
      * @brief Template overload for add_peer using enums
@@ -213,7 +213,7 @@ public:
         typename T2,
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
-    esp_err_t add_peer(T1 node_id, const uint8_t *mac, T2 type, uint32_t heartbeat_interval_ms)
+    esp_err_t add_peer(T1 node_id, const uint8_t* mac, T2 type, uint32_t heartbeat_interval_ms)
     {
         return add_peer(static_cast<NodeId>(node_id), mac, static_cast<NodeType>(type), heartbeat_interval_ms);
     }
@@ -252,9 +252,11 @@ public:
     /**
      * @brief Get a list of IDs for peers considered offline
      *
-     * A peer is considered offline if no heartbeat has been received within its expected interval.
+     * A peer is considered offline if no heartbeat has been received within its
+     * expected interval multiplied by HEARTBEAT_OFFLINE_MULTIPLIER.
      *
      * @return Vector of Node IDs.
+     * @see HEARTBEAT_OFFLINE_MULTIPLIER in protocol_types.hpp
      */
     virtual etl::vector<NodeId, MAX_PEERS> get_offline_peers() const = 0;
 
