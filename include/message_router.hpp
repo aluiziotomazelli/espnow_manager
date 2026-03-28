@@ -16,6 +16,7 @@ public:
         IHeartbeatManager &heartbeat_manager,
         IPairingManager &pairing_manager);
 
+    /** @copydoc IMessageRouter::handle_packet */
     void handle_packet(const DecodedPacket &decoded) override;
 
 private:

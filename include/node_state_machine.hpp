@@ -13,15 +13,31 @@ public:
     NodeStateMachine();
     virtual ~NodeStateMachine() = default;
 
+    /** @copydoc INodeStateMachine::get_state */
     NodeState get_state() const override;
+
+    /** @copydoc INodeStateMachine::reset */
     void reset() override;
 
+    /** @copydoc INodeStateMachine::on_init */
     esp_err_t on_init(bool has_peers) override;
+
+    /** @copydoc INodeStateMachine::on_deinit */
     esp_err_t on_deinit() override;
+
+    /** @copydoc INodeStateMachine::on_pairing_requested */
     esp_err_t on_pairing_requested(bool has_peers) override;
+
+    /** @copydoc INodeStateMachine::on_pairing_timeout */
     esp_err_t on_pairing_timeout(bool has_peers) override;
+
+    /** @copydoc INodeStateMachine::on_scan_requested */
     esp_err_t on_scan_requested() override;
+
+    /** @copydoc INodeStateMachine::on_channel_found */
     esp_err_t on_channel_found() override;
+
+    /** @copydoc INodeStateMachine::on_scan_failed */
     esp_err_t on_scan_failed(bool has_peers) override;
 
 private:

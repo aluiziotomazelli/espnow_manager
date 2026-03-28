@@ -19,14 +19,29 @@ class DiscoveryManager : public IDiscoveryManager
 public:
     DiscoveryManager(IWiFiHAL& wifi_hal, IMessageCodec& message_codec, IFreeRTOSHAL& freertos_hal);
 
+    /** @copydoc IDiscoveryManager::init */
     esp_err_t
     init(NodeId id, NodeType type, TaskHandle_t rx_task_handle, UBaseType_t priority, uint32_t stack_size) override;
+
+    /** @copydoc IDiscoveryManager::deinit */
     void deinit() override;
+
+    /** @copydoc IDiscoveryManager::start_scan */
     void start_scan() override;
+
+    /** @copydoc IDiscoveryManager::stop_scan */
     void stop_scan() override;
+
+    /** @copydoc IDiscoveryManager::is_scanning */
     bool is_scanning() const override { return is_scanning_.load(); };
+
+    /** @copydoc IDiscoveryManager::handle_scan_probe */
     void handle_scan_probe(const DecodedPacket& decoded) override;
+
+    /** @copydoc IDiscoveryManager::set_channel */
     void set_channel(uint8_t channel) override;
+
+    /** @copydoc IDiscoveryManager::get_channel */
     uint8_t get_channel() const override { return current_channel_.load(); };
 
 protected:

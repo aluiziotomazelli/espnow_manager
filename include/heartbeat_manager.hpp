@@ -16,10 +16,19 @@ public:
     using IHeartbeatManager::handle_response;
     using IHeartbeatManager::init;
 
+    /** @copydoc IHeartbeatManager::init */
     void init(NodeId id, NodeType type, uint32_t interval_ms) override;
+
+    /** @copydoc IHeartbeatManager::tick */
     void tick(uint64_t now_ms) override;
+
+    /** @copydoc IHeartbeatManager::set_interval_ms */
     void set_interval_ms(uint32_t heartbeat_interval_ms) override;
+
+    /** @copydoc IHeartbeatManager::handle_response */
     void handle_response() override;
+
+    /** @copydoc IHeartbeatManager::handle_request */
     void handle_request(const DecodedPacket &decoded) override;
 
 protected:

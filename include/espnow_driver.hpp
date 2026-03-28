@@ -12,7 +12,7 @@
 
 /**
  * @class EspNowDriver
- * @brief ESP-NOW driver class (internal)
+ * @brief ESP-NOW driver class.
  * @internal
  */
 class EspNowDriver : public IEspNowDriver
@@ -20,8 +20,10 @@ class EspNowDriver : public IEspNowDriver
 public:
     EspNowDriver(IWiFiHAL &wifi_hal);
 
+    /** @copydoc IEspNowDriver::init */
     esp_err_t init(const EspNowConfig &config, esp_now_recv_cb_t recv_cb, esp_now_send_cb_t send_cb) override;
 
+    /** @copydoc IEspNowDriver::deinit */
     esp_err_t deinit() override;
 
 private:

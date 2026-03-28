@@ -14,7 +14,10 @@ class RtcBackend : public IPersistenceBackend
 public:
     RtcBackend(void *storage, size_t size);
 
+    /** @copydoc IPersistenceBackend::load */
     esp_err_t load(void *data, size_t size) override;
+
+    /** @copydoc IPersistenceBackend::save */
     esp_err_t save(const void *data, size_t size) override;
 
 private:
@@ -30,7 +33,10 @@ class NvsBackend : public IPersistenceBackend
 public:
     NvsBackend(INvsHAL &nvs_hal, const char *nvs_key);
 
+    /** @copydoc IPersistenceBackend::load */
     esp_err_t load(void *data, size_t size) override;
+
+    /** @copydoc IPersistenceBackend::save */
     esp_err_t save(const void *data, size_t size) override;
 
 private:

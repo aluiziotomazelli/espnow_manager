@@ -14,10 +14,13 @@ public:
     ChannelMonitor(IWiFiHAL& hal_wifi, IFreeRTOSHAL& hal_freertos);
     ~ChannelMonitor();
 
+    /** @copydoc IChannelMonitor::init */
     esp_err_t init(uint32_t interval_ms, TaskHandle_t rx_task_handle) override;
 
+    /** @copydoc IChannelMonitor::tick */
     void tick(uint64_t now_ms) override;
 
+    /** @copydoc IChannelMonitor::get_wifi_channel */
     uint8_t get_wifi_channel() override { return last_known_channel_.load(); };
 
 private:

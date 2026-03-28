@@ -14,12 +14,19 @@ public:
 
     using IPairingManager::init;
 
+    /** @copydoc IPairingManager::init */
     esp_err_t init(NodeId id, NodeType type, TaskHandle_t rx_task_handle) override;
 
+    /** @copydoc IPairingManager::tick */
     void tick(uint64_t now_ms) override;
 
+    /** @copydoc IPairingManager::start */
     esp_err_t start(uint32_t timeout_ms, uint64_t now_ms) override;
+
+    /** @copydoc IPairingManager::handle_request */
     void handle_request(const DecodedPacket& decoded) override;
+
+    /** @copydoc IPairingManager::handle_response */
     void handle_response(const DecodedPacket& decoded) override;
 
 protected:

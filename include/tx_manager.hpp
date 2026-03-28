@@ -21,16 +21,26 @@ public:
 
     ~TxManager() override;
 
+    /** @copydoc ITxManager::init */
     esp_err_t init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle) override;
+
+    /** @copydoc ITxManager::deinit */
     void deinit() override;
 
+    /** @copydoc ITxManager::queue_packet */
     esp_err_t queue_packet(const DecodedTxPacket& packet) override;
 
     // Notifications from outside (ISRs or other tasks)
+    /** @copydoc ITxManager::notify_physical_fail */
     void notify_physical_fail() override;
+
+    /** @copydoc ITxManager::notify_link_alive */
     void notify_link_alive() override;
+
+    /** @copydoc ITxManager::notify_logical_ack */
     void notify_logical_ack() override;
 
+    /** @copydoc ITxManager::get_task_handle */
     TaskHandle_t get_task_handle() const override { return tx_task_handle_; }
 
 private:
