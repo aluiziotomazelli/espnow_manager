@@ -557,6 +557,7 @@ AppMessage EspNowManager::build_app_message(const DecodedPacket& decoded)
     AppMessage msg{};
     msg.sender_id = decoded.header.sender_node_id;
     msg.sender_type = decoded.header.sender_type;
+    msg.msg_type = decoded.header.msg_type;
     msg.payload_type = decoded.header.payload_type;
     msg.requires_ack = decoded.header.requires_ack;
     memcpy(msg.src_mac, decoded.raw.src_mac, 6);
@@ -606,7 +607,7 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
         handle_state_transition(old_state, node_fsm_->get_state());
     }
 
-    // If NOTIFY_CHANNEL_CHANGED is set by on_channel_changed_cb()
+    // NOTIFY_CHANNEL_CHANGED is set by ChannelMonitor via direct to task notification
     if ((notifications & NOTIFY_CHANNEL_CHANGED) == NOTIFY_CHANNEL_CHANGED) {
         uint8_t channel = channel_monitor_->get_wifi_channel();
         config_.wifi_channel = channel;
