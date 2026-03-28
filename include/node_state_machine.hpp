@@ -19,7 +19,7 @@ public:
     esp_err_t on_init(bool has_peers) override;
     esp_err_t on_deinit() override;
     esp_err_t on_pairing_requested(bool has_peers) override;
-    esp_err_t on_pairing_timeout(bool success, bool has_peers) override;
+    esp_err_t on_pairing_timeout(bool has_peers) override;
     esp_err_t on_scan_requested() override;
     esp_err_t on_channel_found() override;
     esp_err_t on_scan_failed(bool has_peers) override;

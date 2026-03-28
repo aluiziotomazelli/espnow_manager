@@ -49,8 +49,8 @@ esp_err_t NodeStateMachine::on_init(bool has_peers)
 
 esp_err_t NodeStateMachine::on_deinit()
 {
-    state_.store(NodeState::UNINITIALIZED);
-    return ESP_OK;
+    // state_.store(NodeState::UNINITIALIZED);
+    return transition_to(NodeState::UNINITIALIZED);
 }
 
 esp_err_t NodeStateMachine::on_pairing_requested(bool has_peers)
@@ -68,18 +68,13 @@ esp_err_t NodeStateMachine::on_pairing_requested(bool has_peers)
     }
 }
 
-esp_err_t NodeStateMachine::on_pairing_timeout(bool success, bool has_peers)
+esp_err_t NodeStateMachine::on_pairing_timeout(bool has_peers)
 {
     if (state_.load() != NodeState::PAIRING) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (success) {
-        return transition_to(NodeState::OPERATIONAL);
-    }
-    else {
-        return transition_to(has_peers ? NodeState::OPERATIONAL : NodeState::IDLE);
-    }
+    return transition_to(has_peers ? NodeState::OPERATIONAL : NodeState::IDLE);
 }
 
 esp_err_t NodeStateMachine::on_scan_requested()

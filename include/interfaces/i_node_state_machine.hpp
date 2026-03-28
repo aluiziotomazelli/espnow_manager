@@ -56,11 +56,10 @@ public:
 
     /**
      * @brief Event: Pairing process completed (either success or timeout).
-     * @param success True if at least one peer is now paired.
      * @param has_peers True if the node still has known peers.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual esp_err_t on_pairing_timeout(bool success, bool has_peers) = 0;
+    virtual esp_err_t on_pairing_timeout(bool has_peers) = 0;
 
     /**
      * @brief Event: Channel scan requested (typically by TxManager on failure).
