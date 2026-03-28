@@ -19,7 +19,7 @@ PairingManager::PairingManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, IFree
 
 esp_err_t PairingManager::init(NodeId id, NodeType type, TaskHandle_t rx_task_handle)
 {
-    if (rx_task_handle_ == nullptr) {
+    if (rx_task_handle == nullptr) {
         return ESP_ERR_INVALID_ARG;
     }
     if (is_initialized_) {
