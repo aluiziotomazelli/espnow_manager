@@ -4,7 +4,7 @@
 #include "gtest/gtest.h"
 
 #include "mock_tx_state_machine.hpp"
-#include "mock_hal_wifi.hpp"
+#include "mock_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_discovery_manager.hpp"
 #include "hal_real_freertos.hpp"
@@ -28,12 +28,12 @@ class TxManagerTaskTest : public ::testing::Test
 protected:
     // Owned pointers to correct destruction and no mock leakage on tests
     std::unique_ptr<NiceMock<MockTxStateMachine>> fsm_owned;
-    std::unique_ptr<NiceMock<MockWiFiHAL>> hal_owned;
+    std::unique_ptr<NiceMock<MockEspNowHAL>> hal_owned;
     std::unique_ptr<NiceMock<MockMessageCodec>> codec_owned;
 
     // Raw pointers to use in tests
     NiceMock<MockTxStateMachine>* fsm;
-    NiceMock<MockWiFiHAL>* hal;
+    NiceMock<MockEspNowHAL>* hal;
     NiceMock<MockMessageCodec>* codec;
 
     RealFreeRTOSHAL freertos_hal;
@@ -49,7 +49,7 @@ protected:
     void SetUp() override
     {
         fsm_owned = std::make_unique<NiceMock<MockTxStateMachine>>();
-        hal_owned = std::make_unique<NiceMock<MockWiFiHAL>>();
+        hal_owned = std::make_unique<NiceMock<MockEspNowHAL>>();
         codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
 
         fsm = fsm_owned.get();

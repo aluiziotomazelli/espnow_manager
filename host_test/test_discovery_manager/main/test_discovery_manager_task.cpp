@@ -4,6 +4,7 @@
 
 #include "hal_real_freertos.hpp"
 #include "mock_hal_wifi.hpp"
+#include "mock_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
 
 #include "discovery_manager.hpp"
@@ -43,11 +44,13 @@ class DiscoveryManagerTaskTest : public ::testing::Test
 {
 protected:
     // Owned pointers to correct destruction and no mock leakage on tests
-    std::unique_ptr<NiceMock<MockWiFiHAL>> hal_owned;
+    std::unique_ptr<NiceMock<MockWiFiHAL>> hal_wifi_owned;
+    std::unique_ptr<NiceMock<MockEspNowHAL>> hal_espnow_owned;
     std::unique_ptr<NiceMock<MockMessageCodec>> codec_owned;
 
     // Raw pointers to use in tests
     NiceMock<MockWiFiHAL>* wifi_hal;
+    NiceMock<MockEspNowHAL>* espnow_hal;
     NiceMock<MockMessageCodec>* codec;
 
     RealFreeRTOSHAL freertos_hal;
@@ -95,13 +98,15 @@ protected:
 
     void SetUp() override
     {
-        hal_owned = std::make_unique<NiceMock<MockWiFiHAL>>();
+        hal_wifi_owned = std::make_unique<NiceMock<MockWiFiHAL>>();
+        hal_espnow_owned = std::make_unique<NiceMock<MockEspNowHAL>>();
         codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
 
-        wifi_hal = hal_owned.get();
+        wifi_hal = hal_wifi_owned.get();
+        espnow_hal = hal_espnow_owned.get();
         codec = codec_owned.get();
 
-        scanner = std::make_unique<TestableDiscoveryManager>(*wifi_hal, *codec, freertos_hal);
+        scanner = std::make_unique<TestableDiscoveryManager>(*wifi_hal, *espnow_hal, *codec, freertos_hal);
     }
 
     void TearDown() override
@@ -157,9 +162,9 @@ TEST_F(DiscoveryManagerTaskTest, ScanChannelSuccessNotifyChannelFoundOnRxTask)
     init_node_and_wait();
     scanner->set_channel(VALID_CHANNEL);
 
-    ON_CALL(*wifi_hal, wifi_set_channel(_)).WillByDefault(Return(ESP_OK));
+    ON_CALL(*wifi_hal, wifi_set_channel(_, _)).WillByDefault(Return(ESP_OK));
     ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
-    ON_CALL(*wifi_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
+    ON_CALL(*espnow_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
 
     // Trigger the scan via the task notification (not direct call)
     scanner->start_scan();
@@ -179,9 +184,9 @@ TEST_F(DiscoveryManagerTaskTest, ScanChannelFailureNotifiesScanFailedOnRxTask)
     scanner->set_channel(VALID_CHANNEL);
 
     // Probe always fails → scan_channel returns ESP_FAIL → task sends NOTIFY_SCAN_FAILED
-    ON_CALL(*wifi_hal, wifi_set_channel(_)).WillByDefault(Return(ESP_OK));
+    ON_CALL(*wifi_hal, wifi_set_channel(_, _)).WillByDefault(Return(ESP_OK));
     ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
-    ON_CALL(*wifi_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_FAIL));
+    ON_CALL(*espnow_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_FAIL));
 
     scanner->start_scan();
 
@@ -199,9 +204,9 @@ TEST_F(DiscoveryManagerTaskTest, StopScanAbortsScanAndNotifiesScanFailed)
     init_node_and_wait();
     scanner->set_channel(VALID_CHANNEL);
 
-    ON_CALL(*wifi_hal, wifi_set_channel(_)).WillByDefault(Return(ESP_OK));
+    ON_CALL(*wifi_hal, wifi_set_channel(_, _)).WillByDefault(Return(ESP_OK));
     ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
-    ON_CALL(*wifi_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
+    ON_CALL(*espnow_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
 
     scanner->start_scan();
     vTaskDelay(pdMS_TO_TICKS(delay_10_ms)); // task is now blocked in hub_was_found()
@@ -219,7 +224,7 @@ TEST_F(DiscoveryManagerTaskTest, HubSendsScanResponseOnProbeReceived)
 
     MessageHeader captured;
     ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(DoAll(SaveArg<0>(&captured), Return(10)));
-    EXPECT_CALL(*wifi_hal, hal_esp_now_send(_, _, _)).Times(1).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*espnow_hal, hal_esp_now_send(_, _, _)).Times(1).WillOnce(Return(ESP_OK));
 
     scanner->handle_scan_probe(make_decoded_packet(42));
     vTaskDelay(pdMS_TO_TICKS(delay_10_ms));

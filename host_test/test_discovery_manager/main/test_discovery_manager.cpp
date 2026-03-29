@@ -4,6 +4,7 @@
 
 #include "mock_hal_freertos.hpp"
 #include "mock_hal_wifi.hpp"
+#include "mock_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
 
 #include "discovery_manager.hpp"
@@ -38,6 +39,7 @@ class DiscoveryManagerTest : public ::testing::Test
 {
 protected:
     NiceMock<MockWiFiHAL> wifi_hal;
+    NiceMock<MockEspNowHAL> espnow_hal;
     NiceMock<MockMessageCodec> codec;
     NiceMock<MockFreeRTOSHAL> freertos_hal;
 
@@ -57,7 +59,7 @@ protected:
         ON_CALL(freertos_hal, task_create(_, _, _, _, _, _))
             .WillByDefault(DoAll(SetArgPointee<5>(fake_discovery_task), Return(pdPASS)));
 
-        scanner = std::make_unique<TestableDiscoveryManager>(wifi_hal, codec, freertos_hal);
+        scanner = std::make_unique<TestableDiscoveryManager>(wifi_hal, espnow_hal, codec, freertos_hal);
     }
 
     void init_node() { scanner->init(MY_ID, MY_TYPE, fake_rx_task, priority, stack_size); }
@@ -83,7 +85,7 @@ protected:
 TEST_F(DiscoveryManagerTest, InitCreatesTask)
 {
     init_node();
-    TestableDiscoveryManager mgr(wifi_hal, codec, freertos_hal);
+    TestableDiscoveryManager mgr(wifi_hal, espnow_hal, codec, freertos_hal);
     EXPECT_CALL(freertos_hal, task_create(_, StrEq("discovery_task"), 4096, &mgr, 10, _))
         .WillOnce(DoAll(SetArgPointee<5>(fake_discovery_task), Return(pdPASS)));
 
@@ -93,7 +95,7 @@ TEST_F(DiscoveryManagerTest, InitCreatesTask)
 TEST_F(DiscoveryManagerTest, InitFailsIfTaskCreateFails)
 {
     init_node();
-    TestableDiscoveryManager mgr(wifi_hal, codec, freertos_hal);
+    TestableDiscoveryManager mgr(wifi_hal, espnow_hal, codec, freertos_hal);
     EXPECT_CALL(freertos_hal, task_create(_, _, _, _, _, _)).WillOnce(Return(pdFAIL));
 
     EXPECT_EQ(ESP_ERR_NO_MEM, mgr.init(MY_ID, MY_TYPE, fake_rx_task, priority, stack_size));
@@ -102,7 +104,7 @@ TEST_F(DiscoveryManagerTest, InitFailsIfTaskCreateFails)
 TEST_F(DiscoveryManagerTest, InitFailsIfRxTaskHandleIsNull)
 {
     init_node();
-    TestableDiscoveryManager mgr(wifi_hal, codec, freertos_hal);
+    TestableDiscoveryManager mgr(wifi_hal, espnow_hal, codec, freertos_hal);
     EXPECT_EQ(ESP_ERR_INVALID_ARG, mgr.init(MY_ID, MY_TYPE, nullptr, priority, stack_size));
 }
 
@@ -236,7 +238,7 @@ TEST_F(DiscoveryManagerTest, SendScanProbeHeaderContent)
     init_node();
     MessageHeader captured;
     EXPECT_CALL(codec, encode(_, _, _, _, _)).WillOnce(DoAll(SaveArg<0>(&captured), Return(10)));
-    EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(espnow_hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_OK));
 
     EXPECT_EQ(ESP_OK, scanner->send_scan_probe());
     EXPECT_EQ(captured.msg_type, MessageType::CHANNEL_SCAN_PROBE);
@@ -253,7 +255,7 @@ TEST_F(DiscoveryManagerTest, SendScanResponseHeaderContent)
 
     MessageHeader captured;
     EXPECT_CALL(codec, encode(_, _, _, _, _)).WillOnce(DoAll(SaveArg<0>(&captured), Return(15)));
-    EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(espnow_hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_OK));
 
     EXPECT_EQ(ESP_OK, scanner->send_scan_response());
     EXPECT_EQ(captured.msg_type, MessageType::CHANNEL_SCAN_RESPONSE);
@@ -304,9 +306,9 @@ TEST_F(DiscoveryManagerTest, ScanChannelFoundOnFirstAttempt)
     init_node();
     scanner->set_channel(VALID_CHANNEL);
 
-    ON_CALL(wifi_hal, wifi_set_channel(_)).WillByDefault(Return(ESP_OK));
+    ON_CALL(wifi_hal, wifi_set_channel(_, _)).WillByDefault(Return(ESP_OK));
     ON_CALL(codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
-    ON_CALL(wifi_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
+    ON_CALL(espnow_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
 
     // should_stop_scan(): clearOnExit=NOTIFY_STOP_SCAN, timeout=0 → not found
     EXPECT_CALL(freertos_hal, task_notify_wait(0, NOTIFY_STOP_SCAN, _, 0)).WillOnce(Return(pdFAIL));
@@ -326,8 +328,8 @@ TEST_F(DiscoveryManagerTest, ScanChannelStopOnShouldStopScan)
     scanner->set_channel(VALID_CHANNEL);
 
     ON_CALL(codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
-    ON_CALL(wifi_hal, wifi_set_channel(_)).WillByDefault(Return(ESP_OK));
-    ON_CALL(wifi_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
+    ON_CALL(wifi_hal, wifi_set_channel(_, _)).WillByDefault(Return(ESP_OK));
+    ON_CALL(espnow_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
 
     // should_stop_scan(): NOTIFY_STOP_SCAN received -> stop
     EXPECT_CALL(freertos_hal, task_notify_wait(0, NOTIFY_STOP_SCAN, _, 0))
@@ -346,13 +348,13 @@ TEST_F(DiscoveryManagerTest, ScanChannelSequenceOrder)
     scanner->set_channel(6);
 
     ON_CALL(codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
-    ON_CALL(wifi_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
+    ON_CALL(espnow_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
 
     Sequence s;
 
     uint8_t expected_channels[] = {6, 7, 8, 9, 10, 11, 12, 13, 1, 2, 3, 4, 5};
     for (uint8_t ch : expected_channels) {
-        EXPECT_CALL(wifi_hal, wifi_set_channel(ch)).InSequence(s).WillOnce(Return(ESP_OK));
+        EXPECT_CALL(wifi_hal, wifi_set_channel(ch, _)).InSequence(s).WillOnce(Return(ESP_OK));
 
         // For each attempt (repeat this block SCAN_CHANNEL_ATTEMPTS times if > 1):
         for (int i = 0; i < SCAN_CHANNEL_ATTEMPTS; i++) {
@@ -377,15 +379,15 @@ TEST_F(DiscoveryManagerTest, ScanChannelContinuesToNextChannelIfSetChannelFails)
     scanner->set_channel(VALID_CHANNEL);
 
     ON_CALL(codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
-    ON_CALL(wifi_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
+    ON_CALL(espnow_hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
 
     Sequence s;
 
     // First channel fails
-    EXPECT_CALL(wifi_hal, wifi_set_channel(VALID_CHANNEL)).InSequence(s).WillOnce(Return(ESP_FAIL));
+    EXPECT_CALL(wifi_hal, wifi_set_channel(VALID_CHANNEL, _)).InSequence(s).WillOnce(Return(ESP_FAIL));
 
     // Next channel succeeds
-    EXPECT_CALL(wifi_hal, wifi_set_channel(VALID_CHANNEL + 1)).InSequence(s).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(wifi_hal, wifi_set_channel(VALID_CHANNEL + 1, _)).InSequence(s).WillOnce(Return(ESP_OK));
 
     // should_stop_scan: clearOnExit=NOTIFY_STOP_SCAN, timeout=0 → not stopping
     EXPECT_CALL(freertos_hal, task_notify_wait(0, NOTIFY_STOP_SCAN, _, 0)).InSequence(s).WillOnce(Return(pdFAIL));
@@ -403,19 +405,19 @@ TEST_F(DiscoveryManagerTest, ScanChannelGoesToNextChannelIfAllAttemptsFail)
 {
     init_node();
     scanner->set_channel(VALID_CHANNEL);
-    ON_CALL(wifi_hal, wifi_set_channel(_)).WillByDefault(Return(ESP_OK));
+    ON_CALL(wifi_hal, wifi_set_channel(_, _)).WillByDefault(Return(ESP_OK));
     ON_CALL(codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
 
     Sequence s;
 
     // All attempts fails
     for (uint8_t attempt = 0; attempt < SCAN_CHANNEL_ATTEMPTS; ++attempt) {
-        EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).InSequence(s).WillOnce(Return(ESP_FAIL));
+        EXPECT_CALL(espnow_hal, hal_esp_now_send(_, _, _)).InSequence(s).WillOnce(Return(ESP_FAIL));
         // send_scan_probe() failed → should_stop_scan and hub_was_found are NOT called
     }
 
     // Next attempt succeeds
-    EXPECT_CALL(wifi_hal, hal_esp_now_send(_, _, _)).InSequence(s).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(espnow_hal, hal_esp_now_send(_, _, _)).InSequence(s).WillOnce(Return(ESP_OK));
 
     EXPECT_CALL(freertos_hal, task_notify_wait(0, NOTIFY_STOP_SCAN, _, 0)).InSequence(s).WillOnce(Return(pdFAIL));
 

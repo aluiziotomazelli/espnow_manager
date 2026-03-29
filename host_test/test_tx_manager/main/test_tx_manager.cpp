@@ -2,7 +2,7 @@
 #include "gtest/gtest.h"
 
 #include "mock_tx_state_machine.hpp"
-#include "mock_hal_wifi.hpp"
+#include "mock_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_hal_freertos.hpp"
 #include "tx_manager.hpp"
@@ -18,7 +18,7 @@ class TxManagerTest : public ::testing::Test
 {
 protected:
     NiceMock<MockTxStateMachine> fsm;
-    NiceMock<MockWiFiHAL> hal;
+    NiceMock<MockEspNowHAL> hal;
     NiceMock<MockFreeRTOSHAL> freertos_hal;
     NiceMock<MockMessageCodec> codec;
     std::unique_ptr<TxManager> manager;
