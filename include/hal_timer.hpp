@@ -18,7 +18,7 @@ public:
     TimerHAL() = default;
 
     /**
-     * @copydoc ITimerHAL::get_time_ms()
+     * @copydoc ITimerHAL::get_time_us()
      */
-    uint64_t get_time_us() const override { return esp_timer_get_time(); }
+    int64_t get_time_us() const override { return esp_timer_get_time(); }
 };

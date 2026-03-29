@@ -18,5 +18,5 @@ public:
     virtual ~ITimerHAL() = default;
 
     /** @copydoc esp_timer_get_time() */
-    virtual uint64_t get_time_us() const = 0;
+    virtual int64_t get_time_us() const = 0;
 };
