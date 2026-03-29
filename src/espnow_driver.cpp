@@ -6,8 +6,9 @@
 
 const char *TAG = "EspNowDriver";
 
-EspNowDriver::EspNowDriver(IWiFiHAL &wifi_hal)
+EspNowDriver::EspNowDriver(IWiFiHAL &wifi_hal, IEspNowHAL &espnow_hal)
     : wifi_hal_(wifi_hal)
+    , espnow_hal_(espnow_hal)
 {
 }
 
@@ -24,17 +25,17 @@ esp_err_t EspNowDriver::init(const EspNowConfig &config, esp_now_recv_cb_t recv_
         return init_fail(ESP_ERR_INVALID_STATE, "Mode is not supported");
     }
 
-    err = wifi_hal_.hal_esp_now_init();
+    err = espnow_hal_.hal_esp_now_init();
     if (err != ESP_OK) {
         return init_fail(err, "Failed to initialize ESP-NOW");
     }
 
-    err = wifi_hal_.hal_espnow_register_recv_cb(recv_cb);
+    err = espnow_hal_.hal_espnow_register_recv_cb(recv_cb);
     if (err != ESP_OK) {
         return init_fail(err, "Failed to register ESP-NOW receive callback");
     }
 
-    err = wifi_hal_.hal_espnow_register_send_cb(send_cb);
+    err = espnow_hal_.hal_espnow_register_send_cb(send_cb);
     if (err != ESP_OK) {
         return init_fail(err, "Failed to register ESP-NOW send callback");
     }
@@ -54,7 +55,7 @@ esp_err_t EspNowDriver::init(const EspNowConfig &config, esp_now_recv_cb_t recv_
 
 esp_err_t EspNowDriver::deinit()
 {
-    return wifi_hal_.hal_esp_now_deinit();
+    return espnow_hal_.hal_esp_now_deinit();
 }
 
 // ===============================================================
@@ -69,7 +70,7 @@ esp_err_t EspNowDriver::add_broadcast_peer(const uint8_t &channel)
     broadcast_peer.channel = 0;
     broadcast_peer.ifidx = WIFI_IF_STA;
     broadcast_peer.encrypt = false;
-    return wifi_hal_.hal_esp_now_add_peer(&broadcast_peer);
+    return espnow_hal_.hal_esp_now_add_peer(&broadcast_peer);
 }
 
 // Helper to log error and deinit
