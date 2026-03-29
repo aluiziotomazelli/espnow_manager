@@ -4,6 +4,7 @@
 #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
 
+#include "protocol_types.hpp"
 #include "channel_monitor.hpp"
 
 static const char* TAG = "ChannelMonitor";
