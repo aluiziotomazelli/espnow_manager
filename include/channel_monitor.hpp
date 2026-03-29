@@ -2,11 +2,14 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 
-#include "protocol_types.hpp"
-#include "i_hal_wifi.hpp"
-#include "i_hal_freertos.hpp"
+#include "esp_err.h"
+#include "freertos/FreeRTOS.h"
+
 #include "i_channel_monitor.hpp"
+#include "i_hal_freertos.hpp"
+#include "i_hal_wifi.hpp"
 
 class ChannelMonitor : public IChannelMonitor
 {
