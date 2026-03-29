@@ -3,6 +3,7 @@
 
 #include "mock_hal_wifi.hpp"
 #include "mock_hal_freertos.hpp"
+#include "protocol_types.hpp"
 
 #include "channel_monitor.hpp"
 
