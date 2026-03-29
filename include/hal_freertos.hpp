@@ -27,9 +27,9 @@ public:
     }
     void task_delete(TaskHandle_t task_handle) override { vTaskDelete(task_handle); }
     void task_suspend(TaskHandle_t task_handle) override { vTaskSuspend(task_handle); }
-    void task_notify(TaskHandle_t task_handle, uint32_t bits, eNotifyAction action) override
+    BaseType_t task_notify(TaskHandle_t task_handle, uint32_t bits, eNotifyAction action) override
     {
-        xTaskNotify(task_handle, bits, action);
+        return xTaskNotify(task_handle, bits, action);
     }
     BaseType_t
     task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t *value, TickType_t xTicksToWait)
@@ -66,7 +66,7 @@ public:
         void *id,
         TimerCallbackFunction_t callback) override
     {
-        return xTimerCreate(name, xTimerPeriodInTicks, auto_reload, id, nullptr);
+        return xTimerCreate(name, xTimerPeriodInTicks, auto_reload, id, callback);
     }
     BaseType_t timer_start(TimerHandle_t timer_handle, TickType_t xTicksToWait) override
     {

@@ -41,7 +41,7 @@ public:
     virtual void task_suspend(TaskHandle_t task_handle) = 0;
 
     /** @copydoc xTaskNotify() */
-    virtual void task_notify(TaskHandle_t task_handle, uint32_t bits, eNotifyAction action) = 0;
+    virtual BaseType_t task_notify(TaskHandle_t task_handle, uint32_t bits, eNotifyAction action) = 0;
 
     /** @copydoc xTaskNotifyWait() */
     virtual BaseType_t
