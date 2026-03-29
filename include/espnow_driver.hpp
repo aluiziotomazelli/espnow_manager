@@ -31,6 +31,6 @@ private:
     IWiFiHAL &wifi_hal_;
     IEspNowHAL &espnow_hal_;
 
-    esp_err_t add_broadcast_peer(const uint8_t &channel);
+    esp_err_t add_broadcast_peer();
     esp_err_t init_fail(esp_err_t ret, const char *step);
 };

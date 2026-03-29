@@ -45,7 +45,7 @@ esp_err_t EspNowDriver::init(const EspNowConfig &config, esp_now_recv_cb_t recv_
         return init_fail(err, "Failed to set WiFi channel");
     }
 
-    err = add_broadcast_peer(config.wifi_channel);
+    err = add_broadcast_peer();
     if (err != ESP_OK) {
         return init_fail(err, "Failed to add broadcast peer");
     }
@@ -63,7 +63,7 @@ esp_err_t EspNowDriver::deinit()
 // ===============================================================
 
 // Add broadcast peer to ESP-NOW
-esp_err_t EspNowDriver::add_broadcast_peer(const uint8_t &channel)
+esp_err_t EspNowDriver::add_broadcast_peer()
 {
     esp_now_peer_info_t broadcast_peer = {};
     memcpy(broadcast_peer.peer_addr, BROADCAST_MAC, 6);
