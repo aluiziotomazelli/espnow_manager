@@ -169,7 +169,7 @@ esp_err_t DiscoveryManager::scan_channel()
         ESP_LOGD(TAG, "Scanning channel %d", channel);
 
         // Set wifi channel to make probes attempts on this channel
-        if (hal_wifi_.wifi_set_channel(channel) != ESP_OK) {
+        if (hal_wifi_.wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
             ESP_LOGE(TAG, "Failed to set WiFi channel to %d", channel);
             continue;
         }
