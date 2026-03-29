@@ -1,6 +1,7 @@
 // src/discovery_manager.cpp
 #include <cstring>
 
+#define LOG_LOCAL_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
 
 #include "discovery_manager.hpp"
@@ -8,8 +9,13 @@
 
 static const char* TAG = "DiscoveryMgr";
 
-DiscoveryManager::DiscoveryManager(IWiFiHAL& wifi_hal, IMessageCodec& message_codec, IFreeRTOSHAL& freertos_hal)
+DiscoveryManager::DiscoveryManager(
+    IWiFiHAL& wifi_hal,
+    IEspNowHAL& espnow_hal,
+    IMessageCodec& message_codec,
+    IFreeRTOSHAL& freertos_hal)
     : hal_wifi_(wifi_hal)
+    , hal_espnow_(espnow_hal)
     , message_codec_(message_codec)
     , hal_freertos_(freertos_hal)
 {
@@ -204,7 +210,7 @@ esp_err_t DiscoveryManager::send_scan_probe()
         return ESP_FAIL;
     }
 
-    return hal_wifi_.hal_esp_now_send(BROADCAST_MAC, buffer, encoded_len);
+    return hal_espnow_.hal_esp_now_send(BROADCAST_MAC, buffer, encoded_len);
 }
 
 MessageHeader DiscoveryManager::make_probe_header()
@@ -253,7 +259,7 @@ esp_err_t DiscoveryManager::send_scan_response()
     }
 
     // Send via broadcast — probing node maybe is not yet a registered ESP-NOW peer
-    return hal_wifi_.hal_esp_now_send(BROADCAST_MAC, buffer, encoded_len);
+    return hal_espnow_.hal_esp_now_send(BROADCAST_MAC, buffer, encoded_len);
 }
 
 MessageHeader DiscoveryManager::make_response_header()

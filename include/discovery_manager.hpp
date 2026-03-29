@@ -10,6 +10,7 @@
 
 #include "i_discovery_manager.hpp"
 #include "i_hal_wifi.hpp"
+#include "i_hal_espnow.hpp"
 #include "i_hal_freertos.hpp"
 #include "i_message_codec.hpp"
 #include "protocol_types.hpp"
@@ -17,7 +18,11 @@
 class DiscoveryManager : public IDiscoveryManager
 {
 public:
-    DiscoveryManager(IWiFiHAL& wifi_hal, IMessageCodec& message_codec, IFreeRTOSHAL& freertos_hal);
+    DiscoveryManager(
+        IWiFiHAL& wifi_hal,
+        IEspNowHAL& espnow_hal,
+        IMessageCodec& message_codec,
+        IFreeRTOSHAL& freertos_hal);
 
     /** @copydoc IDiscoveryManager::init */
     esp_err_t
@@ -60,6 +65,7 @@ protected:
 private:
     // Dependencies
     IWiFiHAL& hal_wifi_;
+    IEspNowHAL& hal_espnow_;
     IMessageCodec& message_codec_;
     IFreeRTOSHAL& hal_freertos_;
 
