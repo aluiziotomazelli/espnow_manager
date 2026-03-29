@@ -11,6 +11,7 @@
 #include "mock_hal_freertos.hpp"
 #include "mock_hal_timer.hpp"
 #include "mock_hal_wifi.hpp"
+#include "mock_hal_espnow.hpp"
 #include "mock_heartbeat_manager.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_message_router.hpp"
@@ -127,6 +128,7 @@ protected:
     NiceMock<MockWiFiHAL>* hal_wifi_;
     NiceMock<MockTimerHAL>* hal_timer_;
     NiceMock<MockFreeRTOSHAL>* hal_freertos_;
+    NiceMock<MockEspNowHAL>* hal_espnow_;
     NiceMock<MockEspNowDriver>* espnow_driver_;
     NiceMock<MockPeerManager>* peer_mgr_;
     NiceMock<MockMessageCodec>* codec_;
@@ -147,6 +149,7 @@ protected:
         auto hal_wifi = std::make_unique<NiceMock<MockWiFiHAL>>();
         auto hal_timer = std::make_unique<NiceMock<MockTimerHAL>>();
         auto hal_freertos = std::make_unique<NiceMock<MockFreeRTOSHAL>>();
+        auto hal_espnow = std::make_unique<NiceMock<MockEspNowHAL>>();
         auto espnow_driver = std::make_unique<NiceMock<MockEspNowDriver>>();
         auto peer_mgr = std::make_unique<NiceMock<MockPeerManager>>();
         auto codec = std::make_unique<NiceMock<MockMessageCodec>>();
@@ -164,6 +167,7 @@ protected:
         hal_wifi_ = hal_wifi.get();
         hal_timer_ = hal_timer.get();
         hal_freertos_ = hal_freertos.get();
+        hal_espnow_ = hal_espnow.get();
         espnow_driver_ = espnow_driver.get();
         peer_mgr_ = peer_mgr.get();
         codec_ = codec.get();
@@ -229,6 +233,7 @@ protected:
             std::move(hal_wifi),
             std::move(hal_timer),
             std::move(hal_freertos),
+            std::move(hal_espnow),
             std::move(espnow_driver),
             std::move(peer_mgr),
             std::move(codec),
@@ -312,7 +317,7 @@ TEST_F(EspNowManagerTest, InitWithPeersTransitionsToOperational)
     add_peer_to_storage();
 
     // add_peers_to_espnow(_) will call hal_esp_now_add_peer(_)
-    EXPECT_CALL(*hal_wifi_, hal_esp_now_add_peer(_)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*hal_espnow_, hal_esp_now_add_peer(_)).WillOnce(Return(ESP_OK));
 
     init_sut();
     EXPECT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
@@ -489,7 +494,7 @@ TEST_F(EspNowManagerTest, DeinitDoesNotCleanResourcesWhenNotInitialized)
     EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(0);
     EXPECT_CALL(*hal_freertos_, queue_delete(_)).Times(0);
     EXPECT_CALL(*hal_freertos_, semaphore_delete(_)).Times(0);
-    EXPECT_CALL(*hal_wifi_, hal_esp_now_del_peer(_)).Times(0);
+    EXPECT_CALL(*hal_espnow_, hal_esp_now_del_peer(_)).Times(0);
 
     sut_->deinit();
 }
@@ -516,7 +521,7 @@ TEST_F(EspNowManagerTest, DeinitCallsAllDeleteFunctions)
     EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(1);
     EXPECT_CALL(*hal_freertos_, queue_delete(_)).Times(1);
     EXPECT_CALL(*hal_freertos_, semaphore_delete(_)).Times(1);
-    EXPECT_CALL(*hal_wifi_, hal_esp_now_del_peer(_)).Times(1);
+    EXPECT_CALL(*hal_espnow_, hal_esp_now_del_peer(_)).Times(1);
     EXPECT_CALL(*espnow_driver_, deinit()).Times(1);
 
     sut_->deinit();
@@ -560,7 +565,7 @@ TEST_F(EspNowManagerTest, DeinitWithPeersCallsDeletePeers)
     add_peer_to_storage();
 
     // esp_now_del_peer is called if peer list is not empty
-    EXPECT_CALL(*hal_wifi_, hal_esp_now_del_peer(_)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*hal_espnow_, hal_esp_now_del_peer(_)).WillOnce(Return(ESP_OK));
     sut_->deinit();
 }
 

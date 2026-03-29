@@ -15,6 +15,7 @@
 #include "mock_discovery_manager.hpp"
 #include "mock_hal_timer.hpp"
 #include "mock_hal_wifi.hpp"
+#include "mock_hal_espnow.hpp"
 #include "mock_heartbeat_manager.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_message_router.hpp"
@@ -85,6 +86,7 @@ protected:
     NiceMock<MockEspNowDriver>* driver_;
     NiceMock<MockTimerHAL>* hal_timer_;
     NiceMock<MockWiFiHAL>* hal_wifi_;
+    NiceMock<MockEspNowHAL>* hal_espnow_;
     NiceMock<MockPeerManager>* peer_mgr_;
     NiceMock<MockMessageCodec>* codec_;
     NiceMock<MockChannelMonitor>* channel_monitor_;
@@ -106,6 +108,7 @@ protected:
         auto driver = std::make_unique<NiceMock<MockEspNowDriver>>();
         auto hal_timer = std::make_unique<NiceMock<MockTimerHAL>>();
         auto hal_wifi = std::make_unique<NiceMock<MockWiFiHAL>>();
+        auto hal_espnow = std::make_unique<NiceMock<MockEspNowHAL>>();
         auto peer_mgr = std::make_unique<NiceMock<MockPeerManager>>();
         auto codec = std::make_unique<NiceMock<MockMessageCodec>>();
         auto channel_monitor = std::make_unique<NiceMock<MockChannelMonitor>>();
@@ -121,6 +124,7 @@ protected:
         driver_ = driver.get();
         hal_timer_ = hal_timer.get();
         hal_wifi_ = hal_wifi.get();
+        hal_espnow_ = hal_espnow.get();
         peer_mgr_ = peer_mgr.get();
         codec_ = codec.get();
         channel_monitor_ = channel_monitor.get();
@@ -159,6 +163,7 @@ protected:
             std::move(hal_wifi),
             std::move(hal_timer),
             std::make_unique<RealFreeRTOSHAL>(), // real FreeRTOS — creates actual tasks
+            std::move(hal_espnow),
             std::move(driver),
             std::move(peer_mgr),
             std::move(codec),
