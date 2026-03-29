@@ -3,7 +3,7 @@
 
 #include <atomic>
 
-#include "i_hal_wifi.hpp"
+#include "i_hal_espnow.hpp"
 #include "i_hal_freertos.hpp"
 #include "i_message_codec.hpp"
 #include "i_tx_manager.hpp"
@@ -14,7 +14,7 @@ class TxManager : public ITxManager
 public:
     TxManager(
         ITxStateMachine& fsm,
-        IWiFiHAL& hal,
+        IEspNowHAL& hal_espnow,
         IFreeRTOSHAL& freertos_hal,
         IMessageCodec& codec,
         uint32_t ack_timeout_ms);
@@ -46,7 +46,7 @@ public:
 private:
     // Dependencies
     ITxStateMachine& fsm_;
-    IWiFiHAL& hal_wifi_;
+    IEspNowHAL& hal_espnow_;
     IMessageCodec& codec_;
     IFreeRTOSHAL& freertos_hal_;
 

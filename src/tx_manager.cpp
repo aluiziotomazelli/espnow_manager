@@ -8,12 +8,12 @@ static const char* TAG = "TxManager";
 
 TxManager::TxManager(
     ITxStateMachine& fsm,
-    IWiFiHAL& hal,
+    IEspNowHAL& hal_espnow,
     IFreeRTOSHAL& freertos_hal,
     IMessageCodec& codec,
     uint32_t ack_timeout_ms)
     : fsm_(fsm)
-    , hal_wifi_(hal)
+    , hal_espnow_(hal_espnow)
     , codec_(codec)
     , freertos_hal_(freertos_hal)
     , sequence_counter_(0)
@@ -254,7 +254,7 @@ void TxManager::tx_task()
                 raw_packet.requires_ack = structured_packet.header.requires_ack;
 
                 esp_err_t send_result =
-                    hal_wifi_.hal_esp_now_send(raw_packet.dest_mac, raw_packet.data, raw_packet.len);
+                    hal_espnow_.hal_esp_now_send(raw_packet.dest_mac, raw_packet.data, raw_packet.len);
 
                 if (send_result == ESP_OK) {
                     TxState next = fsm_.on_tx_success(raw_packet.requires_ack);
@@ -310,7 +310,7 @@ void TxManager::tx_task()
                 fsm_.set_pending_ack(pending);
 
                 esp_err_t send_result =
-                    hal_wifi_.hal_esp_now_send(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
+                    hal_espnow_.hal_esp_now_send(pending.packet.dest_mac, pending.packet.data, pending.packet.len);
 
                 if (send_result == ESP_OK) {
                     // Retry sent successfully, go back to WAITING_FOR_ACK and wait for the response again.
