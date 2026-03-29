@@ -17,6 +17,7 @@
 #include "i_tx_manager.hpp"
 #include "i_tx_state_machine.hpp"
 #include "i_hal_wifi.hpp"
+#include "i_hal_espnow.hpp"
 #include "i_espnow_driver.hpp"
 #include "i_hal_freertos.hpp"
 #include "i_storage_manager.hpp"
@@ -47,6 +48,7 @@ public:
         std::unique_ptr<IWiFiHAL> hal_wifi,
         std::unique_ptr<ITimerHAL> hal_timer,
         std::unique_ptr<IFreeRTOSHAL> hal_freertos,
+        std::unique_ptr<IEspNowHAL> hal_espnow,
         std::unique_ptr<IEspNowDriver> espnow_driver,
         std::unique_ptr<IPeerManager> peer_manager,
         std::unique_ptr<IMessageCodec> message_codec,
@@ -139,6 +141,7 @@ protected:
     std::unique_ptr<IWiFiHAL> hal_wifi_;                   ///< Pointer to WiFi HAL
     std::unique_ptr<ITimerHAL> hal_timer_;                 ///< Pointer to timer HAL
     std::unique_ptr<IFreeRTOSHAL> hal_freertos_;           ///< Pointer to FreeRTOS HAL
+    std::unique_ptr<IEspNowHAL> hal_espnow_;               ///< Pointer to ESP-NOW HAL
     std::unique_ptr<IEspNowDriver> espnow_driver_;         ///< Pointer to espnow_driver
     std::unique_ptr<IPeerManager> peer_manager_;           ///< Pointer to peer manager
     std::unique_ptr<IMessageCodec> message_codec_;         ///< Pointer to message codec

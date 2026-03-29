@@ -15,6 +15,7 @@
 #include "tx_manager.hpp"
 #include "tx_state_machine.hpp"
 #include "hal_wifi.hpp"
+#include "hal_espnow.hpp"
 #include "espnow_driver.hpp"
 #include "hal_freertos.hpp"
 #include "hal_nvs.hpp"
@@ -45,15 +46,16 @@ EspNowManager& EspNowManager::instance()
         std::move(nvs_channel_backend));
 
     static auto hal_wifi = std::make_unique<WiFiHAL>();
+    static auto hal_espnow = std::make_unique<EspNowHAL>();
     static auto hal_timer = std::make_unique<TimerHAL>();
     static auto hal_freertos = std::make_unique<FreeRTOSHAL>();
-    static auto bootstraper = std::make_unique<EspNowDriver>(*hal_wifi);
-    static auto peer_manager = std::make_unique<PeerManager>(*storage, *hal_wifi, *hal_freertos);
+    static auto bootstraper = std::make_unique<EspNowDriver>(*hal_wifi, *hal_espnow);
+    static auto peer_manager = std::make_unique<PeerManager>(*storage, *hal_espnow, *hal_freertos);
     static auto message_codec = std::make_unique<MessageCodec>();
     static auto channel_monitor = std::make_unique<ChannelMonitor>(*hal_wifi, *hal_freertos);
-    static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *message_codec, *hal_freertos);
+    static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *hal_espnow, *message_codec, *hal_freertos);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
-    static auto tx_manager = std::make_unique<TxManager>(*tx_fsm, *hal_wifi, *hal_freertos, *message_codec, 500);
+    static auto tx_manager = std::make_unique<TxManager>(*tx_fsm, *hal_espnow, *hal_freertos, *message_codec, 500);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *hal_timer);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *hal_freertos);
     static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
@@ -63,6 +65,7 @@ EspNowManager& EspNowManager::instance()
         std::move(hal_wifi),
         std::move(hal_timer),
         std::move(hal_freertos),
+        std::move(hal_espnow),
         std::move(bootstraper),
         std::move(peer_manager),
         std::move(message_codec),
@@ -83,6 +86,7 @@ EspNowManager::EspNowManager(
     std::unique_ptr<IWiFiHAL> hal_wifi,
     std::unique_ptr<ITimerHAL> hal_timer,
     std::unique_ptr<IFreeRTOSHAL> hal_freertos,
+    std::unique_ptr<IEspNowHAL> hal_espnow,
     std::unique_ptr<IEspNowDriver> espnow_driver,
     std::unique_ptr<IPeerManager> peer_manager,
     std::unique_ptr<IMessageCodec> message_codec,
@@ -98,6 +102,7 @@ EspNowManager::EspNowManager(
     , hal_wifi_(std::move(hal_wifi))
     , hal_timer_(std::move(hal_timer))
     , hal_freertos_(std::move(hal_freertos))
+    , hal_espnow_(std::move(hal_espnow))
     , espnow_driver_(std::move(espnow_driver))
     , peer_manager_(std::move(peer_manager))
     , message_codec_(std::move(message_codec))
@@ -241,7 +246,7 @@ void EspNowManager::deinit()
     if (esp_now_initialized_ && peer_manager_) {
         etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
         for (const auto& peer : peers) {
-            hal_wifi_->hal_esp_now_del_peer(peer.mac);
+            hal_espnow_->hal_esp_now_del_peer(peer.mac);
         }
     }
 
@@ -759,7 +764,7 @@ void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo>& peers)
         peer_info.channel = 0;
         peer_info.ifidx = WIFI_IF_STA;
         peer_info.encrypt = false;
-        hal_wifi_->hal_esp_now_add_peer(&peer_info);
+        hal_espnow_->hal_esp_now_add_peer(&peer_info);
     }
 }
 
