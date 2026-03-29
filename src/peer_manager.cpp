@@ -10,40 +10,41 @@
 // #include "freertos/task.h"
 
 #include "i_storage_manager.hpp"
+#include "i_hal_espnow.hpp"
 #include "peer_manager.hpp"
 
-static const char *TAG = "PeerManager";
+static const char* TAG = "PeerManager";
 
-PeerManager::PeerManager(IStorageManager &storage, IWiFiHAL &driver_hal, IFreeRTOSHAL &freertos_hal)
+PeerManager::PeerManager(IStorageManager& storage, IEspNowHAL& hal_espnow, IFreeRTOSHAL& hal_freertos)
     : storage_(storage)
-    , driver_hal_(driver_hal)
-    , freertos_hal_(freertos_hal)
+    , hal_espnow_(hal_espnow)
+    , hal_freertos_(hal_freertos)
 {
-    mutex_ = freertos_hal_.mutex_create();
+    mutex_ = hal_freertos_.mutex_create();
     // peers_ is etl::vector, capacity is fixed at compile-time.
 }
 
 PeerManager::~PeerManager()
 {
     if (mutex_ != nullptr) {
-        freertos_hal_.semaphore_delete(mutex_);
+        hal_freertos_.semaphore_delete(mutex_);
     }
 }
 
-esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_t heartbeat_interval_ms)
+esp_err_t PeerManager::add(NodeId id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms)
 {
     if (mac == nullptr) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }
 
     esp_err_t ret = ESP_OK;
 
     // Check if peer already exists
-    auto it = std::find_if(peers_.begin(), peers_.end(), [id](const PeerInfo &p) { return p.node_id == id; });
+    auto it = std::find_if(peers_.begin(), peers_.end(), [id](const PeerInfo& p) { return p.node_id == id; });
 
     if (it != peers_.end()) {
         ESP_LOGI(TAG, "Node ID %d already exists. Updating peer info.", (int)id);
@@ -54,10 +55,10 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_
             auto peer_info = make_espnow_peer_info(mac);
 
             // Delete peer
-            ret = driver_hal_.hal_esp_now_del_peer(it->mac);
+            ret = hal_espnow_.hal_esp_now_del_peer(it->mac);
             // Add peer with new MAC
             if (ret == ESP_OK) {
-                ret = driver_hal_.hal_esp_now_add_peer(&peer_info);
+                ret = hal_espnow_.hal_esp_now_add_peer(&peer_info);
             }
         }
 
@@ -78,12 +79,12 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_
             ESP_LOGW(TAG, "Peer list is full. Removing the oldest seen peer.");
 
             // Returns a iterator to the element with the smallest last_seen_ms
-            auto oldest = std::min_element(peers_.begin(), peers_.end(), [](const PeerInfo &a, const PeerInfo &b) {
+            auto oldest = std::min_element(peers_.begin(), peers_.end(), [](const PeerInfo& a, const PeerInfo& b) {
                 return a.last_seen_ms < b.last_seen_ms;
             });
 
             // Delete the last seen peers
-            ret = driver_hal_.hal_esp_now_del_peer(oldest->mac);
+            ret = hal_espnow_.hal_esp_now_del_peer(oldest->mac);
             if (ret == ESP_OK) {
                 // Erase from peers_ list
                 peers_.erase(oldest);
@@ -92,7 +93,7 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_
         // Only add the new peer if the oldest was removed successfully
         if (ret == ESP_OK) {
             auto peer_info = make_espnow_peer_info(mac);
-            ret = driver_hal_.hal_esp_now_add_peer(&peer_info);
+            ret = hal_espnow_.hal_esp_now_add_peer(&peer_info);
         }
 
         // If the new peer was added successfully to ESP-NOW driver, add it to peers_ list
@@ -114,42 +115,42 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t *mac, NodeType type, uint32_
         ret = save_peers_to_storage();
     }
 
-    freertos_hal_.semaphore_give(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
     return ret;
 }
 
 esp_err_t PeerManager::remove(NodeId id)
 {
-    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }
 
-    auto it = std::find_if(peers_.begin(), peers_.end(), [id](const PeerInfo &p) { return p.node_id == id; });
+    auto it = std::find_if(peers_.begin(), peers_.end(), [id](const PeerInfo& p) { return p.node_id == id; });
 
     if (it == peers_.end()) {
-        freertos_hal_.semaphore_give(mutex_);
+        hal_freertos_.semaphore_give(mutex_);
         return ESP_ERR_NOT_FOUND;
     }
 
-    esp_err_t ret = driver_hal_.hal_esp_now_del_peer(it->mac);
+    esp_err_t ret = hal_espnow_.hal_esp_now_del_peer(it->mac);
 
     if (ret == ESP_OK) {               // If peer is removed successfully from driver
         peers_.erase(it);              // Remove from peer list
         ret = save_peers_to_storage(); // Save to storage
     }
 
-    freertos_hal_.semaphore_give(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
     return ret;
 }
 
-bool PeerManager::find_mac(NodeId id, uint8_t *mac)
+bool PeerManager::find_mac(NodeId id, uint8_t* mac)
 {
-    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return false;
     }
 
     bool found = false;
-    for (const auto &p : peers_) {
+    for (const auto& p : peers_) {
         if (p.node_id == id) {
             if (mac != nullptr) {
                 memcpy(mac, p.mac, 6);
@@ -159,7 +160,7 @@ bool PeerManager::find_mac(NodeId id, uint8_t *mac)
         }
     }
 
-    freertos_hal_.semaphore_give(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
     return found;
 }
 
@@ -167,11 +168,11 @@ etl::vector<PeerInfo, MAX_PEERS> PeerManager::get_all()
 {
     etl::vector<PeerInfo, MAX_PEERS> copy;
 
-    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return copy;
     }
     copy = peers_;
-    freertos_hal_.semaphore_give(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
     return copy;
 }
 
@@ -179,11 +180,11 @@ etl::vector<NodeId, MAX_PEERS> PeerManager::get_offline(uint64_t now_ms)
 {
     etl::vector<NodeId, MAX_PEERS> offline;
 
-    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return offline;
     }
 
-    for (const auto &p : peers_) {
+    for (const auto& p : peers_) {
         if (p.heartbeat_interval_ms > 0) {
             uint32_t timeout = p.heartbeat_interval_ms * HEARTBEAT_OFFLINE_MULTIPLIER;
             if (p.last_seen_ms > 0 && (now_ms - p.last_seen_ms > timeout)) {
@@ -192,22 +193,22 @@ etl::vector<NodeId, MAX_PEERS> PeerManager::get_offline(uint64_t now_ms)
         }
     }
 
-    freertos_hal_.semaphore_give(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
     return offline;
 }
 
 void PeerManager::update_last_seen(NodeId id, uint64_t now_ms)
 {
-    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return;
     }
-    for (auto &p : peers_) {
+    for (auto& p : peers_) {
         if (p.node_id == id) {
             p.last_seen_ms = now_ms;
             break;
         }
     }
-    freertos_hal_.semaphore_give(mutex_);
+    hal_freertos_.semaphore_give(mutex_);
 }
 
 esp_err_t PeerManager::load_peers_from_storage()
@@ -219,14 +220,14 @@ esp_err_t PeerManager::load_peers_from_storage()
         return err;
     }
 
-    if (freertos_hal_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
         peers_.clear();
-        for (const auto &sp : stored_peers) {
+        for (const auto& sp : stored_peers) {
             if (peers_.size() < MAX_PEERS) {
                 peers_.push_back(persistent_to_info(sp));
             }
         }
-        freertos_hal_.semaphore_give(mutex_);
+        hal_freertos_.semaphore_give(mutex_);
         return ESP_OK;
     }
     else {
@@ -241,7 +242,7 @@ esp_err_t PeerManager::load_peers_from_storage()
 esp_err_t PeerManager::save_peers_to_storage()
 {
     etl::vector<PersistentPeer, MAX_PEERS> peers_to_save;
-    for (const auto &p : peers_) {
+    for (const auto& p : peers_) {
         peers_to_save.push_back(info_to_persistent(p));
     }
     esp_err_t err = storage_.store_peers(peers_to_save, true);
@@ -251,7 +252,7 @@ esp_err_t PeerManager::save_peers_to_storage()
     return err;
 }
 
-PersistentPeer PeerManager::info_to_persistent(const PeerInfo &info)
+PersistentPeer PeerManager::info_to_persistent(const PeerInfo& info)
 {
     PersistentPeer p;
     memcpy(p.mac, info.mac, 6);
@@ -262,7 +263,7 @@ PersistentPeer PeerManager::info_to_persistent(const PeerInfo &info)
     return p;
 }
 
-PeerInfo PeerManager::persistent_to_info(const PersistentPeer &persistent)
+PeerInfo PeerManager::persistent_to_info(const PersistentPeer& persistent)
 {
     PeerInfo info;
     memcpy(info.mac, persistent.mac, 6);
@@ -274,7 +275,7 @@ PeerInfo PeerManager::persistent_to_info(const PersistentPeer &persistent)
     return info;
 }
 
-esp_now_peer_info_t PeerManager::make_espnow_peer_info(const uint8_t *mac)
+esp_now_peer_info_t PeerManager::make_espnow_peer_info(const uint8_t* mac)
 {
     esp_now_peer_info_t peer_info = {};
     memcpy(peer_info.peer_addr, mac, 6);
