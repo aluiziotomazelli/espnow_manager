@@ -91,7 +91,9 @@ TEST_F(ChannelMonitorTest, NotifyRxTaskWhenChannelChanges)
         }));
 
     // Expect rx_task notification
-    EXPECT_CALL(freertos_hal, task_notify(fake_rx_task_handle_, NOTIFY_CHANNEL_CHANGED, eSetBits)).Times(1);
+    EXPECT_CALL(freertos_hal, task_notify(fake_rx_task_handle_, NOTIFY_CHANNEL_CHANGED, eSetBits))
+        .Times(1)
+        .WillOnce(Return(pdPASS));
 
     monitor->tick(INTERVAL_MS);
 }

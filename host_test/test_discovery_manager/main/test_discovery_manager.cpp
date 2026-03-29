@@ -109,7 +109,7 @@ TEST_F(DiscoveryManagerTest, InitFailsIfRxTaskHandleIsNull)
 TEST_F(DiscoveryManagerTest, DeinitNotifyTaskToStopScan)
 {
     init_node();
-    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_STOP | NOTIFY_STOP_SCAN, eSetBits));
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_STOP | NOTIFY_STOP_SCAN, eSetBits)).WillOnce(Return(pdPASS));
     scanner->deinit();
 }
 
@@ -151,7 +151,7 @@ TEST_F(DiscoveryManagerTest, StartScanNotifiesTask)
 {
     init_node();
 
-    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_START_SCAN, eSetBits));
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_START_SCAN, eSetBits)).WillOnce(Return(pdPASS));
     scanner->start_scan();
 }
 
@@ -176,7 +176,7 @@ TEST_F(DiscoveryManagerTest, StopScanNotifiesTask)
 {
     init_node();
 
-    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_STOP_SCAN, eSetBits));
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_STOP_SCAN, eSetBits)).WillOnce(Return(pdPASS));
     scanner->stop_scan();
 }
 
@@ -204,7 +204,7 @@ TEST_F(DiscoveryManagerTest, HandleScanProbeNotifiesTask)
     // Hub must be ready to handle probes
     init_hub();
 
-    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_SCAN_RESPONSE, eSetBits));
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_SCAN_RESPONSE, eSetBits)).WillOnce(Return(pdPASS));
     scanner->handle_scan_probe(decoded);
 }
 

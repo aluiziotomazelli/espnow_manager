@@ -324,7 +324,9 @@ TEST_F(PairingManagerTest, HandleResponseAcceptedNotifiesRxTask)
 
     // When pairing succeeds, notify_rx_task_pairing_done() should be called
     // which calls hal_freertos_.task_notify(rx_task_handle_, NOTIFY_PAIRING_DONE, _)
-    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PAIRING_DONE, _)).Times(1);
+    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PAIRING_DONE, _))
+        .Times(1)
+        .WillOnce(Return(pdPASS));
 
     auto decoded = make_decoded_pair_response(PairStatus::ACCEPTED);
     sut_->handle_response(decoded);

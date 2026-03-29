@@ -42,7 +42,7 @@ protected:
             .WillByDefault(DoAll(SetArgPointee<5>(fake_task), Return(pdPASS)));
 
         // deinit() happy path
-        ON_CALL(freertos_hal, task_notify(_, NOTIFY_STOP, _)).WillByDefault(Return());
+        ON_CALL(freertos_hal, task_notify(_, NOTIFY_STOP, _)).WillByDefault(Return(pdPASS));
         ON_CALL(freertos_hal, queue_send(_, _, _)).WillByDefault(Return(pdTRUE));
         ON_CALL(freertos_hal, semaphore_take(_, _)).WillByDefault(Return(pdPASS));
         ON_CALL(freertos_hal, task_delete(_)).WillByDefault(Return());
