@@ -61,6 +61,13 @@ public:
     virtual void handle_scan_probe(const DecodedRxPacket& decoded) = 0;
 
     /**
+     * @brief Handle incoming CHANNEL_SCAN_RESPONSE packets.
+     * @param decoded The decoded response packet.
+     * @note Called from rx_task context. Thread-safe.
+     */
+    virtual void handle_scan_response(const DecodedRxPacket& decoded) = 0;
+
+    /**
      * @brief Set the WiFi channel for scanning.
      * @param channel Primary channel (1-14).
      * @note Should be called before start_scan().
