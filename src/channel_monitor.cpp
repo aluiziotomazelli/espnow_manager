@@ -32,6 +32,12 @@ esp_err_t ChannelMonitor::init(uint32_t interval_ms, TaskHandle_t rx_task_handle
     return ESP_OK;
 }
 
+void ChannelMonitor::deinit()
+{
+    is_active_ = false;
+    rx_task_handle_ = nullptr;
+}
+
 void ChannelMonitor::tick(uint64_t now_ms)
 {
     // If not initialized or the interval has not passed, nothing to do here
@@ -53,7 +59,8 @@ void ChannelMonitor::tick(uint64_t now_ms)
 uint8_t ChannelMonitor::verify_wifi_channel()
 {
     uint8_t channel;
-    esp_err_t err = hal_wifi_.wifi_get_channel(&channel, nullptr);
+    wifi_second_chan_t second_chan;
+    esp_err_t err = hal_wifi_.wifi_get_channel(&channel, &second_chan);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to get WiFi channel: %s", esp_err_to_name(err));
         return last_known_channel_.load();

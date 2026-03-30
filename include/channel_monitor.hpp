@@ -20,6 +20,9 @@ public:
     /** @copydoc IChannelMonitor::init */
     esp_err_t init(uint32_t interval_ms, TaskHandle_t rx_task_handle) override;
 
+    /** @copydoc IChannelMonitor::deinit */
+    void deinit() override;
+
     /** @copydoc IChannelMonitor::tick */
     void tick(uint64_t now_ms) override;
 

@@ -25,6 +25,11 @@ public:
     virtual esp_err_t init(uint32_t interval_ms, TaskHandle_t rx_task_handle) = 0;
 
     /**
+     * @brief Deinitializes the channel monitor.
+     */
+    virtual void deinit() = 0;
+
+    /**
      * @brief Gets the current WiFi channel.
      * @return Current WiFi channel.
      */
