@@ -53,11 +53,11 @@ public:
      * @brief Handles incoming pair request packets.
      * @param decoded Decoded packet.
      */
-    virtual void handle_request(const DecodedPacket& decoded) = 0;
+    virtual void handle_request(const DecodedRxPacket& decoded) = 0;
 
     /**
      * @brief Handles incoming pair response packets.
      * @param decoded Decoded packet.
      */
-    virtual void handle_response(const DecodedPacket& decoded) = 0;
+    virtual void handle_response(const DecodedRxPacket& decoded) = 0;
 };

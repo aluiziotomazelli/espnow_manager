@@ -1,8 +1,8 @@
+// include/espnow_types.hpp
 #pragma once
 
 #include <cstdint>
 #include <cstring>
-#include <optional>
 #include <tuple>
 
 #include "esp_now.h"
@@ -65,7 +65,7 @@ struct RxPacket
 /**
  * @brief Structure for packets that have been decoded in rx_dispatch_task
  */
-struct DecodedPacket
+struct DecodedRxPacket
 {
     RxPacket raw;         ///< Original complete packet
     MessageHeader header; ///< Decoded header
@@ -158,8 +158,8 @@ enum class NodeState
     IDLE = 1,          ///< Initialized successfully, but not yet paired/idle
     PAIRING = 2,       ///< Actively advertising or accepting pairing requests
     OPERATIONAL = 3,   ///< Has peers, normal operation
-    PAIRING_SCAN = 4,   ///< Scanning for a HUB to start pairing
-    RECOVERY_SCAN = 5,  ///< Lost connection to peers, rediscovering channel
+    PAIRING_SCAN = 4,  ///< Scanning for a HUB to start pairing
+    RECOVERY_SCAN = 5, ///< Lost connection to peers, rediscovering channel
     COUNT = 6          ///< Number of states (for validation)
 };
 

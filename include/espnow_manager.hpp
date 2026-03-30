@@ -197,7 +197,7 @@ protected:
 
     void handle_notifications(uint32_t notifications, bool& should_stop); // protected
     void handle_state_transition(NodeState old_state, NodeState new_state);
-    static AppMessage build_app_message(const DecodedPacket& decoded);
+    static AppMessage build_app_message(const DecodedRxPacket& decoded);
 
     // Static ESP-NOW callbacks (ISR context)
     static void esp_now_recv_cb(const esp_now_recv_info_t* info, const uint8_t* data, int len);

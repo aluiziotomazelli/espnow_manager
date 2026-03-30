@@ -11,17 +11,17 @@ class MessageRouter : public IMessageRouter
 {
 public:
     MessageRouter(
-        IDiscoveryManager &discovery_manager,
-        ITxManager &tx_manager,
-        IHeartbeatManager &heartbeat_manager,
-        IPairingManager &pairing_manager);
+        IDiscoveryManager& discovery_manager,
+        ITxManager& tx_manager,
+        IHeartbeatManager& heartbeat_manager,
+        IPairingManager& pairing_manager);
 
     /** @copydoc IMessageRouter::handle_packet */
-    void handle_packet(const DecodedPacket &decoded) override;
+    void handle_packet(const DecodedRxPacket& decoded) override;
 
 private:
-    IDiscoveryManager &discovery_manager_;
-    ITxManager &tx_manager_;
-    IHeartbeatManager &heartbeat_manager_;
-    IPairingManager &pairing_manager_;
+    IDiscoveryManager& discovery_manager_;
+    ITxManager& tx_manager_;
+    IHeartbeatManager& heartbeat_manager_;
+    IPairingManager& pairing_manager_;
 };

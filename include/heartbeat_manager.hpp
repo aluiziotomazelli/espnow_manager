@@ -9,7 +9,7 @@
 class HeartbeatManager : public IHeartbeatManager
 {
 public:
-    HeartbeatManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, ITimerHAL &hal_timer);
+    HeartbeatManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, ITimerHAL& hal_timer);
     ~HeartbeatManager() = default;
 
     using IHeartbeatManager::handle_request;
@@ -29,7 +29,7 @@ public:
     void handle_response() override;
 
     /** @copydoc IHeartbeatManager::handle_request */
-    void handle_request(const DecodedPacket &decoded) override;
+    void handle_request(const DecodedRxPacket& decoded) override;
 
 protected:
     void send_heartbeat();
@@ -37,9 +37,9 @@ protected:
 private:
     NodeId my_id_;
 
-    ITxManager &tx_mgr_;
-    IPeerManager &peer_mgr_;
-    ITimerHAL &hal_timer_;
+    ITxManager& tx_mgr_;
+    IPeerManager& peer_mgr_;
+    ITimerHAL& hal_timer_;
 
     NodeType my_type_;
     uint32_t interval_ms_;

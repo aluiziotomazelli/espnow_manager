@@ -95,7 +95,7 @@ void DiscoveryManager::stop_scan()
     hal_freertos_.task_notify(discovery_task_handle_, NOTIFY_STOP_SCAN, eSetBits);
 }
 
-void DiscoveryManager::handle_scan_probe(const DecodedPacket& decoded)
+void DiscoveryManager::handle_scan_probe(const DecodedRxPacket& decoded)
 {
     if (!hub_ready_ || discovery_task_handle_ == nullptr) {
         ESP_LOGE(TAG, "DiscoveryManager not initialized properly. Call init() before handle_probe().");

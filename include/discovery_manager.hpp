@@ -41,7 +41,7 @@ public:
     bool is_scanning() const override { return is_scanning_.load(); };
 
     /** @copydoc IDiscoveryManager::handle_scan_probe */
-    void handle_scan_probe(const DecodedPacket& decoded) override;
+    void handle_scan_probe(const DecodedRxPacket& decoded) override;
 
     /** @copydoc IDiscoveryManager::set_channel */
     void set_channel(uint8_t channel) override;

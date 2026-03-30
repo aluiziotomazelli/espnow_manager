@@ -14,5 +14,5 @@ public:
     virtual ~IMessageRouter() = default;
 
     /** @internal */
-    virtual void handle_packet(const DecodedPacket &decoded) = 0;
+    virtual void handle_packet(const DecodedRxPacket& decoded) = 0;
 };

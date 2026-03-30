@@ -4,9 +4,9 @@
 
 #include "heartbeat_manager.hpp"
 
-static const char *TAG = "HeartbeatMgr";
+static const char* TAG = "HeartbeatMgr";
 
-HeartbeatManager::HeartbeatManager(ITxManager &tx_mgr, IPeerManager &peer_mgr, ITimerHAL &hal_timer)
+HeartbeatManager::HeartbeatManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, ITimerHAL& hal_timer)
     : tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
     , hal_timer_(hal_timer)
@@ -48,9 +48,9 @@ void HeartbeatManager::handle_response()
     tx_mgr_.notify_link_alive();
 }
 
-void HeartbeatManager::handle_request(const DecodedPacket &decoded)
+void HeartbeatManager::handle_request(const DecodedRxPacket& decoded)
 {
-    const MessageHeader &header = decoded.header;
+    const MessageHeader& header = decoded.header;
 
     uint64_t now_ms = hal_timer_.get_time_us() / 1000;
 

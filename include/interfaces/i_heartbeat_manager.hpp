@@ -49,5 +49,5 @@ public:
      * @brief Handles incoming heartbeat request packets.
      * @param decoded Decoded packet.
      */
-    virtual void handle_request(const DecodedPacket &decoded) = 0;
+    virtual void handle_request(const DecodedRxPacket& decoded) = 0;
 };

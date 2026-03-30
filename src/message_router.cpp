@@ -19,7 +19,7 @@ MessageRouter::MessageRouter(
 {
 }
 
-void MessageRouter::handle_packet(const DecodedPacket& decoded)
+void MessageRouter::handle_packet(const DecodedRxPacket& decoded)
 {
     switch (decoded.header.msg_type) {
     case MessageType::PAIR_REQUEST:

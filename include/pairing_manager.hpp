@@ -24,10 +24,10 @@ public:
     esp_err_t start(uint32_t timeout_ms, uint64_t now_ms) override;
 
     /** @copydoc IPairingManager::handle_request */
-    void handle_request(const DecodedPacket& decoded) override;
+    void handle_request(const DecodedRxPacket& decoded) override;
 
     /** @copydoc IPairingManager::handle_response */
-    void handle_response(const DecodedPacket& decoded) override;
+    void handle_response(const DecodedRxPacket& decoded) override;
 
 protected:
     void send_pair_request();

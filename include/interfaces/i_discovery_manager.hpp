@@ -58,7 +58,7 @@ public:
      * @param decoded The decoded response packet.
      * @note Called from rx_task context. Thread-safe.
      */
-    virtual void handle_scan_probe(const DecodedPacket& decoded) = 0;
+    virtual void handle_scan_probe(const DecodedRxPacket& decoded) = 0;
 
     /**
      * @brief Set the WiFi channel for scanning.

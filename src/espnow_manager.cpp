@@ -49,7 +49,7 @@ EspNowManager& EspNowManager::instance()
     static auto hal_espnow = std::make_unique<EspNowHAL>();
     static auto hal_timer = std::make_unique<TimerHAL>();
     static auto hal_freertos = std::make_unique<FreeRTOSHAL>();
-    static auto bootstraper = std::make_unique<EspNowDriver>(*hal_wifi, *hal_espnow);
+    static auto espnow_driver = std::make_unique<EspNowDriver>(*hal_wifi, *hal_espnow);
     static auto peer_manager = std::make_unique<PeerManager>(*storage, *hal_espnow, *hal_freertos);
     static auto message_codec = std::make_unique<MessageCodec>();
     static auto channel_monitor = std::make_unique<ChannelMonitor>(*hal_wifi, *hal_freertos);
@@ -66,7 +66,7 @@ EspNowManager& EspNowManager::instance()
         std::move(hal_timer),
         std::move(hal_freertos),
         std::move(hal_espnow),
-        std::move(bootstraper),
+        std::move(espnow_driver),
         std::move(peer_manager),
         std::move(message_codec),
         std::move(channel_monitor),
@@ -420,7 +420,7 @@ void EspNowManager::rx_task(void* arg)
     EspNowManager* self = static_cast<EspNowManager*>(arg);
 
     RxPacket packet{};
-    DecodedPacket decoded{};
+    DecodedRxPacket decoded{};
     uint32_t notifications = 0;
     bool should_stop = false;
 
@@ -557,7 +557,7 @@ uint64_t EspNowManager::get_time_ms() const
 }
 
 // Helper to build AppMessage from DecodedPacket
-AppMessage EspNowManager::build_app_message(const DecodedPacket& decoded)
+AppMessage EspNowManager::build_app_message(const DecodedRxPacket& decoded)
 {
     AppMessage msg{};
     msg.sender_id = decoded.header.sender_node_id;

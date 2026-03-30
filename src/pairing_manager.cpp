@@ -70,7 +70,7 @@ esp_err_t PairingManager::start(uint32_t timeout_ms, uint64_t now_ms)
     return ESP_OK;
 }
 
-void PairingManager::handle_request(const DecodedPacket& decoded)
+void PairingManager::handle_request(const DecodedRxPacket& decoded)
 {
     // Only initialized and  active pairing session processes requests
     if (!is_initialized_ || !is_active_) {
@@ -116,7 +116,7 @@ void PairingManager::handle_request(const DecodedPacket& decoded)
     tx_mgr_.queue_packet(tx_packet);
 }
 
-void PairingManager::handle_response(const DecodedPacket& decoded)
+void PairingManager::handle_response(const DecodedRxPacket& decoded)
 {
     // Only initialized and active pairing session processes requests
     if (!is_initialized_ || !is_active_) {
