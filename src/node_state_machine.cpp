@@ -39,12 +39,17 @@ void NodeStateMachine::reset()
     state_.store(NodeState::UNINITIALIZED);
 }
 
-esp_err_t NodeStateMachine::on_init(bool has_peers)
+esp_err_t NodeStateMachine::on_init(bool is_hub, bool has_peers)
 {
     if (state_.load() != NodeState::UNINITIALIZED) {
         return ESP_ERR_INVALID_STATE;
     }
-    return transition_to(has_peers ? NodeState::OPERATIONAL : NodeState::PAIRING_SCAN);
+    if (has_peers) {
+        return transition_to(NodeState::OPERATIONAL);
+    }
+    // HUB without peers goes directly to PAIRING — already on the correct channel
+    // NODE without peers needs to find the HUB channel first
+    return transition_to(is_hub ? NodeState::PAIRING : NodeState::PAIRING_SCAN);
 }
 
 esp_err_t NodeStateMachine::on_deinit()
@@ -53,19 +58,18 @@ esp_err_t NodeStateMachine::on_deinit()
     return transition_to(NodeState::UNINITIALIZED);
 }
 
-esp_err_t NodeStateMachine::on_pairing_requested(bool has_peers)
+esp_err_t NodeStateMachine::on_pairing_requested(bool is_hub, bool has_peers)
 {
     NodeState current = state_.load();
     if (current != NodeState::IDLE && current != NodeState::OPERATIONAL) {
         return ESP_ERR_INVALID_STATE;
     }
-
-    if (has_peers) {
+    // HUB never scans — already on the correct channel
+    // NODE without peers needs to find the HUB channel first
+    if (is_hub || has_peers) {
         return transition_to(NodeState::PAIRING);
     }
-    else {
-        return transition_to(NodeState::PAIRING_SCAN);
-    }
+    return transition_to(NodeState::PAIRING_SCAN);
 }
 
 esp_err_t NodeStateMachine::on_pairing_timeout(bool has_peers)

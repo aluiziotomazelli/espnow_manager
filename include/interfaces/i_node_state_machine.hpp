@@ -36,10 +36,11 @@ public:
 
     /**
      * @brief Event: Initialization successful.
-     * @param has_peers True if peers were loaded from storage.
+     * @param is_hub True if the node is a HUB.
+     * @param has_peers True if the node has known peers.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual esp_err_t on_init(bool has_peers) = 0;
+    virtual esp_err_t on_init(bool is_hub, bool has_peers) = 0;
 
     /**
      * @brief Event: Deinitialization requested.
@@ -49,10 +50,11 @@ public:
 
     /**
      * @brief Event: Pairing process requested by user/app.
-     * @param has_peers True if the node already has peers.
+     * @param is_hub True if the node is a HUB.
+     * @param has_peers True if the node has known peers.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual esp_err_t on_pairing_requested(bool has_peers) = 0;
+    virtual esp_err_t on_pairing_requested(bool is_hub, bool has_peers) = 0;
 
     /**
      * @brief Event: Pairing process completed (either success or timeout).

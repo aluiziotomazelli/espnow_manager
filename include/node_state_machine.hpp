@@ -20,13 +20,13 @@ public:
     void reset() override;
 
     /** @copydoc INodeStateMachine::on_init */
-    esp_err_t on_init(bool has_peers) override;
+    esp_err_t on_init(bool is_hub, bool has_peers) override;
 
     /** @copydoc INodeStateMachine::on_deinit */
     esp_err_t on_deinit() override;
 
     /** @copydoc INodeStateMachine::on_pairing_requested */
-    esp_err_t on_pairing_requested(bool has_peers) override;
+    esp_err_t on_pairing_requested(bool is_hub, bool has_peers) override;
 
     /** @copydoc INodeStateMachine::on_pairing_timeout */
     esp_err_t on_pairing_timeout(bool has_peers) override;
