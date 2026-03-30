@@ -71,6 +71,14 @@ void MessageRouter::handle_packet(const DecodedRxPacket& decoded)
         }
         discovery_manager_.handle_scan_probe(decoded);
         break;
+    case MessageType::CHANNEL_SCAN_RESPONSE:
+        if (decoded.raw.len < sizeof(MessageHeader)) {
+            ESP_LOGW(
+                TAG, "Malformed CHANNEL_SCAN_RESPONSE: len %d < %d", (int)decoded.raw.len, (int)sizeof(MessageHeader));
+            return;
+        }
+        discovery_manager_.handle_scan_response(decoded);
+        break;
 
     default:
         break;
