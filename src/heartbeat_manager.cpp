@@ -21,6 +21,11 @@ void HeartbeatManager::init(NodeId id, NodeType type, uint32_t interval_ms)
     is_initialized_ = true;
 }
 
+void HeartbeatManager::deinit()
+{
+    is_initialized_ = false;
+}
+
 void HeartbeatManager::set_interval_ms(uint32_t heartbeat_interval_ms)
 {
     interval_ms_ = heartbeat_interval_ms;

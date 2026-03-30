@@ -150,48 +150,48 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
     // EspNowDriver initializes ESPNOW
     ret = espnow_driver_->init(config_, esp_now_recv_cb, esp_now_send_cb);
     if (ret != ESP_OK) {
-        return init_fail(ret, "espnow_driver");
+        return init_fail(ret, "EspNow Driver");
     }
     esp_now_initialized_ = true;
 
     ret = create_mutex();
     if (ret != ESP_OK) {
-        return init_fail(ret, "mutex");
+        return init_fail(ret, "Mutex");
     }
 
     ret = create_queue();
     if (ret != ESP_OK) {
-        return init_fail(ret, "queues");
+        return init_fail(ret, "Queues");
     }
 
     ret = create_task();
     if (ret != ESP_OK) {
-        return init_fail(ret, "tasks");
+        return init_fail(ret, "Tasks");
     }
 
     ret = init_tx_manager();
     if (ret != ESP_OK) {
-        return init_fail(ret, "tx_manager");
+        return init_fail(ret, "Tx Manager");
     }
 
     ret = init_discovery_manager();
     if (ret != ESP_OK) {
-        return init_fail(ret, "discovery_manager");
+        return init_fail(ret, "Discovery Manager");
     }
 
     ret = init_heartbeat_manager();
     if (ret != ESP_OK) {
-        return init_fail(ret, "heartbeat_manager");
+        return init_fail(ret, "Heartbeat Manager");
     }
 
     ret = init_pairing_manager();
     if (ret != ESP_OK) {
-        return init_fail(ret, "pairing_manager");
+        return init_fail(ret, "Pairing Manager");
     }
 
     ret = init_channel_monitor();
     if (ret != ESP_OK) {
-        return init_fail(ret, "channel_monitor");
+        return init_fail(ret, "Channel Monitor");
     }
 
     // Load peers from storage and add them to ESP-NOW
@@ -225,9 +225,21 @@ void EspNowManager::deinit()
     if (tx_manager_ != nullptr) {
         tx_manager_->deinit();
     }
+
+    if (scanner_ != nullptr) {
+        scanner_->deinit();
+    }
+
     if (heartbeat_manager_ != nullptr) {
-        // Deinit no more exists because heartbeat_manager_ uses tick() instead of freeRTOS timers
-        // heartbeat_manager_->deinit();
+        heartbeat_manager_->deinit();
+    }
+
+    if (pairing_manager_ != nullptr) {
+        pairing_manager_->deinit();
+    }
+
+    if (channel_monitor_ != nullptr) {
+        channel_monitor_->deinit();
     }
 
     if (rx_task_handle_ != nullptr) {

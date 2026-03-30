@@ -19,6 +19,9 @@ public:
     /** @copydoc IHeartbeatManager::init */
     void init(NodeId id, NodeType type, uint32_t interval_ms) override;
 
+    /** @copydoc IHeartbeatManager::deinit */
+    void deinit() override;
+
     /** @copydoc IHeartbeatManager::tick */
     void tick(uint64_t now_ms) override;
 

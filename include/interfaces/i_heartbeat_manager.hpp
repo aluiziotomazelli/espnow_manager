@@ -36,8 +36,21 @@ public:
         init(static_cast<NodeId>(id), static_cast<NodeType>(type), interval_ms);
     }
 
+    /**
+     * @brief Deinitializes the heartbeat manager.
+     */
+    virtual void deinit() = 0;
+
+    /**
+     * @brief Ticks the heartbeat manager.
+     * @param now_ms Current time in milliseconds.
+     */
     virtual void tick(uint64_t now_ms) = 0;
 
+    /**
+     * @brief Sets the heartbeat interval in milliseconds.
+     * @param heartbeat_interval_ms Heartbeat interval in milliseconds.
+     */
     virtual void set_interval_ms(uint32_t heartbeat_interval_ms) = 0;
 
     /**
