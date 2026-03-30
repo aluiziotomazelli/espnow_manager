@@ -60,8 +60,8 @@ public:
      *
      * Stops all background tasks, releases memory, and deinitializes the ESP-NOW driver.
      *
-     *
      * @note Idempotent if is already deinitialized.
+     * @note This method does not return errors.
      */
     virtual void deinit() = 0;
 
@@ -82,13 +82,13 @@ public:
      * @param len Length of the payload in bytes.
      * @param require_ack If true, the transmission will wait for a logical acknowledgment.
      * @return ESP_OK: the packet was successfully queued.
+     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL state or tx_queue not initialized.
      * @return ESP_ERR_NOT_FOUND: the peer is not registered.
-     * @return ESP_ERR_INVALID_ARG: the packet is empty.
-     * @return ESP_ERR_TIMEOUT: ACK timeout (when require_ack=true).
-     * @return ESP_FAIL: failed to send message to tx_queue_
+     * @return ESP_ERR_INVALID_ARG: payload length exceeds MAX_PAYLOAD_SIZE.
+     * @return ESP_FAIL: failed to send message to tx_queue_.
      *
      * @note Non-blocking unless require_ack=true
-     * @note Enter in channel SCANNING mode after MAX_FAILURES
+     * @note Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
      */
@@ -130,13 +130,13 @@ public:
      * @param len Length of the payload.
      * @param require_ack If true, waits for a logical acknowledgment.
      * @return ESP_OK: on success.
+     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL state or tx_queue not initialized.
      * @return ESP_ERR_NOT_FOUND: the peer is not registered.
-     * @return ESP_ERR_INVALID_ARG: the packet is empty.
-     * @return ESP_ERR_TIMEOUT: ACK timeout (when require_ack=true).
-     * @return ESP_FAIL: failed to send message to tx_queue_
+     * @return ESP_ERR_INVALID_ARG: payload length exceeds MAX_PAYLOAD_SIZE.
+     * @return ESP_FAIL: failed to send message to tx_queue_.
      *
      * @note Non-blocking unless require_ack=true
-     * @note Enter in channel SCANNING mode after MAX_FAILURES
+     * @note Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
      */
@@ -168,7 +168,11 @@ public:
      *
      * @param status Status of the processing: OK, ERROR_INVALID_DATA or ERROR_PROCESSING
      * @return ESP_OK: ACK was sent.
-     * @return ESP_ERR_INVALID_STATE: no message is pending ACK.
+     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL state or no message pending ACK.
+     * @return ESP_ERR_TIMEOUT: failed to acquire mutex within timeout.
+     * @return ESP_ERR_NOT_FOUND: peer MAC not found for the pending message.
+     * @return ESP_ERR_INVALID_STATE: tx_queue not initialized (from internal tx_manager call).
+     * @return ESP_FAIL: failed to queue ACK packet for transmission.
      */
     virtual esp_err_t confirm_reception(AckStatus status) = 0;
 
@@ -187,9 +191,19 @@ public:
      * @param type Role/Type of the node.
      * @param heartbeat_interval_ms Heartbeat interval in milliseconds.
      * @return ESP_OK: on success.
-     * @return ESP_ERR_INVALID_ARG: mac is nullptr
-     * @return ESP_ERR_TIMEOUT: method timed out to get the mutex_
-     * @return Other: error from the ESP-NOW driver
+     * @return ESP_ERR_INVALID_ARG: mac is nullptr.
+     * @return ESP_ERR_TIMEOUT: failed to acquire mutex within timeout.
+     * @return ESP_ERR_NO_MEM: ESP-NOW driver failed to allocate memory for peer.
+     * @return ESP_ERR_ESPNOW_NOT_INIT: ESP-NOW driver not initialized.
+     * @return ESP_ERR_ESPNOW_ARG: invalid argument passed to ESP-NOW driver.
+     * @return ESP_ERR_ESPNOW_NO_MEM: ESP-NOW driver out of memory.
+     * @return ESP_ERR_ESPNOW_NOT_FOUND: peer not found when updating existing peer.
+     * @return ESP_ERR_ESPNOW_CHAN: invalid WiFi channel.
+     * @return ESP_ERR_ESPNOW_IF: invalid interface.
+     * @return ESP_ERR_WIFI_NOT_INIT: WiFi not initialized.
+     * @return ESP_ERR_WIFI_NOT_STARTED: WiFi not started.
+     * @return ESP_ERR_WIFI_ARG: invalid WiFi argument.
+     * @return ESP_ERR_INVALID_STATE: storage failed to persist peer data.
      *
      * @note List uses LRU (Least Recently Used) policy with maximum MAX_PEERS = 19 (ESP-NOW limitation)
      * @note When full, oldest peer (least recently used) is removed to make room
@@ -226,7 +240,16 @@ public:
      * @param node_id ID of the node to remove.
      * @return ESP_OK: on success.
      * @return ESP_ERR_NOT_FOUND: the peer is not present.
-     * @return ESP_ERR_TIMEOUT: method timed out to get the mutex_
+     * @return ESP_ERR_TIMEOUT: failed to acquire mutex within timeout.
+     * @return ESP_ERR_ESPNOW_NOT_INIT: ESP-NOW driver not initialized.
+     * @return ESP_ERR_ESPNOW_ARG: invalid argument passed to ESP-NOW driver.
+     * @return ESP_ERR_ESPNOW_NOT_FOUND: peer not found in ESP-NOW driver.
+     * @return ESP_ERR_ESPNOW_CHAN: invalid WiFi channel.
+     * @return ESP_ERR_ESPNOW_IF: invalid interface.
+     * @return ESP_ERR_WIFI_NOT_INIT: WiFi not initialized.
+     * @return ESP_ERR_WIFI_NOT_STARTED: WiFi not started.
+     * @return ESP_ERR_WIFI_ARG: invalid WiFi argument.
+     * @return ESP_ERR_INVALID_STATE: storage failed to persist peer removal.
      */
     virtual esp_err_t remove_peer(NodeId node_id) = 0;
 
@@ -246,6 +269,7 @@ public:
      * @brief Get a list of all registered peers
      *
      * @return Vector containing information for all registered peers.
+     * @note This method does not return errors. Returns empty vector if mutex acquisition fails.
      */
     virtual etl::vector<PeerInfo, MAX_PEERS> get_peers() = 0;
 
@@ -255,7 +279,8 @@ public:
      * A peer is considered offline if no heartbeat has been received within its
      * expected interval multiplied by HEARTBEAT_OFFLINE_MULTIPLIER.
      *
-     * @return Vector of Node IDs.
+     * @return Vector of Node IDs. Returns empty vector if mutex acquisition fails or manager not operational.
+     * @note This method does not return errors.
      * @see HEARTBEAT_OFFLINE_MULTIPLIER in protocol_types.hpp
      */
     virtual etl::vector<NodeId, MAX_PEERS> get_offline_peers() const = 0;
@@ -279,7 +304,7 @@ public:
      *
      * @param timeout_ms Duration of the pairing mode in milliseconds.
      * @return ESP_OK: pairing started successfully.
-     * @return ESP_ERR_INVALID_STATE: pairing is already active.
+     * @return ESP_ERR_INVALID_STATE: manager is UNINITIALIZED or pairing already active.
      *
      * @note Automatic stop after specified timeout duration
      *
@@ -295,6 +320,7 @@ public:
      * @brief Get the current node state
      *
      * @return The current node state.
+     * @note This method does not return errors.
      */
     virtual NodeState get_node_state() const = 0;
 
@@ -302,6 +328,7 @@ public:
      * @brief Check if EspNowManager is initialized
      *
      * @return true if initialized, false otherwise.
+     * @note This method does not return errors.
      */
     virtual bool is_initialized() const = 0;
 };
