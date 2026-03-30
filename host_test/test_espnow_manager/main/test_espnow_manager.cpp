@@ -1082,13 +1082,13 @@ TEST_F(EspNowManagerTest, NotifyStopTurnsShouldStopTrue)
 // ===========================================================================
 // AppMessage — build_app_message()
 //
-// Verifies correct extraction of fields from DecodedPacket to AppMessage
+// Verifies correct extraction of fields from DecodedRxPacket to AppMessage
 // ===========================================================================
 
 TEST_F(EspNowManagerTest, BuildAppMessageWithDataPayloadCreatesAppMessage)
 {
     // Setup decoded packet with header, payload, and CRC
-    DecodedPacket decoded_packet{};
+    DecodedRxPacket decoded_packet{};
     decoded_packet.header.sender_node_id = kHubId;
     decoded_packet.header.sender_type = kNodeType;
     decoded_packet.header.payload_type = kPayloadType;

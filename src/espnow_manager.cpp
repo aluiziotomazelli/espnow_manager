@@ -269,11 +269,11 @@ void EspNowManager::deinit()
 
 esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 {
-    // TODO: on_pairing_requested already check if node is uninitialized,
-    // acepts only IDLE or OPERATIONAL state
-    if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
-        return ESP_ERR_INVALID_STATE;
-    }
+    // // TODO: on_pairing_requested already check if node is uninitialized,
+    // // acepts only IDLE or OPERATIONAL state
+    // if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
+    //     return ESP_ERR_INVALID_STATE;
+    // }
 
     // Store timeout for use when pairing start or scan completes
     pairing_timeout_ms_ = timeout_ms;
@@ -556,7 +556,7 @@ uint64_t EspNowManager::get_time_ms() const
     return hal_timer_->get_time_us() / 1000;
 }
 
-// Helper to build AppMessage from DecodedPacket
+// Helper to build AppMessage from DecodedRxPacket
 AppMessage EspNowManager::build_app_message(const DecodedRxPacket& decoded)
 {
     AppMessage msg{};

@@ -7,5 +7,5 @@
 class MockMessageRouter : public IMessageRouter
 {
 public:
-    MOCK_METHOD(void, handle_packet, (const DecodedPacket &decoded), (override));
+    MOCK_METHOD(void, handle_packet, (const DecodedRxPacket& decoded), (override));
 };

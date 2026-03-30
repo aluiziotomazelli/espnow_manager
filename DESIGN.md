@@ -63,7 +63,7 @@ graph TD
 |---|---|---|---|
 | `EspNowManager` | Public API, Singleton Orchestrator, **RX Task Owner** | IWiFiHAL, IEspNowHAL, ITimerHAL, IFreeRTOSHAL | Application |
 | `EspNowDriver` | ESP-NOW init, ESP-IDF callback registration | IEspNowHAL | `EspNowManager` |
-| `MessageRouter` | Dispatches `DecodedPacket` to specific managers | None (stateless) | `rx_task` |
+| `MessageRouter` | Dispatches `DecodedRxPacket` to specific managers | None (stateless) | `rx_task` |
 | `TxManager` | **Centralized Encoding**, Packet queueing, retry logic, FSM | IEspNowHAL, IFreeRTOSHAL, ITimerHAL | `tx_task` |
 | `TxStateMachine` | Manages transmission states (READY / WAITING_FOR_ACK / RETRYING) | None | `TxManager` |
 | `DiscoveryManager` | Multi-channel probing and channel discovery | **IWiFiHAL**, **IEspNowHAL**, IFreeRTOSHAL | **Own task** (`discovery_task`) |
@@ -80,7 +80,7 @@ The orchestrator. It owns all manager instances and ensures they are correctly w
 1.  Receiving raw packets from the ISR queue.
 2.  Validating CRC and decoding headers.
 3.  Delivering application data directly to the user queue (`AppMessage`).
-4.  Delegating protocol messages to `MessageRouter` via `DecodedPacket`.
+4.  Delegating protocol messages to `MessageRouter` via `DecodedRxPacket`.
 5.  **Receiving direct task notifications from managers** (TxManager, DiscoveryManager, ChannelMonitor, PairingManager).
 6.  Notifying managers of state transitions via `NodeStateMachine`.
 7.  Calling `handle_state_transition()` to coordinate managers based on state changes.
@@ -94,7 +94,7 @@ The core of outbound reliability. It strictly owns the **Encoding** responsibili
 -   **State Machine:** Uses `TxStateMachine` to track transmission states (READY, WAITING_FOR_ACK, RETRYING). **Does NOT have SCANNING state** — scanning decisions are made by `rx_task` via `NodeStateMachine`.
 
 ### MessageRouter
-A pure logic router. It receives fully decoded packets (`DecodedPacket`) from the `rx_task` and dispatches them to the appropriate manager (`Pairing`, `Heartbeat`, `Discovery`) based on `MessageType`. It is stateless and does not decode data.
+A pure logic router. It receives fully decoded packets (`DecodedRxPacket`) from the `rx_task` and dispatches them to the appropriate manager (`Pairing`, `Heartbeat`, `Discovery`) based on `MessageType`. It is stateless and does not decode data.
 
 ### DiscoveryManager (Dual HAL Usage + Own Task)
 The only manager that uses **both** WiFi and ESP-NOW HALs **and runs its own FreeRTOS task**:
@@ -121,7 +121,7 @@ Monitors WiFi channel changes using only **IWiFiHAL**:
 
 ### Specialized Managers (Heartbeat, Pairing)
 These managers contain the business logic for their respective protocols.
--   **Input:** `DecodedPacket` (from Router).
+-   **Input:** `DecodedRxPacket` (from Router).
 -   **Output:** `DecodedTxPacket` (queued to `TxManager`).
 -   **HeartbeatManager:** Uses `ITimerHAL` for timestamps.
 -   **PairingManager:** Uses `IFreeRTOSHAL` for task notifications to `rx_task` (`NOTIFY_PAIRING_DONE`).
@@ -192,8 +192,8 @@ sequenceDiagram
     alt is Data/Command
         RX->>App: Send AppMessage (Struct)
     else is Protocol Message
-        RX->>MR: handle_packet(DecodedPacket)
-        MR->>HM: handle_request(DecodedPacket)
+        RX->>MR: handle_packet(DecodedRxPacket)
+        MR->>HM: handle_request(DecodedRxPacket)
     end
 
     Note over CM,RX: Direct Task Notifications
@@ -421,7 +421,7 @@ FreeRTOS services (task, queue, semaphore, timer):
 
 -   **Host-Based Testing:** 100% of the logic is testable on Linux.
 -   **Mocks:** All HALs (`IWiFiHAL`, `IEspNowHAL`, `IFreeRTOSHAL`, `ITimerHAL`) are mocked.
--   **Protocol Logic:** Managers are tested by injecting `DecodedPacket` inputs and verifying `DecodedTxPacket` outputs to the `MockTxManager`.
+-   **Protocol Logic:** Managers are tested by injecting `DecodedRxPacket` inputs and verifying `DecodedTxPacket` outputs to the `MockTxManager`.
 -   **Interface Injection:** Each manager depends only on the HALs it actually uses, enabling granular mocking.
 
 ---

@@ -70,9 +70,9 @@ protected:
             .WillByDefault(DoAll(SetArgPointee<5>(nullptr), Return(pdPASS)));
     }
 
-    DecodedPacket make_decoded_packet(NodeId sender_id)
+    DecodedRxPacket make_decoded_packet(NodeId sender_id)
     {
-        DecodedPacket decoded{};
+        DecodedRxPacket decoded{};
         decoded.header.sender_node_id = sender_id;
         return decoded;
     }
@@ -111,7 +111,8 @@ TEST_F(DiscoveryManagerTest, InitFailsIfRxTaskHandleIsNull)
 TEST_F(DiscoveryManagerTest, DeinitNotifyTaskToStopScan)
 {
     init_node();
-    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_STOP | NOTIFY_STOP_SCAN, eSetBits)).WillOnce(Return(pdPASS));
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_STOP | NOTIFY_STOP_SCAN, eSetBits))
+        .WillOnce(Return(pdPASS));
     scanner->deinit();
 }
 
@@ -201,19 +202,20 @@ TEST_F(DiscoveryManagerTest, StopScanReturnsIfTaskHandleIsNull)
 
 TEST_F(DiscoveryManagerTest, HandleScanProbeNotifiesTask)
 {
-    DecodedPacket decoded = make_decoded_packet(10);
+    DecodedRxPacket decoded = make_decoded_packet(10);
 
     // Hub must be ready to handle probes
     init_hub();
 
-    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_SCAN_RESPONSE, eSetBits)).WillOnce(Return(pdPASS));
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_SCAN_RESPONSE, eSetBits))
+        .WillOnce(Return(pdPASS));
     scanner->handle_scan_probe(decoded);
 }
 
 TEST_F(DiscoveryManagerTest, HandleScanProbeReturnsIfNotHub)
 {
     init_node();
-    DecodedPacket decoded = make_decoded_packet(10);
+    DecodedRxPacket decoded = make_decoded_packet(10);
 
     EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_SCAN_RESPONSE, eSetBits)).Times(0);
     scanner->handle_scan_probe(decoded);
@@ -223,7 +225,7 @@ TEST_F(DiscoveryManagerTest, HandleScanProbeReturnsIfTaskHandleIsNull)
 {
     set_task_handle_null();
     init_hub();
-    DecodedPacket decoded = make_decoded_packet(10);
+    DecodedRxPacket decoded = make_decoded_packet(10);
 
     EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_SCAN_RESPONSE, eSetBits)).Times(0);
     scanner->handle_scan_probe(decoded);

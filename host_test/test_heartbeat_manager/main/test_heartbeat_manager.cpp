@@ -49,11 +49,11 @@ protected:
     }
 
     // -----------------------------------------------------------------------
-    // Helper: build a minimal DecodedPacket carrying a HEARTBEAT from a node.
+    // Helper: build a minimal DecodedRxPacket carrying a HEARTBEAT from a node.
     // -----------------------------------------------------------------------
-    static DecodedPacket make_decoded_packet(NodeId sender_id, size_t len_override = 0)
+    static DecodedRxPacket make_decoded_packet(NodeId sender_id, size_t len_override = 0)
     {
-        DecodedPacket decoded{};
+        DecodedRxPacket decoded{};
         decoded.raw.len = (len_override > 0) ? len_override : sizeof(HeartbeatMessage);
         decoded.header.msg_type = MessageType::HEARTBEAT;
         decoded.header.sender_node_id = sender_id;
@@ -193,7 +193,7 @@ TEST_F(HeartbeatManagerTest, HandleRequestResponseHeaderIsCorrect)
     auto pkt = make_decoded_packet(kNodeId);
 
     DecodedTxPacket captured{};
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Invoke([&](const DecodedTxPacket &p) -> esp_err_t {
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Invoke([&](const DecodedTxPacket& p) -> esp_err_t {
         captured = p;
         return ESP_OK;
     }));
@@ -227,7 +227,7 @@ TEST_F(HeartbeatManagerTest, SendHeartbeatHubUnknownUsesBroadcastMac)
     sut_testable_->init(kNodeId, kNodeType, 0);
 
     DecodedTxPacket captured{};
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Invoke([&](const DecodedTxPacket &p) -> esp_err_t {
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Invoke([&](const DecodedTxPacket& p) -> esp_err_t {
         captured = p;
         return ESP_OK;
     }));
@@ -240,7 +240,7 @@ TEST_F(HeartbeatManagerTest, SendHeartbeatHubUnknownUsesBroadcastMac)
 TEST_F(HeartbeatManagerTest, SendHeartbeatHubKnownUsesUnicastMac)
 {
     const uint8_t hub_mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
-    ON_CALL(peer_mgr_, find_mac(ReservedIds::HUB, _)).WillByDefault(Invoke([&](NodeId, uint8_t *out) {
+    ON_CALL(peer_mgr_, find_mac(ReservedIds::HUB, _)).WillByDefault(Invoke([&](NodeId, uint8_t* out) {
         memcpy(out, hub_mac, 6);
         return true;
     }));
@@ -248,7 +248,7 @@ TEST_F(HeartbeatManagerTest, SendHeartbeatHubKnownUsesUnicastMac)
     sut_testable_->init(kNodeId, kNodeType, 0);
 
     DecodedTxPacket captured{};
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Invoke([&](const DecodedTxPacket &p) -> esp_err_t {
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Invoke([&](const DecodedTxPacket& p) -> esp_err_t {
         captured = p;
         return ESP_OK;
     }));
@@ -263,7 +263,7 @@ TEST_F(HeartbeatManagerTest, SendHeartbeatHeaderIsCorrect)
     sut_testable_->init(kNodeId, kNodeType, 0);
 
     DecodedTxPacket captured{};
-    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Invoke([&](const DecodedTxPacket &p) -> esp_err_t {
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Invoke([&](const DecodedTxPacket& p) -> esp_err_t {
         captured = p;
         return ESP_OK;
     }));

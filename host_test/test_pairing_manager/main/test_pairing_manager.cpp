@@ -71,12 +71,12 @@ protected:
     }
 
     // -----------------------------------------------------------------------
-    // Helper: DecodedPacket carrying a PairResponse from the HUB.
+    // Helper: DecodedRxPacket carrying a PairResponse from the HUB.
     // -----------------------------------------------------------------------
-    static DecodedPacket make_decoded_pair_response(PairStatus status = PairStatus::ACCEPTED)
+    static DecodedRxPacket make_decoded_pair_response(PairStatus status = PairStatus::ACCEPTED)
     {
-        DecodedPacket decoded{};
-        auto *resp = reinterpret_cast<PairResponse *>(decoded.raw.data);
+        DecodedRxPacket decoded{};
+        auto* resp = reinterpret_cast<PairResponse*>(decoded.raw.data);
         resp->header.msg_type = MessageType::PAIR_RESPONSE;
         resp->header.sender_node_id = kHubId;
         resp->header.sender_type = kHubType;
@@ -90,12 +90,12 @@ protected:
     }
 
     // -----------------------------------------------------------------------
-    // Helper: DecodedPacket carrying a PairRequest from an arbitrary node.
+    // Helper: DecodedRxPacket carrying a PairRequest from an arbitrary node.
     // -----------------------------------------------------------------------
-    static DecodedPacket make_decoded_pair_request(NodeId sender_id, NodeType sender_type)
+    static DecodedRxPacket make_decoded_pair_request(NodeId sender_id, NodeType sender_type)
     {
-        DecodedPacket decoded{};
-        auto *req = reinterpret_cast<PairRequest *>(decoded.raw.data);
+        DecodedRxPacket decoded{};
+        auto* req = reinterpret_cast<PairRequest*>(decoded.raw.data);
         req->header.msg_type = MessageType::PAIR_REQUEST;
         req->header.sender_node_id = sender_id;
         req->header.sender_type = sender_type;
@@ -130,10 +130,10 @@ protected:
         sut_->init(kHubId, kHubType, fake_rx_task);
     }
 
-    static DecodedPacket make_decoded_pair_request(NodeId sender_id, NodeType sender_type)
+    static DecodedRxPacket make_decoded_pair_request(NodeId sender_id, NodeType sender_type)
     {
-        DecodedPacket decoded{};
-        auto *req = reinterpret_cast<PairRequest *>(decoded.raw.data);
+        DecodedRxPacket decoded{};
+        auto* req = reinterpret_cast<PairRequest*>(decoded.raw.data);
         req->header.msg_type = MessageType::PAIR_REQUEST;
         req->header.sender_node_id = sender_id;
         req->header.sender_type = sender_type;
@@ -324,9 +324,7 @@ TEST_F(PairingManagerTest, HandleResponseAcceptedNotifiesRxTask)
 
     // When pairing succeeds, notify_rx_task_pairing_done() should be called
     // which calls hal_freertos_.task_notify(rx_task_handle_, NOTIFY_PAIRING_DONE, _)
-    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PAIRING_DONE, _))
-        .Times(1)
-        .WillOnce(Return(pdPASS));
+    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PAIRING_DONE, _)).Times(1).WillOnce(Return(pdPASS));
 
     auto decoded = make_decoded_pair_response(PairStatus::ACCEPTED);
     sut_->handle_response(decoded);

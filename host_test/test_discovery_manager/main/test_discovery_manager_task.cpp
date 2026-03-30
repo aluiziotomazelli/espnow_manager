@@ -139,9 +139,9 @@ protected:
         xTaskNotify(scanner->get_task_handle(), notification, eSetBits);
     }
 
-    DecodedPacket make_decoded_packet(NodeId sender_id)
+    DecodedRxPacket make_decoded_packet(NodeId sender_id)
     {
-        DecodedPacket decoded{};
+        DecodedRxPacket decoded{};
         decoded.header.sender_node_id = sender_id;
         return decoded;
     }
