@@ -15,3 +15,5 @@
 | test_tx_state_machine     |  OK    |  100%   |   100%    |  100%   |
 | test_node_state_machine   |  OK    |  100%   |   100%    |  100%   |
 | test_channel_monitor      |  OK    |  100%   |   100%    |  100%   |
+|                           |        |         |           |         |
+| **Unified Coverage**      | **OK** | **99.0%** | **99.4%** | **90.6%** |
