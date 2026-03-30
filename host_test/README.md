@@ -176,4 +176,4 @@ The coverage logic is centralized in `host_test/coverage_common.cmake`. Individu
 
 ## Test List
 
-For a complete list of tests and their descriptions, see [test_list.md](test_list.md).
+For a complete list of tests and their coverage, see [test_list.md](test_list.md).
