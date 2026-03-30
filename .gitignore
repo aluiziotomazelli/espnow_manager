@@ -44,7 +44,10 @@ Thumbs.db
 **/.qwen/
 *qwen*
 *QWEN*
-# **/GEMINI.md
+**/GEMINI.md
+
+#TODO folder
+**/todo/
 
 # External dependencies source
 external/etl/etl-src/
