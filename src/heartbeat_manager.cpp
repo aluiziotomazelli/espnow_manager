@@ -39,7 +39,7 @@ void HeartbeatManager::tick(uint64_t now_ms)
 }
 
 // TODO: After target tests, exclude this method and MessageRouter
-// calling andle_response on HEARTBEAT_RESPONSE case
+// calling andle_response on HEARTBEAT_RESPONSE case, handle_response useful in target tests because log
 void HeartbeatManager::handle_response()
 {
     ESP_LOGI(TAG, "Heartbeat response received from Hub");

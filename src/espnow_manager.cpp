@@ -269,11 +269,9 @@ void EspNowManager::deinit()
 
 esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 {
-    // // TODO: on_pairing_requested already check if node is uninitialized,
-    // // acepts only IDLE or OPERATIONAL state
-    // if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
-    //     return ESP_ERR_INVALID_STATE;
-    // }
+    if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
     // Store timeout for use when pairing start or scan completes
     pairing_timeout_ms_ = timeout_ms;

@@ -79,9 +79,9 @@ static void hub_pairing_test()
     QueueHandle_t app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
     TEST_ASSERT_NOT_NULL(app_queue);
 
-    EspNowManager &mgr = EspNowManager::instance();
+    EspNowManager& mgr = EspNowManager::instance();
     mgr.init(make_hub_config(app_queue));
-    TEST_ASSERT_EQUAL(NodeState::PAIRING, mgr.get_node_state()); // HUB has no peers, starts PAIRING
+    TEST_ASSERT_EQUAL(NodeState::PAIRING, mgr.get_node_state()); // HUB starts PAIRING
 
     // Signal node that hub is ready to pair
     mgr.start_pairing(kPairingTimeoutMs);
@@ -102,9 +102,9 @@ static void node_pairing_test()
     QueueHandle_t app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
     TEST_ASSERT_NOT_NULL(app_queue);
 
-    EspNowManager &mgr = EspNowManager::instance();
+    EspNowManager& mgr = EspNowManager::instance();
     mgr.init(make_node_config(app_queue));
-    TEST_ASSERT_EQUAL(NodeState::PAIRING, mgr.get_node_state()); // No peers, starts PAIRING
+    TEST_ASSERT_EQUAL(NodeState::PAIRING_SCAN, mgr.get_node_state()); // No peers, starts PAIRING_SCAN
 
     // Wait for hub to be ready
     unity_wait_for_signal("hub pairing started");
@@ -146,7 +146,7 @@ static void hub_heartbeat_test()
     QueueHandle_t app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
     TEST_ASSERT_NOT_NULL(app_queue);
 
-    EspNowManager &mgr = EspNowManager::instance();
+    EspNowManager& mgr = EspNowManager::instance();
     mgr.init(make_hub_config(app_queue));
 
     // mgr.start_pairing(kPairingTimeoutMs);
@@ -169,7 +169,7 @@ static void node_heartbeat_test()
     QueueHandle_t app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
     TEST_ASSERT_NOT_NULL(app_queue);
 
-    EspNowManager &mgr = EspNowManager::instance();
+    EspNowManager& mgr = EspNowManager::instance();
     mgr.init(make_node_config(app_queue));
 
     unity_wait_for_signal("hub ready for heartbeat test");
@@ -203,7 +203,7 @@ static void hub_send_data_test()
     QueueHandle_t app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
     TEST_ASSERT_NOT_NULL(app_queue);
 
-    EspNowManager &mgr = EspNowManager::instance();
+    EspNowManager& mgr = EspNowManager::instance();
     TEST_ASSERT_EQUAL(ESP_OK, mgr.init(make_hub_config(app_queue)));
 
     // mgr.start_pairing(kPairingTimeoutMs);
@@ -225,7 +225,7 @@ static void node_receive_data_test()
     QueueHandle_t app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
     TEST_ASSERT_NOT_NULL(app_queue);
 
-    EspNowManager &mgr = EspNowManager::instance();
+    EspNowManager& mgr = EspNowManager::instance();
     TEST_ASSERT_EQUAL(ESP_OK, mgr.init(make_node_config(app_queue)));
 
     unity_wait_for_signal("hub ready for data test");

@@ -43,14 +43,16 @@ void MessageRouter::handle_packet(const DecodedRxPacket& decoded)
         }
         heartbeat_manager_.handle_request(decoded);
         break;
+
     case MessageType::HEARTBEAT_RESPONSE:
     {
+        // TODO: delete this entire case after target tests, heartbeat_manager_.handle_response() only calls:
+        // tx_manager_.notify_logical_ack(), because link_alive is already notified by rx_task on packet reception
         if (decoded.raw.len < sizeof(HeartbeatResponse)) {
             ESP_LOGW(
                 TAG, "Malformed HEARTBEAT_RESPONSE: len %d < %d", (int)decoded.raw.len, (int)sizeof(HeartbeatResponse));
             return;
         }
-        // TODO: delete this entire case after target tests
         heartbeat_manager_.handle_response();
         break;
     }
