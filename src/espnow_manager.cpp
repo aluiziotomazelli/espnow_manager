@@ -198,9 +198,13 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
     peer_manager_->load_peers_from_storage();
     etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
 
-    // NodeStateMachine decides the initial state based on peers presence
+    // NodeStateMachine decides the initial state
     NodeState old_state = node_fsm_->get_state();
-    node_fsm_->on_init(!peers.empty());
+
+    bool is_hub = (config_.node_type == ReservedTypes::HUB);
+    bool has_peers = !peers.empty();
+    node_fsm_->on_init(is_hub, has_peers);
+
     NodeState new_state = node_fsm_->get_state();
 
     if (new_state == NodeState::OPERATIONAL) {
@@ -289,8 +293,11 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
     pairing_timeout_ms_ = timeout_ms;
 
     NodeState old_state = node_fsm_->get_state();
+
+    bool is_hub = (config_.node_type == ReservedTypes::HUB);
     bool has_peers = !peer_manager_->get_all().empty();
-    node_fsm_->on_pairing_requested(has_peers);
+    node_fsm_->on_pairing_requested(is_hub, has_peers);
+
     NodeState new_state = node_fsm_->get_state();
 
     //
@@ -509,7 +516,8 @@ void EspNowManager::rx_task(void* arg)
         else if (current_state == NodeState::OPERATIONAL) {
             self->heartbeat_manager_->tick(self->get_time_ms());
         }
-        if (current_state != NodeState::UNINITIALIZED) {
+        // TODO: OPERATIONAL only or HUB only?
+        if (current_state == NodeState::OPERATIONAL) {
             self->channel_monitor_->tick(self->get_time_ms());
         }
     }
@@ -643,7 +651,7 @@ void EspNowManager::handle_state_transition(NodeState old_state, NodeState new_s
         return;
     }
 
-    ESP_LOGI(TAG, "Reacting to state change: %d -> %d", static_cast<int>(old_state), static_cast<int>(new_state));
+    // ESP_LOGI(TAG, "Reacting to state change: %d -> %d", static_cast<int>(old_state), static_cast<int>(new_state));
 
     switch (new_state) {
     case NodeState::PAIRING_SCAN:
