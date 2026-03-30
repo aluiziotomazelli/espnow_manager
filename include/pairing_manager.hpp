@@ -17,6 +17,9 @@ public:
     /** @copydoc IPairingManager::init */
     esp_err_t init(NodeId id, NodeType type, TaskHandle_t rx_task_handle) override;
 
+    /** @copydoc IPairingManager::deinit */
+    void deinit() override;
+
     /** @copydoc IPairingManager::tick */
     void tick(uint64_t now_ms) override;
 

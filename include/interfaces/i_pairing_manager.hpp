@@ -39,6 +39,15 @@ public:
         return init(static_cast<NodeId>(id), static_cast<NodeType>(type), rx_task_handle);
     }
 
+    /**
+     * @brief Deinitializes the pairing manager.
+     */
+    virtual void deinit() = 0;
+
+    /**
+     * @brief Ticks the pairing manager.
+     * @param now_ms Current time in milliseconds.
+     */
     virtual void tick(uint64_t now_ms) = 0;
 
     /**

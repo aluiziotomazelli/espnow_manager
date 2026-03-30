@@ -34,6 +34,13 @@ esp_err_t PairingManager::init(NodeId id, NodeType type, TaskHandle_t rx_task_ha
     return ESP_OK;
 }
 
+void PairingManager::deinit()
+{
+    is_initialized_ = false;
+    is_active_ = false;
+    rx_task_handle_ = nullptr;
+}
+
 void PairingManager::tick(uint64_t now_ms)
 {
     if (!is_initialized_ || !is_active_) {
