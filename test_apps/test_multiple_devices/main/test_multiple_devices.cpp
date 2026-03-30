@@ -150,7 +150,7 @@ static void hub_heartbeat_test()
     mgr.init(make_hub_config(app_queue));
 
     // mgr.start_pairing(kPairingTimeoutMs);
-    unity_send_signal("hub ready for heartbeat test");
+    unity_wait_for_signal("node ready for heartbeat test");
 
     // Wait for at least one heartbeat interval
     vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * 2));
@@ -172,7 +172,7 @@ static void node_heartbeat_test()
     EspNowManager& mgr = EspNowManager::instance();
     mgr.init(make_node_config(app_queue));
 
-    unity_wait_for_signal("hub ready for heartbeat test");
+    unity_send_signal("node ready for heartbeat test");
 
     // mgr.start_pairing(kPairingTimeoutMs);
     // vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
@@ -207,7 +207,7 @@ static void hub_send_data_test()
     TEST_ASSERT_EQUAL(ESP_OK, mgr.init(make_hub_config(app_queue)));
 
     // mgr.start_pairing(kPairingTimeoutMs);
-    unity_send_signal("hub ready for data test");
+    // unity_send_signal("hub ready for data test");
     unity_wait_for_signal("node ready for data");
 
     // Send a small payload to the node
@@ -227,8 +227,6 @@ static void node_receive_data_test()
 
     EspNowManager& mgr = EspNowManager::instance();
     TEST_ASSERT_EQUAL(ESP_OK, mgr.init(make_node_config(app_queue)));
-
-    unity_wait_for_signal("hub ready for data test");
 
     // mgr.start_pairing(kPairingTimeoutMs);
     vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
