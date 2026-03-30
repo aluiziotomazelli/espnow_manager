@@ -245,11 +245,7 @@ esp_err_t PeerManager::save_peers_to_storage()
     for (const auto& p : peers_) {
         peers_to_save.push_back(info_to_persistent(p));
     }
-    esp_err_t err = storage_.store_peers(peers_to_save, true);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to save peers to storage: %s", esp_err_to_name(err));
-    }
-    return err;
+    return storage_.store_peers(peers_to_save, true);
 }
 
 PersistentPeer PeerManager::info_to_persistent(const PeerInfo& info)
