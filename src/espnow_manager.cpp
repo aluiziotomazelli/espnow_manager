@@ -511,14 +511,12 @@ void EspNowManager::rx_task(void* arg)
         // Tick submodules to handle timers
         NodeState current_state = self->node_fsm_->get_state();
         if (current_state == NodeState::PAIRING) {
+            self->channel_monitor_->tick(self->get_time_ms());
             self->pairing_manager_->tick(self->get_time_ms());
         }
         else if (current_state == NodeState::OPERATIONAL) {
-            self->heartbeat_manager_->tick(self->get_time_ms());
-        }
-        // TODO: OPERATIONAL only or HUB only?
-        if (current_state == NodeState::OPERATIONAL) {
             self->channel_monitor_->tick(self->get_time_ms());
+            self->heartbeat_manager_->tick(self->get_time_ms());
         }
     }
 
