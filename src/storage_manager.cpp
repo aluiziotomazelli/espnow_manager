@@ -11,30 +11,30 @@
 #include "storage_manager.hpp"
 // #include "persistence_backend.hpp"
 
-static const char *TAG = "StorageManager";
+static const char* TAG = "StorageManager";
 
 StorageManager::StorageManager(
     std::unique_ptr<IPersistenceBackend> rtc_peers,
-    std::unique_ptr<IPersistenceBackend> nvs_peers,
     std::unique_ptr<IPersistenceBackend> rtc_channel,
+    std::unique_ptr<IPersistenceBackend> nvs_peers,
     std::unique_ptr<IPersistenceBackend> nvs_channel)
     : rtc_peers_backend_(std::move(rtc_peers))
-    , nvs_peers_backend_(std::move(nvs_peers))
     , rtc_channel_backend_(std::move(rtc_channel))
+    , nvs_peers_backend_(std::move(nvs_peers))
     , nvs_channel_backend_(std::move(nvs_channel))
 {
 }
 
 StorageManager::~StorageManager() {}
 
-template <typename T> uint32_t StorageManager::calculate_crc(const T &data)
+template <typename T> uint32_t StorageManager::calculate_crc(const T& data)
 {
     static_assert(std::is_standard_layout_v<T>, "T must be standard layout for offset");
     static_assert(offsetof(T, crc) != 0, "T must have a crc field");
-    return esp_rom_crc32_le(0, reinterpret_cast<const uint8_t *>(&data), offsetof(T, crc));
+    return esp_rom_crc32_le(0, reinterpret_cast<const uint8_t*>(&data), offsetof(T, crc));
 }
 
-esp_err_t StorageManager::load_channel(uint8_t &wifi_channel)
+esp_err_t StorageManager::load_channel(uint8_t& wifi_channel)
 {
     PersistentChannel data = {};
 
@@ -71,7 +71,7 @@ esp_err_t StorageManager::store_channel(uint8_t channel)
     return ret;
 }
 
-esp_err_t StorageManager::load_peers(etl::ivector<PersistentPeer> &peers)
+esp_err_t StorageManager::load_peers(etl::ivector<PersistentPeer>& peers)
 {
     PersistentPeers data = {};
 
@@ -90,7 +90,7 @@ esp_err_t StorageManager::load_peers(etl::ivector<PersistentPeer> &peers)
     return ret;
 }
 
-esp_err_t StorageManager::store_peers(const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit)
+esp_err_t StorageManager::store_peers(const etl::ivector<PersistentPeer>& peers, bool force_nvs_commit)
 {
     PersistentPeers data = {};
     data.magic = PersistentPeers::MAGIC;
@@ -134,7 +134,7 @@ esp_err_t StorageManager::store_peers(const etl::ivector<PersistentPeer> &peers,
 // Private helpers
 // ================================================================
 
-esp_err_t StorageManager::load_raw_peers(PersistentPeers &out)
+esp_err_t StorageManager::load_raw_peers(PersistentPeers& out)
 {
     esp_err_t ret;
     // 1. Try RTC first (fast, survives deep-sleep)
@@ -160,7 +160,7 @@ esp_err_t StorageManager::load_raw_peers(PersistentPeers &out)
     return ret; // nothing valid found
 }
 
-esp_err_t StorageManager::validate_peers_data(const PersistentPeers &data)
+esp_err_t StorageManager::validate_peers_data(const PersistentPeers& data)
 {
     // Validade MAGIC, VERSION and CRC
     if (data.magic != PersistentPeers::MAGIC) {
@@ -178,7 +178,7 @@ esp_err_t StorageManager::validate_peers_data(const PersistentPeers &data)
     return ESP_OK;
 }
 
-bool StorageManager::is_data_dirty(const PersistentPeers &new_peers)
+bool StorageManager::is_data_dirty(const PersistentPeers& new_peers)
 {
     PersistentPeers current_rtc;
 
@@ -194,7 +194,7 @@ bool StorageManager::is_data_dirty(const PersistentPeers &new_peers)
     return (current_rtc != new_peers);
 }
 
-esp_err_t StorageManager::load_raw_channel(PersistentChannel &out)
+esp_err_t StorageManager::load_raw_channel(PersistentChannel& out)
 {
     esp_err_t ret;
     // 1. Try RTC first (fast, survives deep-sleep)
@@ -220,7 +220,7 @@ esp_err_t StorageManager::load_raw_channel(PersistentChannel &out)
     return ret; // nothing valid found
 }
 
-esp_err_t StorageManager::validate_channel_data(const PersistentChannel &channel)
+esp_err_t StorageManager::validate_channel_data(const PersistentChannel& channel)
 {
     // Validade MAGIC and CRC
     if (channel.magic != PersistentChannel::MAGIC) {
@@ -234,7 +234,7 @@ esp_err_t StorageManager::validate_channel_data(const PersistentChannel &channel
     return ESP_OK;
 }
 
-bool StorageManager::is_data_dirty(const PersistentChannel &new_channel)
+bool StorageManager::is_data_dirty(const PersistentChannel& new_channel)
 {
     PersistentChannel current_rtc;
 

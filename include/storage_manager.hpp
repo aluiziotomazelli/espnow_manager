@@ -45,7 +45,7 @@ struct PersistentPeers
      *
      * This guarantees we only write to NVS when actual user state has changed.
      */
-    bool operator==(const PersistentPeers &other) const
+    bool operator==(const PersistentPeers& other) const
     {
         if (std::tie(num_peers) != std::tie(other.num_peers)) {
             return false;
@@ -60,7 +60,7 @@ struct PersistentPeers
         return true;
     }
 
-    bool operator!=(const PersistentPeers &other) const { return !(*this == other); }
+    bool operator!=(const PersistentPeers& other) const { return !(*this == other); }
 };
 
 /**
@@ -77,7 +77,7 @@ struct PersistentChannel
     uint8_t wifi_channel;
     uint32_t crc; // CRC for data integrity
 
-    bool operator==(const PersistentChannel &other) const
+    bool operator==(const PersistentChannel& other) const
     {
         if (wifi_channel != other.wifi_channel) {
             return false;
@@ -86,7 +86,7 @@ struct PersistentChannel
         return true;
     }
 
-    bool operator!=(const PersistentChannel &other) const { return !(*this == other); }
+    bool operator!=(const PersistentChannel& other) const { return !(*this == other); }
 };
 
 /**
@@ -97,23 +97,23 @@ class StorageManager : public IStorageManager
 public:
     StorageManager(
         std::unique_ptr<IPersistenceBackend> rtc_peers,
-        std::unique_ptr<IPersistenceBackend> nvs_peers,
         std::unique_ptr<IPersistenceBackend> rtc_channel,
+        std::unique_ptr<IPersistenceBackend> nvs_peers,
         std::unique_ptr<IPersistenceBackend> nvs_channel);
 
     ~StorageManager();
 
     /** @copydoc IStorageManager::load_channel */
-    esp_err_t load_channel(uint8_t &channel) override;
+    esp_err_t load_channel(uint8_t& channel) override;
 
     /** @copydoc IStorageManager::store_channel */
     esp_err_t store_channel(uint8_t channel) override;
 
     /** @copydoc IStorageManager::load_peers */
-    esp_err_t load_peers(etl::ivector<PersistentPeer> &peers) override;
+    esp_err_t load_peers(etl::ivector<PersistentPeer>& peers) override;
 
     /** @copydoc IStorageManager::store_peers */
-    esp_err_t store_peers(const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit = true) override;
+    esp_err_t store_peers(const etl::ivector<PersistentPeer>& peers, bool force_nvs_commit = true) override;
 
     /**
      * @brief Calculates the CRC of the given data.
@@ -121,19 +121,19 @@ public:
      * @param data The data to calculate the CRC of.
      * @return The CRC of the given data.
      */
-    template <typename T> static uint32_t calculate_crc(const T &data);
+    template <typename T> static uint32_t calculate_crc(const T& data);
 
 private:
     std::unique_ptr<IPersistenceBackend> rtc_peers_backend_;
-    std::unique_ptr<IPersistenceBackend> nvs_peers_backend_;
     std::unique_ptr<IPersistenceBackend> rtc_channel_backend_;
+    std::unique_ptr<IPersistenceBackend> nvs_peers_backend_;
     std::unique_ptr<IPersistenceBackend> nvs_channel_backend_;
 
-    esp_err_t load_raw_peers(PersistentPeers &out_peers);
-    esp_err_t validate_peers_data(const PersistentPeers &peers);
-    bool is_data_dirty(const PersistentPeers &new_peers);
+    esp_err_t load_raw_peers(PersistentPeers& out_peers);
+    esp_err_t validate_peers_data(const PersistentPeers& peers);
+    bool is_data_dirty(const PersistentPeers& new_peers);
 
-    esp_err_t load_raw_channel(PersistentChannel &out_channel);
-    esp_err_t validate_channel_data(const PersistentChannel &channel);
-    bool is_data_dirty(const PersistentChannel &new_channel);
+    esp_err_t load_raw_channel(PersistentChannel& out_channel);
+    esp_err_t validate_channel_data(const PersistentChannel& channel);
+    bool is_data_dirty(const PersistentChannel& new_channel);
 };
