@@ -18,16 +18,21 @@ public:
 
         ON_CALL(*this, reset()).WillByDefault(Invoke([this]() { state_ = NodeState::UNINITIALIZED; }));
 
-        ON_CALL(*this, on_init(_)).WillByDefault(Invoke([this](bool has_peers) {
-            state_ = has_peers ? NodeState::OPERATIONAL : NodeState::PAIRING_SCAN;
+        ON_CALL(*this, on_init(_, _)).WillByDefault(Invoke([this](bool is_hub, bool has_peers) {
+            if (has_peers) {
+                state_ = NodeState::OPERATIONAL;
+            }
+            else {
+                state_ = is_hub ? NodeState::PAIRING : NodeState::PAIRING_SCAN;
+            }
             return ESP_OK;
         }));
         ON_CALL(*this, on_deinit()).WillByDefault(Invoke([this]() {
             state_ = NodeState::UNINITIALIZED;
             return ESP_OK;
         }));
-        ON_CALL(*this, on_pairing_requested(_)).WillByDefault(Invoke([this](bool has_peers) {
-            state_ = has_peers ? NodeState::PAIRING : NodeState::PAIRING_SCAN;
+        ON_CALL(*this, on_pairing_requested(_, _)).WillByDefault(Invoke([this](bool is_hub, bool has_peers) {
+            state_ = (is_hub || has_peers) ? NodeState::PAIRING : NodeState::PAIRING_SCAN;
             return ESP_OK;
         }));
         ON_CALL(*this, on_scan_requested()).WillByDefault(Invoke([this]() {
@@ -50,9 +55,9 @@ public:
 
     MOCK_METHOD(NodeState, get_state, (), (const, override));
     MOCK_METHOD(void, reset, (), (override));
-    MOCK_METHOD(esp_err_t, on_init, (bool has_peers), (override));
+    MOCK_METHOD(esp_err_t, on_init, (bool is_hub, bool has_peers), (override));
     MOCK_METHOD(esp_err_t, on_deinit, (), (override));
-    MOCK_METHOD(esp_err_t, on_pairing_requested, (bool has_peers), (override));
+    MOCK_METHOD(esp_err_t, on_pairing_requested, (bool is_hub, bool has_peers), (override));
     MOCK_METHOD(esp_err_t, on_scan_requested, (), (override));
     MOCK_METHOD(esp_err_t, on_channel_found, (), (override));
     MOCK_METHOD(esp_err_t, on_scan_failed, (bool has_peers), (override));
