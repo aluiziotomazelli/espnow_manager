@@ -31,6 +31,12 @@ static const char* TAG = "EspNowManager";
 static RTC_DATA_ATTR PersistentPeers g_rtc_peers;
 static RTC_DATA_ATTR PersistentChannel g_rtc_channel;
 
+// Pointer to the currently active (initialized) instance.
+// ESP-NOW only supports a single active context at a time, so a single
+// static pointer is sufficient. It is set in init() and cleared in deinit()
+// so that the ISR callbacks never reach a stale or uninitialized object.
+static EspNowManager* s_active_instance_ = nullptr;
+
 // Singleton Factory Constructor ---- (not used in host based tests) LCOV_EXCL_START
 EspNowManager& EspNowManager::instance()
 {
@@ -147,9 +153,14 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
         }
     }
 
+    // Register this instance as the active one before enabling the ESP-NOW
+    // callbacks. The callbacks run in ISR context and must reach this object.
+    s_active_instance_ = this;
+
     // EspNowDriver initializes ESPNOW
     ret = espnow_driver_->init(config_, esp_now_recv_cb, esp_now_send_cb);
     if (ret != ESP_OK) {
+        s_active_instance_ = nullptr;
         return init_fail(ret, "EspNow Driver");
     }
     esp_now_initialized_ = true;
@@ -280,6 +291,11 @@ void EspNowManager::deinit()
     last_header_requiring_ack_.reset();
     config_ = EspNowConfig();
     node_fsm_->on_deinit();
+
+    // Clear the active-instance pointer so that any late ISR callback
+    // arriving after deinit() drops the packet safely.
+    s_active_instance_ = nullptr;
+
     ESP_LOGI(TAG, "EspNow component deinitialized.");
 }
 
@@ -410,19 +426,25 @@ void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t* info, const uint8
 {
     if (!info || !data || len <= 0 || len > ESP_NOW_MAX_DATA_LEN)
         return;
+    EspNowManager* self = s_active_instance_;
+    if (self == nullptr || self->rx_queue_handle_ == nullptr)
+        return;
     RxPacket packet;
     memcpy(packet.src_mac, info->src_addr, 6);
     memcpy(packet.data, data, len);
     packet.len = len;
     packet.rssi = static_cast<int8_t>(info->rx_ctrl->rssi);
-    packet.timestamp_us = instance().hal_timer_->get_time_us();
-    instance().hal_freertos_->queue_send_fromISR(instance().rx_queue_handle_, &packet, 0);
+    packet.timestamp_us = self->hal_timer_->get_time_us();
+    self->hal_freertos_->queue_send_fromISR(self->rx_queue_handle_, &packet, 0);
 }
 
 void EspNowManager::esp_now_send_cb(const esp_now_send_info_t* info, esp_now_send_status_t status)
 {
+    EspNowManager* self = s_active_instance_;
+    if (self == nullptr)
+        return;
     if (info->tx_status == static_cast<wifi_tx_status_t>(ESP_NOW_SEND_FAIL))
-        instance().tx_manager_->notify_physical_fail();
+        self->tx_manager_->notify_physical_fail();
 }
 // LCOV_EXCL_STOP
 
