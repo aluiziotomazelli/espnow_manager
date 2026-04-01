@@ -22,8 +22,8 @@ class StorageManagerTest : public ::testing::Test
 {
 protected:
     MockPersistenceBackend* rtc_peer_mock;
-    MockPersistenceBackend* nvs_peer_mock;
     MockPersistenceBackend* rtc_channel_mock;
+    MockPersistenceBackend* nvs_peer_mock;
     MockPersistenceBackend* nvs_channel_mock;
     std::unique_ptr<StorageManager> manager;
 
@@ -33,15 +33,15 @@ protected:
     void SetUp() override
     {
         auto rtc_peers = std::make_unique<NiceMock<MockPersistenceBackend>>();
-        auto nvs_peers = std::make_unique<NiceMock<MockPersistenceBackend>>();
         auto rtc_channel = std::make_unique<NiceMock<MockPersistenceBackend>>();
+        auto nvs_peers = std::make_unique<NiceMock<MockPersistenceBackend>>();
         auto nvs_channel = std::make_unique<NiceMock<MockPersistenceBackend>>();
         rtc_peer_mock = rtc_peers.get();
-        nvs_peer_mock = nvs_peers.get();
         rtc_channel_mock = rtc_channel.get();
+        nvs_peer_mock = nvs_peers.get();
         nvs_channel_mock = nvs_channel.get();
         manager = std::make_unique<StorageManager>(
-            std::move(rtc_peers), std::move(nvs_peers), std::move(rtc_channel), std::move(nvs_channel));
+            std::move(rtc_peers), std::move(rtc_channel), std::move(nvs_peers), std::move(nvs_channel));
     }
 };
 
