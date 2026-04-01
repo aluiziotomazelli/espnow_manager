@@ -106,6 +106,15 @@ void DiscoveryManager::handle_scan_probe(const DecodedRxPacket& decoded)
     hal_freertos_.task_notify(discovery_task_handle_, NOTIFY_SCAN_RESPONSE, eSetBits);
 }
 
+void DiscoveryManager::handle_scan_response(const DecodedRxPacket& decoded)
+{
+    if (!node_ready_ || discovery_task_handle_ == nullptr) {
+        return;
+    }
+    ESP_LOGI(TAG, "Scan response received, notifying discovery task");
+    hal_freertos_.task_notify(discovery_task_handle_, NOTIFY_LINK_ALIVE, eSetBits);
+}
+
 void DiscoveryManager::set_channel(uint8_t channel)
 {
     if (channel >= 1 && channel <= 13) {
@@ -228,8 +237,8 @@ MessageHeader DiscoveryManager::make_probe_header()
 bool DiscoveryManager::hub_was_found()
 {
     uint32_t notifications = 0;
-    hal_freertos_.task_notify_wait(0, NOTIFY_SCAN_RESPONSE, &notifications, pdMS_TO_TICKS(SCAN_CHANNEL_TIMEOUT_MS));
-    return (notifications & NOTIFY_SCAN_RESPONSE) == NOTIFY_SCAN_RESPONSE;
+    hal_freertos_.task_notify_wait(0, NOTIFY_LINK_ALIVE, &notifications, pdMS_TO_TICKS(SCAN_CHANNEL_TIMEOUT_MS));
+    return (notifications & NOTIFY_LINK_ALIVE) == NOTIFY_LINK_ALIVE;
 }
 
 bool DiscoveryManager::should_stop_scan()
@@ -260,15 +269,6 @@ esp_err_t DiscoveryManager::send_scan_response()
 
     // Send via broadcast — probing node maybe is not yet a registered ESP-NOW peer
     return hal_espnow_.hal_esp_now_send(BROADCAST_MAC, buffer, encoded_len);
-}
-
-void DiscoveryManager::handle_scan_response(const DecodedRxPacket& decoded)
-{
-    if (!node_ready_ || discovery_task_handle_ == nullptr) {
-        return;
-    }
-    ESP_LOGI(TAG, "Scan response received, notifying discovery task");
-    hal_freertos_.task_notify(discovery_task_handle_, NOTIFY_SCAN_RESPONSE, eSetBits);
 }
 
 MessageHeader DiscoveryManager::make_response_header()
