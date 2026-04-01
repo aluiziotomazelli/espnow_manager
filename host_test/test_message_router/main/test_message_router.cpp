@@ -169,6 +169,20 @@ TEST_F(MessageRouterTest, ShortChannelScanProbeDoesNotCallHandleProbe)
     router.handle_packet(packet);
 }
 
+TEST_F(MessageRouterTest, ChannelScanResponseCallsHandleScanResponse)
+{
+    DecodedRxPacket packet = create_packet(MessageType::CHANNEL_SCAN_RESPONSE, sizeof(MessageHeader));
+    EXPECT_CALL(discovery_manager, handle_scan_response(_)).Times(1);
+    router.handle_packet(packet);
+}
+
+TEST_F(MessageRouterTest, ShortChannelScanResponseDoesNotCallHandleScanResponse)
+{
+    DecodedRxPacket packet = create_packet(MessageType::CHANNEL_SCAN_RESPONSE, sizeof(MessageHeader) - 1);
+    EXPECT_CALL(discovery_manager, handle_scan_response(_)).Times(0);
+    router.handle_packet(packet);
+}
+
 // ==========================================================================
 // Unknown MessageType
 // ==========================================================================
@@ -176,6 +190,7 @@ TEST_F(MessageRouterTest, UnknownMessageTypeDoesNotCallAnyManager)
 {
     DecodedRxPacket packet = create_packet(static_cast<MessageType>(999), sizeof(MessageHeader));
     EXPECT_CALL(discovery_manager, handle_scan_probe(_)).Times(0);
+    EXPECT_CALL(discovery_manager, handle_scan_response(_)).Times(0);
     EXPECT_CALL(tx_manager, notify_logical_ack()).Times(0);
     EXPECT_CALL(heartbeat_manager, handle_request(_)).Times(0);
     EXPECT_CALL(heartbeat_manager, handle_response()).Times(0);

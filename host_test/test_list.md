@@ -8,7 +8,7 @@
 | test_espnow_manager       |  FAIL  |  99.1%  |   97.1%   |  85.7%  |
 | test_heartbeat_manager    |  OK    |  100%   |   100%    |  100%   |
 | test_message_codec        |  OK    |  100%   |   100%    |  100%   |
-| test_message_router       |  FAIL    |  100%   |   100%    |  100%   |
+| test_message_router       |  OK    |  100%   |   100%    |  100%   |
 | test_pairing_manager      |  FAIL    |  100%   |   100%    |  100%   |
 | test_peer_manager         |  FAIL    |  100%   |   100%    |   84.3% |
 | test_storage_manager      |  OK    |  100%   |   100%    |  100%   |
