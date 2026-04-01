@@ -176,6 +176,48 @@ TEST_F(PairingManagerTest, NotActiveAfterInit)
 }
 
 // ===========================================================================
+// deinit()
+// ===========================================================================
+
+TEST_F(PairingManagerTest, DeinitClearsInitializedState)
+{
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
+    EXPECT_TRUE(sut_->get_is_active());
+
+    sut_->deinit();
+
+    // After deinit, re-init should succeed (not return INVALID_STATE)
+    EXPECT_EQ(sut_->init(kNodeId, kNodeType, fake_rx_task), ESP_OK);
+}
+
+TEST_F(PairingManagerTest, DeinitDeactivatesPairing)
+{
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
+    EXPECT_TRUE(sut_->get_is_active());
+
+    sut_->deinit();
+
+    EXPECT_FALSE(sut_->get_is_active());
+}
+
+TEST_F(PairingManagerTest, DeinitClearsRxTaskHandle)
+{
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
+
+    // After deinit, task_notify should not be called because rx_task_handle_ is null
+    EXPECT_CALL(hal_freertos_, task_notify(_, _, _)).Times(0);
+
+    sut_->deinit();
+
+    // Trigger a scenario that would normally notify rx_task
+    auto decoded = make_decoded_pair_response(PairStatus::ACCEPTED);
+    sut_->init(kNodeId, kNodeType, fake_rx_task);
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
+    sut_->deinit();
+    sut_->handle_response(decoded);
+}
+
+// ===========================================================================
 // start()
 // ===========================================================================
 
