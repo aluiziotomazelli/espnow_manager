@@ -300,10 +300,7 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 
     NodeState new_state = node_fsm_->get_state();
 
-    //
-    if (old_state != new_state) {
-        handle_state_transition(old_state, new_state);
-    }
+    handle_state_transition(old_state, new_state);
 
     return ESP_OK;
 }

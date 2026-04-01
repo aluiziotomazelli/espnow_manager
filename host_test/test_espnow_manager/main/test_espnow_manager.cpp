@@ -102,8 +102,9 @@ public:
     void set_node_state_operational()
     {
         // Force transition to OPERATIONAL state for testing purposes
-        // Uses MockNodeStateMachine which defaults to returning OPERATIONAL on on_init(true)
-        node_fsm_->on_init(true);
+        // Uses MockNodeStateMachine which defaults to returning OPERATIONAL
+        // on_init(bool is_hub, bool has_peers)
+        node_fsm_->on_init(false, true);
         ack_mutex_ = fake_mutex; // Necessary for confirm_reception tests
     }
 };

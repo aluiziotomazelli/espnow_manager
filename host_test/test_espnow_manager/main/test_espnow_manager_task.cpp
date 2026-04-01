@@ -275,14 +275,36 @@ TEST_F(EspNowManagerTaskTest, RxTaskCallsPairingTickWhenPairing)
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
 }
 
-TEST_F(EspNowManagerTaskTest, RxTaskCallsChannelMonitorTickWhenPairingScan)
+TEST_F(EspNowManagerTaskTest, RxTaskCallsChannelMonitorTickWhenOperational)
 {
     init_and_wait();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+
+    ASSERT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
+
+    EXPECT_CALL(*channel_monitor_, tick(_)).Times(AtLeast(1));
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+}
+
+TEST_F(EspNowManagerTaskTest, RxTaskCallsChannelMonitorTickWhenPairing)
+{
+    init_and_wait();
+    node_fsm_->set_state(NodeState::PAIRING);
+
+    ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING);
+
+    EXPECT_CALL(*channel_monitor_, tick(_)).Times(AtLeast(1));
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+}
+
+TEST_F(EspNowManagerTaskTest, RxTaskDoesNotCallsChannelMonitorTickWhenPairingScan)
+{
+    init_and_wait();
+    node_fsm_->set_state(NodeState::PAIRING_SCAN);
+
     ASSERT_EQ(sut_->get_node_state(), NodeState::PAIRING_SCAN);
 
-    // pairing_mgr_->tick() must NOT be called — pairing hasn't started yet
-    EXPECT_CALL(*pairing_mgr_, tick(_)).Times(0);
-    EXPECT_CALL(*channel_monitor_, tick(_)).Times(AtLeast(1));
+    EXPECT_CALL(*channel_monitor_, tick(_)).Times(0);
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
 }
 
