@@ -61,12 +61,17 @@ constexpr uint32_t LOGICAL_ACK_TIMEOUT_MS = 500;
 /** @brief Maximum number of physical transmission failures before giving up or scanning */
 constexpr uint8_t MAX_FAILURES = 3;
 
+/** @brief Maximum number of recovery scan retries (exponential backoff: 2+4+8+...+128s ≈ 4m14s total) */
+constexpr uint8_t SCAN_MAX_RETRIES = 7;
+/** @brief Base backoff duration for the first recovery scan retry (ms); doubles each attempt */
+constexpr uint32_t SCAN_BACKOFF_BASE_MS = 2000;
+
 /** @brief Timeout for scanning a single channel during discovery (ms) */
 constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 50;
 /** @brief Number of scan attempts per channel */
 constexpr uint8_t SCAN_CHANNEL_ATTEMPTS = 1;
 /** @brief Total maximum time allowed for a full channel scan */
-constexpr uint16_t MAX_SCAN_TIME_MS = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 20;
+constexpr uint16_t MAX_SCAN_TIME_MS = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 13 + 500;
 
 /** @brief Type alias for Node identification (0-255) */
 using NodeId = uint8_t;

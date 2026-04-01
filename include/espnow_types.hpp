@@ -187,6 +187,7 @@ struct EspNowConfig
     uint32_t ack_timeout_ms;        /**< Timeout for logical acknowledgments (ms) */
     uint32_t heartbeat_interval_ms; /**< Interval for heartbeats; 0 disables generation (ms) */
     uint32_t channel_monitor_interval_ms; /**< Interval for channel monitoring (ms) */
+    uint8_t scan_max_retries;       /**< Maximum retries for recovery scan. Defaults to SCAN_MAX_RETRIES. */
 
     uint32_t stack_size_rx_task;        /**< Stack size for the internal packet dispatcher task */
     uint32_t stack_size_tx_task;        /**< Stack size for the transmission manager task */
@@ -210,6 +211,7 @@ struct EspNowConfig
         , ack_timeout_ms(DEFAULT_ACK_TIMEOUT_MS)
         , heartbeat_interval_ms(DEFAULT_HEARTBEAT_INTERVAL_MS)
         , channel_monitor_interval_ms(DEFAULT_CHANNEL_MONITOR_INTERVAL_MS)
+        , scan_max_retries(SCAN_MAX_RETRIES)
         , stack_size_rx_task(4096)
         , stack_size_tx_task(4096)
         , priority_rx_task(10)

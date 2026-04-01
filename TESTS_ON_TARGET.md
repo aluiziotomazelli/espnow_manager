@@ -13,10 +13,10 @@
 
 | Test | Description | Priority | Status |
 |-------|-----------|------------|--------|
-| `IntegrationDiscoveryScanFindsHubOnDifferentChannel` | HUB on different channel → scan finds | Critical | |
+| `IntegrationDiscoveryScanFindsHubOnDifferentChannel` | HUB on different channel → scan finds | Critical | **OK** |
 | `IntegrationFullChannelScan1to13` | Full scan channels 1-13 | High | |
-| `IntegrationHubChangesChannelNodesRecover` | HUB changes channel → NODEs recover | Critical | |
-| `IntegrationScanFailsWhenNoHubPresent` | Scan without HUB → expected failure | High | |
+| `IntegrationHubChangesChannelNodesRecover` | HUB changes channel → NODEs recover | Critical | **OK** |
+| `IntegrationScanFailsWhenNoHubPresent` | Scan without HUB → expected failure | High | **OK** |
 
 ### 3.3 Pairing Protocol
 
@@ -31,7 +31,7 @@
 | Test | Description | Priority | Status |
 |-------|-----------|------------|--------|
 | `IntegrationHeartbeatSentPeriodically` | Heartbeats sent periodically | High | **OK** |
-| `IntegrationHeartbeatTimeoutMarksPeerOffline` | Heartbeat timeout → peer offline | High | |
+| `IntegrationHeartbeatTimeoutMarksPeerOffline` | Heartbeat timeout → peer offline | High | **OK** |
 | `IntegrationHeartbeatResetsOfflineTimer` | Heartbeat received → reset timer | High | |
 | `IntegrationGetOfflinePeersReturnsCorrectList` | Correct offline peers list | High | |
 

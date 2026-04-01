@@ -322,3 +322,26 @@ This document lists the behavior tests that should be implemented to fully cover
 ---
 
 *Document generated: 2026-03-31*
+
+---
+
+## 4. Recent Changes (2026-04-01)
+
+### 4.1 Exponential Backoff for RECOVERY_SCAN
+Implemented exponential backoff logic for recovery scans to prevent infinite looping when a HUB is lost and not found again.
+
+- **Maximum Retries**: 7 attempts (configurable via `EspNowConfig.scan_max_retries`).
+- **Base Backoff**: 2000ms, doubling each attempt (2s, 4s, 8s, 16s, 32s, 64s, 128s).
+- **Total Recovery Window**: ~4 minutes and 14 seconds before transitioning to `IDLE` permanently.
+- **Manual Overriding**: Added `reconnect()` public method to restart the recovery process from `IDLE`.
+- **Isolation**: Pairing processes (`PAIRING_SCAN`) remain unaffected, preserving their own internal timeout and retry logic.
+
+### 4.2 API Additions
+- `IEspNowManager::reconnect()`: Resets the scan retry counter and triggers a `RECOVERY_SCAN`.
+- `EspNowConfig::scan_max_retries`: Allows disabling or modifying the retry behavior.
+
+### TODO: Next Testing Steps
+- [ ] **Test Review**: Update and run integration tests (especially `IntegrationScanFailsWhenNoHubPresent`) to verify they handle the new `IDLE` state transition correctly.
+- [ ] **Unit Tests**: Implement host-side tests for `tick_scan_retry` to verify the mathematical doubling of delays and the max retry limit.
+- [ ] **Reconnect Strategy**: Verify that calling `reconnect()` correctly transitions the node back to `RECOVERY_SCAN` and resets the backoff state.
+

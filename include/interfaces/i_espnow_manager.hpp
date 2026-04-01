@@ -312,6 +312,20 @@ public:
      */
     virtual esp_err_t start_pairing(uint32_t timeout_ms = 30000) = 0;
 
+    /**
+     * @brief Attempt to reconnect after scan exhaustion
+     *
+     * Resets the retry counter and immediately triggers a RECOVERY_SCAN.
+     * Intended to be called by the application when the node is in IDLE
+     * state due to exhausted scan retries. Semantically different from
+     * start_pairing(): reconnect assumes the HUB ID is already and in the
+     * peer list and the node just needs to find the HUB channel.
+     *
+     * @return ESP_OK on success
+     * @return ESP_ERR_INVALID_STATE if node is not in IDLE state
+     */
+    virtual esp_err_t reconnect() = 0;
+
     // ========================================
     // Status
     // ========================================
@@ -331,4 +345,12 @@ public:
      * @note This method does not return errors.
      */
     virtual bool is_initialized() const = 0;
+
+    /**
+     * @brief Get the current WiFi channel
+     *
+     * @return The current WiFi channel (1-13).
+     * @note This method does not return errors.
+     */
+    virtual uint8_t get_wifi_channel() const = 0;
 };

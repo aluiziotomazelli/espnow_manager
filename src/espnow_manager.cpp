@@ -299,6 +299,24 @@ void EspNowManager::deinit()
     ESP_LOGI(TAG, "EspNow component deinitialized.");
 }
 
+esp_err_t EspNowManager::reconnect()
+{
+    if (node_fsm_->get_state() != NodeState::IDLE) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (peer_manager_->get_all().empty()) {
+        return ESP_ERR_INVALID_STATE; // Cannot reconnect if there are no peers
+    }
+
+    scan_retry_.reset(); // Reset counter - full attempts restored
+    NodeState old_state = node_fsm_->get_state();
+    esp_err_t ret = node_fsm_->on_scan_requested(); // IDLE -> RECOVERY_SCAN
+    if (ret == ESP_OK) {
+        handle_state_transition(old_state, node_fsm_->get_state());
+    }
+    return ret;
+}
+
 esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 {
     if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
@@ -415,6 +433,11 @@ bool EspNowManager::is_initialized() const
     return node_fsm_->get_state() != NodeState::UNINITIALIZED;
 }
 
+uint8_t EspNowManager::get_wifi_channel() const
+{
+    return config_.wifi_channel;
+}
+
 etl::vector<PeerInfo, MAX_PEERS> EspNowManager::get_peers()
 {
     return peer_manager_->get_all();
@@ -529,15 +552,18 @@ void EspNowManager::rx_task(void* arg)
         // }
 
         // Tick submodules to handle timers
+        uint64_t now_ms = self->get_time_ms();
         NodeState current_state = self->node_fsm_->get_state();
         if (current_state == NodeState::PAIRING) {
-            self->channel_monitor_->tick(self->get_time_ms());
-            self->pairing_manager_->tick(self->get_time_ms());
+            self->channel_monitor_->tick(now_ms);
+            self->pairing_manager_->tick(now_ms);
         }
         else if (current_state == NodeState::OPERATIONAL) {
-            self->channel_monitor_->tick(self->get_time_ms());
-            self->heartbeat_manager_->tick(self->get_time_ms());
+            self->channel_monitor_->tick(now_ms);
+            self->heartbeat_manager_->tick(now_ms);
         }
+
+        self->tick_scan_retry(now_ms);
     }
 
     // Task cleanup on exit
@@ -640,12 +666,11 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
 
     // NOTIFY_SCAN_FAILED is set by DiscoveryManager::discovery_task()
     if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
-        // By now, with or without peers, the node goes to IDLE, but
-        // we check here if we change NodeStateMachine later
         bool has_peers = !peer_manager_->get_all().empty();
         NodeState old_state = node_fsm_->get_state();
-        node_fsm_->on_scan_failed(has_peers);
+        node_fsm_->on_scan_failed(has_peers); // Always goes to IDLE
         handle_state_transition(old_state, node_fsm_->get_state());
+        handle_scan_retries(has_peers);
     }
 
     // NOTIFY_CHANNEL_CHANGED is set by ChannelMonitor via direct to task notification
@@ -673,6 +698,10 @@ void EspNowManager::handle_state_transition(NodeState old_state, NodeState new_s
 
     switch (new_state) {
     case NodeState::PAIRING_SCAN:
+        scan_retry_.reset(); // Do not interfere with pairing which has separate logic
+        scanner_->start_scan();
+        break;
+
     case NodeState::RECOVERY_SCAN:
         scanner_->start_scan();
         break;
@@ -688,6 +717,7 @@ void EspNowManager::handle_state_transition(NodeState old_state, NodeState new_s
         if (scanner_->is_scanning()) {
             scanner_->stop_scan();
         }
+        scan_retry_.reset(); // Success: cancel any pending retry and reset counter
         // If we just rediscovered the channel, store it
         if (old_state == NodeState::RECOVERY_SCAN || old_state == NodeState::PAIRING_SCAN) {
             storage_->store_channel(config_.wifi_channel);
@@ -702,6 +732,47 @@ void EspNowManager::handle_state_transition(NodeState old_state, NodeState new_s
 
     default:
         break;
+    }
+}
+
+void EspNowManager::tick_scan_retry(uint64_t now_ms)
+{
+    if (!scan_retry_.active || now_ms < scan_retry_.next_attempt_ms) {
+        return;
+    }
+    if (node_fsm_->get_state() != NodeState::IDLE) {
+        scan_retry_.reset();
+        return;
+    }
+
+    scan_retry_.active = false;
+    NodeState old_state = node_fsm_->get_state();
+
+    // Always RECOVERY_SCAN because we only schedule if we have peers
+    node_fsm_->on_scan_requested();
+    handle_state_transition(old_state, node_fsm_->get_state());
+}
+
+void EspNowManager::handle_scan_retries(bool has_peers)
+{
+    // Only retry scan if we have peers (RECOVERY_SCAN)
+    if (!has_peers) {
+        return;
+    }
+    if (scan_retry_.count < config_.scan_max_retries) {
+        uint32_t delay = SCAN_BACKOFF_BASE_MS << scan_retry_.count;
+        scan_retry_.active = true;
+        scan_retry_.next_attempt_ms = get_time_ms() + delay;
+        scan_retry_.count++;
+        ESP_LOGI(
+            TAG,
+            "Recovery scan failed. Retry %d/%d in %lu ms",
+            scan_retry_.count,
+            config_.scan_max_retries,
+            (unsigned long)delay);
+    }
+    else {
+        ESP_LOGW(TAG, "Recovery scan max retries (%d) exhausted. Node is IDLE.", config_.scan_max_retries);
     }
 }
 

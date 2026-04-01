@@ -132,6 +132,12 @@ public:
     /** @copydoc IEspNowManager::is_initialized */
     bool is_initialized() const override;
 
+    /** @copydoc IEspNowManager::get_wifi_channel */
+    uint8_t get_wifi_channel() const override;
+
+    /** @copydoc IEspNowManager::reconnect */
+    esp_err_t reconnect() override;
+
 protected:
     // --- Private Members ---
     EspNowConfig config_{};
@@ -207,4 +213,23 @@ protected:
 
     // Store pairing timeout for use after channel scan completes
     uint32_t pairing_timeout_ms_ = PAIRING_TIMEOUT_MS;
+
+    struct ScanRetry
+    {
+        bool active = false;
+        int count = 0;
+        uint64_t next_attempt_ms = 0;
+
+        void reset()
+        {
+            active = false;
+            count = 0;
+            next_attempt_ms = 0;
+        }
+    };
+
+    ScanRetry scan_retry_{};
+
+    void tick_scan_retry(uint64_t now_ms);
+    void handle_scan_retries(bool has_peers);
 };
