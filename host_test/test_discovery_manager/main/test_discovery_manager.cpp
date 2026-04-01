@@ -231,6 +231,36 @@ TEST_F(DiscoveryManagerTest, HandleScanProbeReturnsIfTaskHandleIsNull)
     scanner->handle_scan_probe(decoded);
 }
 
+TEST_F(DiscoveryManagerTest, HandleScanResponseNotifiesTask)
+{
+    DecodedRxPacket decoded = make_decoded_packet(10);
+
+    // Node must be ready to handle scan responses
+    init_node();
+
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_LINK_ALIVE, eSetBits)).WillOnce(Return(pdPASS));
+    scanner->handle_scan_response(decoded);
+}
+
+TEST_F(DiscoveryManagerTest, HandleScanResponseReturnsIfNotNode)
+{
+    init_hub();
+    DecodedRxPacket decoded = make_decoded_packet(10);
+
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_LINK_ALIVE, eSetBits)).Times(0);
+    scanner->handle_scan_response(decoded);
+}
+
+TEST_F(DiscoveryManagerTest, HandleScanResponseReturnsIfTaskHandleIsNull)
+{
+    set_task_handle_null();
+    init_node();
+    DecodedRxPacket decoded = make_decoded_packet(10);
+
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_LINK_ALIVE, eSetBits)).Times(0);
+    scanner->handle_scan_response(decoded);
+}
+
 // =============================================================================
 // Probes & Responses (Message construction)
 // =============================================================================

@@ -18,6 +18,7 @@ public:
     MOCK_METHOD(bool, is_scanning, (), (const, override));
 
     MOCK_METHOD(void, handle_scan_probe, (const DecodedRxPacket& decoded), (override));
+    MOCK_METHOD(void, handle_scan_response, (const DecodedRxPacket& decoded), (override));
     MOCK_METHOD(void, set_channel, (uint8_t channel), (override));
     MOCK_METHOD(uint8_t, get_channel, (), (const, override));
 };

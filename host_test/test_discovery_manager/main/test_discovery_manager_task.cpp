@@ -134,11 +134,6 @@ protected:
         vTaskDelay(pdMS_TO_TICKS(delay_10_ms));
     }
 
-    void notify_discovery_task(uint32_t notification)
-    {
-        xTaskNotify(scanner->get_task_handle(), notification, eSetBits);
-    }
-
     DecodedRxPacket make_decoded_packet(NodeId sender_id)
     {
         DecodedRxPacket decoded{};
@@ -170,8 +165,8 @@ TEST_F(DiscoveryManagerTaskTest, ScanChannelSuccessNotifyChannelFoundOnRxTask)
     scanner->start_scan();
     vTaskDelay(pdMS_TO_TICKS(delay_10_ms)); // give task time to send probe and block in hub_was_found()
 
-    // Simulate hub responding: inject NOTIFY_LINK_ALIVE into the discovery task
-    notify_discovery_task(NOTIFY_LINK_ALIVE);
+    // Simulate hub responding: use handle_scan_response instead of direct task notification
+    scanner->handle_scan_response(make_decoded_packet(1));
     vTaskDelay(pdMS_TO_TICKS(delay_10_ms)); // give task time to finish scan and notify rx_task
 
     EXPECT_TRUE(notify_channel_found);
