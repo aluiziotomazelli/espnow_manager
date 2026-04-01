@@ -33,7 +33,7 @@ void HeartbeatManager::set_interval_ms(uint32_t heartbeat_interval_ms)
 
 void HeartbeatManager::tick(uint64_t now_ms)
 {
-    if (!is_initialized_ || my_type_ == ReservedTypes::HUB) {
+    if (!is_initialized_ || my_type_ == ReservedTypes::HUB || interval_ms_ <= 0) {
         return;
     }
 
