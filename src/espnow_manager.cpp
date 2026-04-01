@@ -344,7 +344,8 @@ esp_err_t EspNowManager::send_command(
 
 esp_err_t EspNowManager::confirm_reception(AckStatus status)
 {
-    if (node_fsm_->get_state() != NodeState::OPERATIONAL)
+    auto current_state = node_fsm_->get_state();
+    if (current_state != NodeState::OPERATIONAL && current_state != NodeState::PAIRING)
         return ESP_ERR_INVALID_STATE;
 
     if (hal_freertos_->semaphore_take(ack_mutex_, pdMS_TO_TICKS(100)) != pdTRUE)
