@@ -17,7 +17,7 @@ PairingManager::PairingManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, IFree
 {
 }
 
-esp_err_t PairingManager::init(NodeId id, NodeType type, TaskHandle_t rx_task_handle)
+esp_err_t PairingManager::init(NodeId id, NodeType type, TaskHandle_t rx_task_handle, uint32_t heartbeat_interval_ms)
 {
     if (rx_task_handle == nullptr) {
         return ESP_ERR_INVALID_ARG;
@@ -29,6 +29,7 @@ esp_err_t PairingManager::init(NodeId id, NodeType type, TaskHandle_t rx_task_ha
     my_id_ = id;
     my_type_ = type;
     rx_task_handle_ = rx_task_handle;
+    heartbeat_interval_ms_ = heartbeat_interval_ms;
     is_initialized_ = true;
 
     return ESP_OK;
@@ -154,7 +155,7 @@ void PairingManager::send_pair_request()
     tx_packet.header.dest_node_id = ReservedIds::HUB;
 
     PairRequest req{};
-    req.heartbeat_interval_ms = 60000;
+    req.heartbeat_interval_ms = heartbeat_interval_ms_;
     // other fiels remain zero for now
 
     // Copy only the payload portion of PairRequest, skipping MessageHeader.

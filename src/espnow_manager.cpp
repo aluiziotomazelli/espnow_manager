@@ -505,9 +505,10 @@ void EspNowManager::rx_task(void* arg)
                 // Decode header
                 auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
                 if (header_opt) {
-                    // Any valid packet is proof the link is alive — notify TxManager
-                    // regardless of message type, before routing.
+                    // Any valid packet is proof the link is alive
+                    // Notify tx_manager link alive and update peer manager last_seen
                     self->tx_manager_->notify_link_alive();
+                    self->peer_manager_->update_last_seen(header_opt->sender_node_id, self->get_time_ms());
 
                     decoded = {packet, header_opt.value()};
 
@@ -847,7 +848,7 @@ esp_err_t EspNowManager::init_pairing_manager()
     if (pairing_manager_ == nullptr) {
         return ESP_FAIL;
     }
-    return pairing_manager_->init(config_.node_id, config_.node_type, rx_task_handle_);
+    return pairing_manager_->init(config_.node_id, config_.node_type, rx_task_handle_, config_.heartbeat_interval_ms);
 }
 
 esp_err_t EspNowManager::init_channel_monitor()

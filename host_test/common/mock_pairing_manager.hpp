@@ -7,7 +7,7 @@
 class MockPairingManager : public IPairingManager
 {
 public:
-    MOCK_METHOD(esp_err_t, init, (NodeId id, NodeType type, TaskHandle_t rx_task_handle), (override));
+    MOCK_METHOD(esp_err_t, init, (NodeId id, NodeType type, TaskHandle_t rx_task_handle, uint32_t heartbeat_interval_ms), (override));
     MOCK_METHOD(void, deinit, (), (override));
     MOCK_METHOD(esp_err_t, start, (uint32_t timeout_ms, uint64_t now_ms), (override));
     MOCK_METHOD(void, tick, (uint64_t now_ms), (override));

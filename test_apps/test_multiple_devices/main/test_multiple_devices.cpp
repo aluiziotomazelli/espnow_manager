@@ -53,7 +53,7 @@ static constexpr uint8_t kNodeChannel = 1;
 static constexpr uint8_t kNodeId = 0x02;
 static constexpr uint8_t kNodeType = 0x02;
 static constexpr uint32_t kPairingTimeoutMs = 5000;
-static constexpr uint32_t kHeartbeatIntervalMs = 2000;
+static constexpr uint32_t kHeartbeatIntervalMs = 500;
 static constexpr uint32_t kWaitAfterPairingMs = 3000;
 static constexpr uint32_t kAppQueueLength = 10;
 
@@ -163,10 +163,8 @@ static std::unique_ptr<EspNowManager> make_espnow_manager()
 // ---------------------------------------------------------------------------
 // Config helpers
 // ---------------------------------------------------------------------------
-static EspNowConfig make_hub_config(
-    QueueHandle_t app_queue,
-    uint8_t channel = kHubChannel,
-    uint32_t heartbeat_interval_ms = kHeartbeatIntervalMs)
+static EspNowConfig
+make_hub_config(QueueHandle_t app_queue, uint8_t channel = kHubChannel, uint32_t heartbeat_interval_ms = 0)
 {
     EspNowConfig cfg{};
     cfg.node_id = ReservedIds::HUB;
@@ -178,10 +176,8 @@ static EspNowConfig make_hub_config(
     return cfg;
 }
 
-static EspNowConfig make_node_config(
-    QueueHandle_t app_queue,
-    uint8_t channel = kNodeChannel,
-    uint32_t heartbeat_interval_ms = kHeartbeatIntervalMs)
+static EspNowConfig
+make_node_config(QueueHandle_t app_queue, uint8_t channel = kNodeChannel, uint32_t heartbeat_interval_ms = 0)
 {
     EspNowConfig cfg{};
     cfg.node_id = kNodeId;
@@ -255,7 +251,7 @@ static void hub_auto_pair()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
     TEST_ASSERT_EQUAL(NodeState::PAIRING, g_mgr->get_node_state());
 
     // Signal NODE that HUB is up and in PAIRING state.
@@ -278,7 +274,7 @@ static void node_auto_pair()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
     TEST_ASSERT_EQUAL(NodeState::PAIRING_SCAN, g_mgr->get_node_state());
 
     // Wait for HUB to be ready, then the automatic scan will find it.
@@ -315,7 +311,7 @@ static void hub_receive_simple()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
 
     unity_wait_for_signal("node sending simple");
 
@@ -334,7 +330,7 @@ static void node_send_simple()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
 
     vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
 
@@ -366,7 +362,7 @@ static void hub_receive_and_ack()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
 
     // Let NODE finish automatic pairing.
     unity_wait_for_signal("node operational");
@@ -395,7 +391,7 @@ static void node_send_with_ack()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
 
     // Automatic pairing — wait for it to finish.
     vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
@@ -436,7 +432,7 @@ static void hub_delayed_ack()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
 
     unity_wait_for_signal("node sending");
 
@@ -464,7 +460,7 @@ static void node_send_retry()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
 
     // Automatic pairing.
     vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
@@ -509,7 +505,7 @@ static void hub_heartbeat_periodically()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
 
     // Drive HUB to OPERATIONAL quickly so it can track heartbeats.
     g_mgr->start_pairing(kForcePairingTimeoutMs);
@@ -535,7 +531,7 @@ static void node_heartbeat_periodically()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1, kHeartbeatIntervalMs)));
     // NODE starts in PAIRING_SCAN and auto-pairs with the HUB.
 
     // Wait for HUB to be ready before starting the scan.
@@ -574,7 +570,7 @@ static void hub_peers_persisted()
 
     // ---- Cycle 1: pair and persist ----
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1)));
     g_mgr->start_pairing(kForcePairingTimeoutMs);
 
     unity_send_signal("hub ready c1");
@@ -591,7 +587,7 @@ static void hub_peers_persisted()
 
     // ---- Cycle 2: restore from storage ----
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1)));
 
     // HUB has stored peers → should start OPERATIONAL directly.
     TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
@@ -609,7 +605,7 @@ static void node_peers_persisted()
 
     // ---- Cycle 1: auto-pair and persist ----
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1)));
 
     unity_wait_for_signal("hub ready c1");
 
@@ -627,7 +623,7 @@ static void node_peers_persisted()
 
     // ---- Cycle 2: restore from storage ----
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1)));
 
     // NODE has stored peers → should start OPERATIONAL directly.
     TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
@@ -718,7 +714,7 @@ static void hub_change_channel()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1)));
 
     unity_send_signal("hub ready ch 1");
     unity_wait_for_signal("node operational");
@@ -749,7 +745,7 @@ static void node_recover_channel()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1)));
 
     unity_wait_for_signal("hub ready ch 1");
     vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
@@ -832,7 +828,7 @@ static void node_scan_fails()
     unity_wait_for_signal("hub dead");
 
     // Trigger failure
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < MAX_FAILURES; i++) {
         const uint8_t dummy = 0xEE;
         g_mgr->send_data(ReservedIds::HUB, kTestPayloadType, &dummy, 1, true);
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -854,7 +850,6 @@ TEST_CASE_MULTIPLE_DEVICES("10. Integration: ScanFailsWhenNoHubPresent", "[espno
 // NODE pairs then stops (deinit).
 // HUB waits for 3*interval + buffer and checks if node is marked offline.
 // ===========================================================================
-static const uint32_t test_heartbeat_interval_ms = 500;
 
 static void hub_detects_offline()
 {
@@ -872,7 +867,7 @@ static void hub_detects_offline()
 
     unity_wait_for_signal("node dead");
 
-    vTaskDelay(pdMS_TO_TICKS(test_heartbeat_interval_ms * 3 + 1000));
+    vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * 5));
 
     auto offline = g_mgr->get_offline_peers();
     TEST_ASSERT_EQUAL(1, offline.size());
@@ -888,7 +883,7 @@ static void node_goes_offline()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1, test_heartbeat_interval_ms)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1, kHeartbeatIntervalMs)));
 
     vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
     TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());

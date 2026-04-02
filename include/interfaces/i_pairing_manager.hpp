@@ -23,9 +23,10 @@ public:
      * @param id Node ID.
      * @param type Node type.
      * @param rx_task_handle RX task handle for notifications.
+     * @param heartbeat_interval_ms Heartbeat interval configured for this node.
      * @return ESP_OK on success.
      */
-    virtual esp_err_t init(NodeId id, NodeType type, TaskHandle_t rx_task_handle) = 0;
+    virtual esp_err_t init(NodeId id, NodeType type, TaskHandle_t rx_task_handle, uint32_t heartbeat_interval_ms) = 0;
 
     /** @internal */
     template <
@@ -34,9 +35,9 @@ public:
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
 
-    esp_err_t init(T1 type, T2 id, TaskHandle_t rx_task_handle)
+    esp_err_t init(T1 id, T2 type, TaskHandle_t rx_task_handle, uint32_t heartbeat_interval_ms)
     {
-        return init(static_cast<NodeId>(id), static_cast<NodeType>(type), rx_task_handle);
+        return init(static_cast<NodeId>(id), static_cast<NodeType>(type), rx_task_handle, heartbeat_interval_ms);
     }
 
     /**

@@ -15,7 +15,7 @@ public:
     using IPairingManager::init;
 
     /** @copydoc IPairingManager::init */
-    esp_err_t init(NodeId id, NodeType type, TaskHandle_t rx_task_handle) override;
+    esp_err_t init(NodeId id, NodeType type, TaskHandle_t rx_task_handle, uint32_t heartbeat_interval_ms) override;
 
     /** @copydoc IPairingManager::deinit */
     void deinit() override;
@@ -49,6 +49,7 @@ private:
     uint8_t current_channel_ = 1;
 
     TaskHandle_t rx_task_handle_;
+    uint32_t heartbeat_interval_ms_ = 60000;
 
     uint64_t started_at_ms_ = 0;
     uint64_t last_request_ms_ = 0;
