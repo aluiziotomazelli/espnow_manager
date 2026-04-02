@@ -376,7 +376,7 @@ esp_err_t EspNowManager::confirm_reception(AckStatus status)
 
     const auto& header_to_ack = last_header_requiring_ack_.value();
 
-    DecodedTxPacket tx_packet;
+    DecodedTxPacket tx_packet{};
     if (!peer_manager_->find_mac(header_to_ack.sender_node_id, tx_packet.dest_mac)) {
         last_header_requiring_ack_.reset();
         hal_freertos_->semaphore_give(ack_mutex_);
@@ -387,16 +387,18 @@ esp_err_t EspNowManager::confirm_reception(AckStatus status)
     tx_packet.header.sender_node_id = config_.node_id;
     tx_packet.header.sender_type = config_.node_type;
     tx_packet.header.dest_node_id = header_to_ack.sender_node_id;
-    tx_packet.header.sequence_number = 0;
     tx_packet.header.requires_ack = false;
-    tx_packet.header.payload_type = 0;
     tx_packet.header.timestamp_ms = get_time_ms();
 
-    // Payload for ACK is [ack_sequence (2 bytes) + status (1 byte)]
-    tx_packet.payload_len = 3;
-    uint16_t ack_seq = header_to_ack.sequence_number;
-    memcpy(tx_packet.payload, &ack_seq, 2);
-    tx_packet.payload[2] = static_cast<uint8_t>(status);
+    // Payload for ACK matches AckMessage structure fields after header
+    AckMessage ack_message{};
+    ack_message.status = status;
+    ack_message.ack_sequence = header_to_ack.sequence_number;
+    ack_message.processing_time_us = 0;
+
+    // Copy only the payload portion of AckMessage, skipping MessageHeader.
+    tx_packet.payload_len = sizeof(AckMessage) - sizeof(MessageHeader);
+    memcpy(tx_packet.payload, &ack_message.status, tx_packet.payload_len);
 
     esp_err_t err = tx_manager_->queue_packet(tx_packet);
     last_header_requiring_ack_.reset();

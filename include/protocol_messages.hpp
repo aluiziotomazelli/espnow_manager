@@ -85,8 +85,8 @@ struct HeartbeatResponse
 struct AckMessage
 {
     MessageHeader header;        /**< Universal message header */
-    uint16_t ack_sequence;       /**< Sequence number of the message being acknowledged */
     AckStatus status;            /**< Processing status of the acknowledged message */
+    uint16_t ack_sequence;       /**< Sequence number of the message being acknowledged */
     uint32_t processing_time_us; /**< Time taken to process the message in microseconds */
 };
 
