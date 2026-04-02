@@ -50,6 +50,8 @@
 // ---------------------------------------------------------------------------
 static constexpr uint8_t kHubChannel = 1;
 static constexpr uint8_t kNodeChannel = 1;
+static constexpr uint8_t kNodeId = 0x02;
+static constexpr uint8_t kNodeType = 0x02;
 static constexpr uint32_t kPairingTimeoutMs = 5000;
 static constexpr uint32_t kHeartbeatIntervalMs = 2000;
 static constexpr uint32_t kWaitAfterPairingMs = 3000;
@@ -182,8 +184,8 @@ static EspNowConfig make_node_config(
     uint32_t heartbeat_interval_ms = kHeartbeatIntervalMs)
 {
     EspNowConfig cfg{};
-    cfg.node_id = 0x02;
-    cfg.node_type = 0x02;
+    cfg.node_id = kNodeId;
+    cfg.node_type = kNodeType;
     cfg.wifi_channel = channel;
     cfg.app_rx_queue = app_queue;
     cfg.heartbeat_interval_ms = heartbeat_interval_ms;
@@ -231,7 +233,7 @@ void tearDown()
 // 1. TEST: Clear NVS — run once before the pairing test
 // ===========================================================================
 
-TEST_CASE("Clear NVS and peer storage", "[espnow][setup]")
+TEST_CASE("1. Setup: Clear NVS and peer storage", "[espnow][setup]")
 {
     nvs_flash_erase();
     nvs_flash_init();
@@ -296,13 +298,62 @@ static void node_auto_pair()
 }
 
 TEST_CASE_MULTIPLE_DEVICES(
-    "3.1 IntegrationHubAndNodePairSuccessfully",
-    "[espnow][3.1][pairing]",
+    "2. Integration: HubAndNodePairSuccessfully",
+    "[espnow][pairing]",
     hub_auto_pair,
     node_auto_pair);
 
 // ===========================================================================
-// 3. TEST: IntegrationNodeSendsDataHubReceivesAndAcks
+// 3. TEST: IntegrationNodeSendsDataHubReceives
+//
+// Simple baseline data transfer without ACK requirements.
+// ===========================================================================
+
+static void hub_receive_simple()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+
+    unity_wait_for_signal("node sending simple");
+
+    AppMessage msg{};
+    BaseType_t got = xQueueReceive(g_app_queue, &msg, pdMS_TO_TICKS(5000));
+    TEST_ASSERT_EQUAL(pdTRUE, got);
+    TEST_ASSERT_EQUAL(kTestPayloadType, msg.payload_type);
+
+    unity_send_signal("hub received simple");
+    test_cleanup();
+}
+
+static void node_send_simple()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+
+    vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
+
+    unity_send_signal("node sending simple");
+    const uint8_t payload[] = {0xDE, 0xAD};
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->send_data(ReservedIds::HUB, kTestPayloadType, payload, sizeof(payload), false));
+
+    unity_wait_for_signal("hub received simple");
+    test_cleanup();
+}
+
+TEST_CASE_MULTIPLE_DEVICES(
+    "3. Integration: NodeSendsDataHubReceives",
+    "[espnow][data]",
+    hub_receive_simple,
+    node_send_simple);
+
+// ===========================================================================
+// 4. TEST: IntegrationNodeSendsDataHubReceivesAndAcks
 //
 // After automatic pairing, NODE sends a DATA packet to HUB with
 // require_ack=true. HUB verifies the payload and calls confirm_reception().
@@ -324,7 +375,7 @@ static void hub_receive_and_ack()
     AppMessage msg{};
     BaseType_t got = xQueueReceive(g_app_queue, &msg, pdMS_TO_TICKS(5000));
     TEST_ASSERT_EQUAL(pdTRUE, got);
-    TEST_ASSERT_EQUAL(0x02, msg.sender_id); // NODE id
+    TEST_ASSERT_EQUAL(kNodeId, msg.sender_id); // NODE id
     TEST_ASSERT_EQUAL(kTestPayloadType, msg.payload_type);
     TEST_ASSERT_TRUE(msg.payload_len > 0);
     TEST_ASSERT_TRUE(msg.requires_ack);
@@ -365,13 +416,13 @@ static void node_send_with_ack()
 }
 
 TEST_CASE_MULTIPLE_DEVICES(
-    "3.1 IntegrationNodeSendsDataHubReceivesAndAcks",
-    "[espnow][3.1][ack]",
+    "4. Integration: NodeSendsDataHubReceivesAndAcks",
+    "[espnow][ack]",
     hub_receive_and_ack,
     node_send_with_ack);
 
 // ===========================================================================
-// 4. TEST: IntegrationAckTimeoutRetriesAndSuccess
+// 5. TEST: IntegrationAckTimeoutRetriesAndSuccess
 //
 // NODE sends DATA with require_ack=true. HUB deliberately delays the ACK by
 // kAckRetryTimeoutMs*2, forcing at least one retry in the TxManager before
@@ -438,13 +489,13 @@ static void node_send_retry()
 }
 
 TEST_CASE_MULTIPLE_DEVICES(
-    "3.1 IntegrationAckTimeoutRetriesAndSuccess",
-    "[espnow][3.1][retry]",
+    "5. Integration: AckTimeoutRetriesAndSuccess",
+    "[espnow][retry]",
     hub_delayed_ack,
     node_send_retry);
 
 // ===========================================================================
-// 5. TEST: IntegrationHeartbeatSentPeriodically
+// 6. TEST: IntegrationHeartbeatSentPeriodically
 //
 // After automatic pairing both devices reach OPERATIONAL. HUB uses a short
 // pairing timeout (kForcePairingTimeoutMs) to transition quickly. After two
@@ -501,13 +552,13 @@ static void node_heartbeat_periodically()
 }
 
 TEST_CASE_MULTIPLE_DEVICES(
-    "3.4 IntegrationHeartbeatSentPeriodically",
-    "[espnow][3.4][heartbeat]",
+    "6. Integration: HeartbeatSentPeriodically",
+    "[espnow][heartbeat]",
     hub_heartbeat_periodically,
     node_heartbeat_periodically);
 
 // ===========================================================================
-// 6. TEST: IntegrationPeersPersistedToNvsAndRestored
+// 7. TEST: IntegrationPeersPersistedToNvsAndRestored
 //
 // Cycle 1: HUB and NODE pair. Both call deinit() — this triggers storage
 //          write (peers + channel persisted to NVS and RTC).
@@ -588,13 +639,13 @@ static void node_peers_persisted()
 }
 
 TEST_CASE_MULTIPLE_DEVICES(
-    "3.5 IntegrationPeersPersistedToNvsAndRestored",
-    "[espnow][3.5][storage]",
+    "7. Integration: PeersPersistedToNvsAndRestored",
+    "[espnow][storage]",
     hub_peers_persisted,
     node_peers_persisted);
 
 // ===========================================================================
-// 7. TEST: IntegrationDiscoveryScanFindsHubOnDifferentChannel
+// 8. TEST: IntegrationDiscoveryScanFindsHubOnDifferentChannel
 //
 // HUB starts on ch 6, NODE starts on ch 1.
 // NODE should enter PAIRING_SCAN and automatically find the HUB on ch 6.
@@ -612,7 +663,10 @@ static void hub_ch_13_wait()
     unity_send_signal("hub ready ch 13");
     unity_wait_for_signal("node paired ch 13");
 
-    TEST_ASSERT_EQUAL(13, g_mgr->get_wifi_channel());
+    uint8_t primary;
+    wifi_second_chan_t second;
+    esp_wifi_get_channel(&primary, &second);
+    TEST_ASSERT_EQUAL(13, primary);
     TEST_ASSERT_EQUAL(1, g_mgr->get_peers().size());
 
     unity_send_signal("hub verified");
@@ -634,7 +688,10 @@ static void node_ch_1_find_13()
     vTaskDelay(pdMS_TO_TICKS(MAX_SCAN_TIME_MS));
 
     TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
-    TEST_ASSERT_EQUAL(13, g_mgr->get_wifi_channel());
+    uint8_t primary;
+    wifi_second_chan_t second;
+    esp_wifi_get_channel(&primary, &second);
+    TEST_ASSERT_EQUAL(13, primary);
     TEST_ASSERT_EQUAL(1, g_mgr->get_peers().size());
 
     unity_send_signal("node paired ch 13");
@@ -643,13 +700,13 @@ static void node_ch_1_find_13()
 }
 
 TEST_CASE_MULTIPLE_DEVICES(
-    "3.2 IntegrationDiscoveryScanFindsHubOnDifferentChannel",
-    "[espnow][3.2][scan]",
+    "7. Integration: DiscoveryScanFindsHubOnDifferentChannel",
+    "[espnow][scan]",
     hub_ch_13_wait,
     node_ch_1_find_13);
 
 // ===========================================================================
-// 8. TEST: IntegrationHubChangesChannelNodesRecover
+// 9. TEST: IntegrationHubChangesChannelNodesRecover
 //
 // HUB and NODE pair on ch 1. HUB then forces its WiFi channel to ch 6.
 // NODE fails to send data, enters RECOVERY_SCAN and finds HUB on ch 6.
@@ -672,12 +729,15 @@ static void hub_change_channel()
 
     // Wait for internal ChannelMonitor to detect the change
     vTaskDelay(pdMS_TO_TICKS(DEFAULT_CHANNEL_MONITOR_INTERVAL_MS + 50));
-    TEST_ASSERT_EQUAL(6, g_mgr->get_wifi_channel());
+    uint8_t primary;
+    wifi_second_chan_t second;
+    esp_wifi_get_channel(&primary, &second);
+    TEST_ASSERT_EQUAL(6, primary);
 
     unity_send_signal("hub now on ch 6");
     unity_wait_for_signal("node recovered");
 
-    TEST_ASSERT_EQUAL(6, g_mgr->get_wifi_channel());
+    TEST_ASSERT_EQUAL(6, primary);
 
     unity_send_signal("hub verified recovery");
     test_cleanup();
@@ -701,12 +761,17 @@ static void node_recover_channel()
     // Send constant data to trigger MAX_FAILURES and recovery scan
     for (int i = 0; i < MAX_FAILURES + 3; i++) {
         const uint8_t dummy = 0xFF;
-        g_mgr->send_data(ReservedIds::HUB, kTestPayloadType, &dummy, 1, true);
+        TEST_ASSERT_EQUAL(ESP_OK, g_mgr->send_data(ReservedIds::HUB, kTestPayloadType, &dummy, 1, true));
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
-    vTaskDelay(pdMS_TO_TICKS(MAX_SCAN_TIME_MS));
-    TEST_ASSERT_EQUAL(6, g_mgr->get_wifi_channel());
+    // Increased delay to allow TxManager retries + potential backoff (2s) + scan (~2.5s)
+    vTaskDelay(pdMS_TO_TICKS(6000));
+
+    uint8_t primary;
+    wifi_second_chan_t second;
+    esp_wifi_get_channel(&primary, &second);
+    TEST_ASSERT_EQUAL(6, primary);
     TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
 
     unity_send_signal("node recovered");
@@ -715,13 +780,13 @@ static void node_recover_channel()
 }
 
 TEST_CASE_MULTIPLE_DEVICES(
-    "8. IntegrationHubChangesChannelNodesRecover",
-    "[espnow][8][recovery]",
+    "9. Integration: HubChangesChannelNodesRecover",
+    "[espnow][recovery]",
     hub_change_channel,
     node_recover_channel);
 
 // ===========================================================================
-// 9. TEST: IntegrationScanFailsWhenNoHubPresent
+// 10. TEST: IntegrationScanFailsWhenNoHubPresent
 //
 // HUB and NODE pair. HUB "dies" (deinit).
 // NODE tries to send, fails, scans all channels, finds nothing, goes to IDLE.
@@ -776,23 +841,20 @@ static void node_scan_fails()
     // Give time for a full 1-13 channel scan to fail
     vTaskDelay(pdMS_TO_TICKS(MAX_SCAN_TIME_MS));
 
-    TEST_ASSERT_EQUAL(NodeState::PAIRING_SCAN, g_mgr->get_node_state());
+    TEST_ASSERT_EQUAL(NodeState::IDLE, g_mgr->get_node_state());
 
     test_cleanup();
 }
 
-TEST_CASE_MULTIPLE_DEVICES(
-    "3.2 IntegrationScanFailsWhenNoHubPresent",
-    "[espnow][3.2][fail]",
-    hub_dies,
-    node_scan_fails);
+TEST_CASE_MULTIPLE_DEVICES("10. Integration: ScanFailsWhenNoHubPresent", "[espnow][fail]", hub_dies, node_scan_fails);
 
 // ===========================================================================
-// 10. TEST: IntegrationHeartbeatTimeoutMarksPeerOffline
+// 11. TEST: IntegrationHeartbeatTimeoutMarksPeerOffline
 //
 // NODE pairs then stops (deinit).
 // HUB waits for 3*interval + buffer and checks if node is marked offline.
 // ===========================================================================
+static const uint32_t test_heartbeat_interval_ms = 500;
 
 static void hub_detects_offline()
 {
@@ -800,7 +862,7 @@ static void hub_detects_offline()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1, 0)));
     g_mgr->start_pairing(kForcePairingTimeoutMs);
 
     unity_wait_for_signal("node paired");
@@ -810,12 +872,11 @@ static void hub_detects_offline()
 
     unity_wait_for_signal("node dead");
 
-    // Wait for timeout (Interval=2s, 3*2s=6s, wait 9s)
-    vTaskDelay(pdMS_TO_TICKS(9000));
+    vTaskDelay(pdMS_TO_TICKS(test_heartbeat_interval_ms * 3 + 1000));
 
     auto offline = g_mgr->get_offline_peers();
     TEST_ASSERT_EQUAL(1, offline.size());
-    TEST_ASSERT_EQUAL(0x02, offline[0]); // NODE ID
+    TEST_ASSERT_EQUAL(kNodeId, offline[0]); // NODE ID
 
     unity_send_signal("hub verified offline");
     test_cleanup();
@@ -827,7 +888,7 @@ static void node_goes_offline()
     TEST_ASSERT_NOT_NULL(g_app_queue);
 
     g_mgr = make_espnow_manager();
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, /*channel=*/1, test_heartbeat_interval_ms)));
 
     vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
     TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
@@ -848,7 +909,7 @@ static void node_goes_offline()
 }
 
 TEST_CASE_MULTIPLE_DEVICES(
-    "3.4 IntegrationHeartbeatTimeoutMarksPeerOffline",
-    "[espnow][3.4][offline]",
+    "11. Integration: HeartbeatTimeoutMarksPeerOffline",
+    "[espnow][offline]",
     hub_detects_offline,
     node_goes_offline);

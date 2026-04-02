@@ -58,7 +58,7 @@ protected:
 
         // FSM tracks state via local variable
         ON_CALL(*fsm, get_state()).WillByDefault(ReturnPointee(&current_state));
-        ON_CALL(*fsm, on_tx_success(_)).WillByDefault(Invoke([this](bool requires_ack) {
+        ON_CALL(*fsm, on_packet_sent(_)).WillByDefault(Invoke([this](bool requires_ack) {
             current_state = requires_ack ? TxState::WAITING_FOR_ACK : TxState::IDLE;
             return current_state;
         }));
@@ -70,7 +70,7 @@ protected:
             current_state = TxState::RETRYING;
             return current_state;
         }));
-        ON_CALL(*fsm, on_physical_fail()).WillByDefault(Return(false));
+        ON_CALL(*fsm, on_delivery_failure()).WillByDefault(Return(false));
         ON_CALL(*fsm, on_max_retries()).WillByDefault(Invoke([this]() {
             current_state = TxState::IDLE;
             return current_state;
@@ -220,17 +220,17 @@ TEST_F(TxManagerTaskTest, IdleStateNotifyLinkAliveCallsFsmOnLinkAlive)
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-TEST_F(TxManagerTaskTest, IdleStateNotifyPhysicalFailCallsFsmOnPhysicalFail)
+TEST_F(TxManagerTaskTest, IdleStateNotifyDeliveryFailureCallsFsmOnDeliveryFailure)
 {
     init_and_wait();
 
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(1);
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
 
-    manager->notify_physical_fail();
+    manager->notify_delivery_failure();
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-TEST_F(TxManagerTaskTest, OnPhysicalFailReturningTrueCallsNotifyMaxFailuresOnRxTask)
+TEST_F(TxManagerTaskTest, OnDeliveryFailureReturningTrueCallsNotifyMaxFailuresOnRxTask)
 {
     // Create a real rx task defined on the test class
     make_real_rx_task();
@@ -239,11 +239,11 @@ TEST_F(TxManagerTaskTest, OnPhysicalFailReturningTrueCallsNotifyMaxFailuresOnRxT
     ASSERT_EQ(ESP_OK, manager->init(4096, 5, real_rx_task_handle));
     vTaskDelay(pdMS_TO_TICKS(20));
 
-    // On physical fail returns true if the number of failures is greater than max_failures
-    EXPECT_CALL(*fsm, on_physical_fail()).WillOnce(Return(true));
+    // On delivery failure returns true if the number of failures is greater than max_failures
+    EXPECT_CALL(*fsm, on_delivery_failure()).WillOnce(Return(true));
 
     // Trigger the notification
-    manager->notify_physical_fail();
+    manager->notify_delivery_failure();
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     // Real rx task will be notifyed and turns the flag true
@@ -258,7 +258,7 @@ TEST_F(TxManagerTaskTest, NotifyStopStopsTaskAndCleansTheTaskHandle)
     TaskHandle_t tx_task_handle = manager->get_task_handle();
 
     // Manually notify the task to stop
-    xTaskNotify(tx_task_handle, NOTIFY_STOP, eSetBits);
+    xTaskNotify(tx_task_handle, NOTIFY_TASK_TO_STOP, eSetBits);
 
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
@@ -303,7 +303,7 @@ TEST_F(TxManagerTaskTest, WaitingForAckTimeoutCallsOnAckTimeout)
     vTaskDelay(pdMS_TO_TICKS(ack_timeout_ms + 20));
 }
 
-TEST_F(TxManagerTaskTest, WaitingForAckNotifyPhysicalFailCallsOnPhysicalFail)
+TEST_F(TxManagerTaskTest, WaitingForAckNotifyDeliveryFailureCallsOnDeliveryFailure)
 {
     init_and_wait();
 
@@ -311,9 +311,9 @@ TEST_F(TxManagerTaskTest, WaitingForAckNotifyPhysicalFailCallsOnPhysicalFail)
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
     ASSERT_EQ(TxState::WAITING_FOR_ACK, current_state);
 
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(1);
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
 
-    manager->notify_physical_fail();
+    manager->notify_delivery_failure();
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
@@ -332,11 +332,11 @@ TEST_F(TxManagerTaskTest, RetryingWithPendingAckResendsPacket)
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).Times(1);
 
     // Trigger loop iteration via notify
-    manager->notify_physical_fail();
+    manager->notify_delivery_failure();
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-TEST_F(TxManagerTaskTest, RetryingWithEspnowErrorCallsFsmOnPhysicalFail)
+TEST_F(TxManagerTaskTest, RetryingWithEspnowErrorCallsFsmOnDeliveryFailure)
 {
     init_and_wait();
 
@@ -347,9 +347,9 @@ TEST_F(TxManagerTaskTest, RetryingWithEspnowErrorCallsFsmOnPhysicalFail)
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _))
         .Times(retry_count)
         .WillRepeatedly(Return(ESP_ERR_ESPNOW_CHAN));             // Send fail
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(retry_count + 1); // + 1 for the inital fail that trigger the retry loop
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(retry_count + 1); // + 1 for the inital fail that trigger the retry loop
 
-    manager->notify_physical_fail(); // trigger retry loop
+    manager->notify_delivery_failure(); // trigger retry loop
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
@@ -362,7 +362,7 @@ TEST_F(TxManagerTaskTest, RetryingWithNoPendingAckCallsOnMaxRetries)
 
     EXPECT_CALL(*fsm, on_max_retries()).Times(1);
 
-    manager->notify_physical_fail();
+    manager->notify_delivery_failure();
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
@@ -370,13 +370,13 @@ TEST_F(TxManagerTaskTest, RetryingWithNoPendingAckCallsOnMaxRetries)
 // TxManager::handle_esp_now_send_errors(esp_err_t error)
 // =============================================================================
 
-TEST_F(TxManagerTaskTest, EspnowNoMemoryErrorDoesNotCallPhysicalFail)
+TEST_F(TxManagerTaskTest, EspnowNoMemoryErrorDoesNotCallDeliveryFailure)
 {
     init_and_wait();
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_ERR_ESPNOW_NO_MEM)); // Send fail
     EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0); // Pending ack should not be set
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(0); // Should not call on_physical_fail
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
     manager->queue_packet(make_packet(true)); // Call with pending ack == true
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
@@ -384,13 +384,13 @@ TEST_F(TxManagerTaskTest, EspnowNoMemoryErrorDoesNotCallPhysicalFail)
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state
 }
 
-TEST_F(TxManagerTaskTest, EspnowNotInitiErrorDoesNotCallPhysicalFail)
+TEST_F(TxManagerTaskTest, EspnowNotInitiErrorDoesNotCallDeliveryFailure)
 {
     init_and_wait();
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_ERR_ESPNOW_NOT_INIT)); // Send fail
     EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0); // Pending ack should not be set
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(0); // Should not call on_physical_fail
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
     manager->queue_packet(make_packet(true)); // Call with pending ack == true
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
@@ -398,13 +398,13 @@ TEST_F(TxManagerTaskTest, EspnowNotInitiErrorDoesNotCallPhysicalFail)
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state
 }
 
-TEST_F(TxManagerTaskTest, EspnowArgErrorDoesNotCallPhysicalFail)
+TEST_F(TxManagerTaskTest, EspnowArgErrorDoesNotCallDeliveryFailure)
 {
     init_and_wait();
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_ERR_ESPNOW_ARG)); // Send fail
     EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);                                    // Pending ack should not be set
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(0); // Should not call on_physical_fail
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
     manager->queue_packet(make_packet(true)); // Call with pending ack == true
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
@@ -412,13 +412,13 @@ TEST_F(TxManagerTaskTest, EspnowArgErrorDoesNotCallPhysicalFail)
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state
 }
 
-TEST_F(TxManagerTaskTest, EspnowOtherErrorCallsPhysicalFail)
+TEST_F(TxManagerTaskTest, EspnowOtherErrorCallsDeliveryFailure)
 {
     init_and_wait();
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_ERR_ESPNOW_CHAN)); // Send fail
     EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);                                     // Pending ack should not be set
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(1);                                     // Must call on_physical_fail
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);                                  // Must call on_delivery_failure
 
     manager->queue_packet(make_packet(true)); // Call with pending ack == true
     vTaskDelay(pdMS_TO_TICKS(delay_ms));

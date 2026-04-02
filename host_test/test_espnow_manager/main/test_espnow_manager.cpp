@@ -1073,10 +1073,10 @@ TEST_F(EspNowManagerTest, NotifyChannelChangedPropagatesChannel)
 
 TEST_F(EspNowManagerTest, NotifyStopTurnsShouldStopTrue)
 {
-    // NOTIFY_STOP → set should_stop = true (signals rx_task to exit)
+    // NOTIFY_TASK_TO_STOP → set should_stop = true (signals rx_task to exit)
     init_sut();
 
-    sut_->handle_notifications(NOTIFY_STOP, should_stop);
+    sut_->handle_notifications(NOTIFY_TASK_TO_STOP, should_stop);
     ASSERT_TRUE(should_stop);
 }
 

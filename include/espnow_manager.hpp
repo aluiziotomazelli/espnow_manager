@@ -132,9 +132,6 @@ public:
     /** @copydoc IEspNowManager::is_initialized */
     bool is_initialized() const override;
 
-    /** @copydoc IEspNowManager::get_wifi_channel */
-    uint8_t get_wifi_channel() const override;
-
     /** @copydoc IEspNowManager::reconnect */
     esp_err_t reconnect() override;
 

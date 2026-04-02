@@ -86,50 +86,50 @@ TEST_F(TxStateMachineTest, ResetClearsPendingAck)
     EXPECT_FALSE(fsm.get_pending_ack().has_value());
 }
 
-TEST_F(TxStateMachineTest, OnTxSuccessWithAckSetsStateToWaitingForAck)
+TEST_F(TxStateMachineTest, OnPacketSentWithAckSetsStateToWaitingForAck)
 {
     // On ack timeout sends to RETRYING
     fsm.on_ack_timeout();
     EXPECT_EQ(TxState::RETRYING, fsm.get_state());
 
-    // on_tx_success(bool requires_ack = true) sends to WAITING_FOR_ACK
-    fsm.on_tx_success(true);
+    // on_packet_sent(bool requires_ack = true) sends to WAITING_FOR_ACK
+    fsm.on_packet_sent(true);
     EXPECT_EQ(TxState::WAITING_FOR_ACK, fsm.get_state());
 }
 
-TEST_F(TxStateMachineTest, OnTxSuccessWithoutAckSetsStateToIdle)
+TEST_F(TxStateMachineTest, OnPacketSentWithoutAckSetsStateToIdle)
 {
     // On ack timeout sends to RETRYING
     fsm.on_ack_timeout();
     EXPECT_EQ(TxState::RETRYING, fsm.get_state());
 
-    // on_tx_success(bool requires_ack = false) sends to IDLE
-    fsm.on_tx_success(false);
+    // on_packet_sent(bool requires_ack = false) sends to IDLE
+    fsm.on_packet_sent(false);
     EXPECT_EQ(TxState::IDLE, fsm.get_state());
 }
 
-TEST_F(TxStateMachineTest, PhysicalFailSendToRetrying)
+TEST_F(TxStateMachineTest, DeliveryFailureSendToRetrying)
 {
     fsm.on_link_alive();
     EXPECT_EQ(TxState::IDLE, fsm.get_state());
 
-    fsm.on_physical_fail();
+    fsm.on_delivery_failure();
     EXPECT_EQ(TxState::RETRYING, fsm.get_state());
 }
 
-TEST_F(TxStateMachineTest, PhysicalFailBehavior)
+TEST_F(TxStateMachineTest, DeliveryFailureBehavior)
 {
     fsm.on_ack_timeout();
     EXPECT_EQ(TxState::RETRYING, fsm.get_state());
 
     // Fail MAX_FAILURES - 1 times
     for (int i = 0; i < MAX_FAILURES - 1; i++) {
-        EXPECT_FALSE(fsm.on_physical_fail()) << "Should return false before MAX_FAILURES";
+        EXPECT_FALSE(fsm.on_delivery_failure()) << "Should return false before MAX_FAILURES";
         EXPECT_EQ(TxState::RETRYING, fsm.get_state());
         EXPECT_EQ(fsm.get_fail_count(), i + 1);
     }
     // MAX_FAILURES-th failure should reset and return true
-    EXPECT_TRUE(fsm.on_physical_fail()) << "Should return true at MAX_FAILURES";
+    EXPECT_TRUE(fsm.on_delivery_failure()) << "Should return true at MAX_FAILURES";
     EXPECT_EQ(TxState::IDLE, fsm.get_state());
     EXPECT_EQ(fsm.get_fail_count(), 0); // Reset!
 }
@@ -141,16 +141,16 @@ TEST_F(TxStateMachineTest, MaxFailuresClearsPendingAck)
     EXPECT_TRUE(fsm.get_pending_ack().has_value());
 
     for (int i = 0; i < MAX_FAILURES; i++) {
-        fsm.on_physical_fail();
+        fsm.on_delivery_failure();
     }
     EXPECT_FALSE(fsm.get_pending_ack().has_value());
 }
 
 TEST_F(TxStateMachineTest, OnLinkAliveClearFailCount)
 {
-    // Call on_physical_fail MAX_FAILURES - 1 times
+    // Call on_delivery_failure MAX_FAILURES - 1 times
     for (int i = 0; i < MAX_FAILURES - 1; i++) {
-        fsm.on_physical_fail();
+        fsm.on_delivery_failure();
     }
 
     fsm.on_link_alive(); // Call on_link_alive to clear the fail count

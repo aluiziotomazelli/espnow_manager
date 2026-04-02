@@ -380,7 +380,7 @@ TEST_F(EspNowManagerTaskTest, PairingDoneWithPeersTransitionsToOperational)
 }
 
 // ===========================================================================
-// rx_task — NOTIFY_STOP
+// rx_task — NOTIFY_TASK_TO_STOP
 // ===========================================================================
 
 TEST_F(EspNowManagerTaskTest, NotifyStopDeletesRxTasAndClearHandle)
@@ -388,7 +388,7 @@ TEST_F(EspNowManagerTaskTest, NotifyStopDeletesRxTasAndClearHandle)
     init_and_wait();
     node_fsm_->set_state(NodeState::OPERATIONAL);
 
-    send_notification_to_rx_task(NOTIFY_STOP);
+    send_notification_to_rx_task(NOTIFY_TASK_TO_STOP);
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
 
     EXPECT_EQ(sut_->rx_task_handle_, nullptr);

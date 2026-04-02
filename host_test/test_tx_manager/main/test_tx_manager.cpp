@@ -42,7 +42,7 @@ protected:
             .WillByDefault(DoAll(SetArgPointee<5>(fake_task), Return(pdPASS)));
 
         // deinit() happy path
-        ON_CALL(freertos_hal, task_notify(_, NOTIFY_STOP, _)).WillByDefault(Return(pdPASS));
+        ON_CALL(freertos_hal, task_notify(_, NOTIFY_TASK_TO_STOP, _)).WillByDefault(Return(pdPASS));
         ON_CALL(freertos_hal, queue_send(_, _, _)).WillByDefault(Return(pdTRUE));
         ON_CALL(freertos_hal, semaphore_take(_, _)).WillByDefault(Return(pdPASS));
         ON_CALL(freertos_hal, task_delete(_)).WillByDefault(Return());
@@ -56,7 +56,7 @@ protected:
 
     void deinit_after_init()
     {
-        EXPECT_CALL(freertos_hal, task_notify(_, NOTIFY_STOP, _)).Times(AnyNumber());
+        EXPECT_CALL(freertos_hal, task_notify(_, NOTIFY_TASK_TO_STOP, _)).Times(AnyNumber());
         EXPECT_CALL(freertos_hal, queue_send(fake_queue, _, _)).Times(AnyNumber());
         EXPECT_CALL(freertos_hal, semaphore_take(fake_semaphore, _)).Times(AnyNumber());
         EXPECT_CALL(freertos_hal, task_delete(fake_task)).Times(AnyNumber());
@@ -173,11 +173,11 @@ TEST_F(TxManagerTest, FailToTakeSemaphoreStillDeletesTask)
 // TxManager::notify_*()
 // ===================================================
 
-TEST_F(TxManagerTest, NotifyPhysicalFailCallsTaskNotify)
+TEST_F(TxManagerTest, NotifyDeliveryFailureCallsTaskNotify)
 {
     EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
-    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_PHYSICAL_FAIL, _)).Times(1);
-    manager->notify_physical_fail();
+    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_DELIVERY_FAILURE, _)).Times(1);
+    manager->notify_delivery_failure();
     deinit_after_init();
 }
 
@@ -203,7 +203,7 @@ TEST_F(TxManagerTest, NotifyWithoutTaskHandleDoesNotCallTaskNotify)
 
     EXPECT_CALL(freertos_hal, task_notify(_, _, _)).Times(0);
 
-    manager->notify_physical_fail();
+    manager->notify_delivery_failure();
     manager->notify_logical_ack();
     manager->notify_link_alive();
 }

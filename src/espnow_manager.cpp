@@ -305,7 +305,7 @@ esp_err_t EspNowManager::reconnect()
         return ESP_ERR_INVALID_STATE;
     }
     if (peer_manager_->get_all().empty()) {
-        return ESP_ERR_INVALID_STATE; // Cannot reconnect if there are no peers
+        return ESP_ERR_INVALID_ARG; // Cannot reconnect if there are no peers
     }
 
     scan_retry_.reset(); // Reset counter - full attempts restored
@@ -433,11 +433,6 @@ bool EspNowManager::is_initialized() const
     return node_fsm_->get_state() != NodeState::UNINITIALIZED;
 }
 
-uint8_t EspNowManager::get_wifi_channel() const
-{
-    return config_.wifi_channel;
-}
-
 etl::vector<PeerInfo, MAX_PEERS> EspNowManager::get_peers()
 {
     return peer_manager_->get_all();
@@ -465,10 +460,15 @@ void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t* info, const uint8
 void EspNowManager::esp_now_send_cb(const esp_now_send_info_t* info, esp_now_send_status_t status)
 {
     EspNowManager* self = s_active_instance_;
-    if (self == nullptr)
+    if (self == nullptr) {
         return;
-    if (info->tx_status == static_cast<wifi_tx_status_t>(ESP_NOW_SEND_FAIL))
-        self->tx_manager_->notify_physical_fail();
+    }
+    if (status == ESP_NOW_SEND_FAIL) {
+        self->tx_manager_->notify_delivery_failure();
+    }
+    else if (status == ESP_NOW_SEND_SUCCESS) {
+        self->tx_manager_->notify_delivery_success();
+    }
 }
 // LCOV_EXCL_STOP
 
@@ -668,7 +668,7 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
     if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
         bool has_peers = !peer_manager_->get_all().empty();
         NodeState old_state = node_fsm_->get_state();
-        node_fsm_->on_scan_failed(has_peers); // Always goes to IDLE
+        node_fsm_->on_scan_failed();
         handle_state_transition(old_state, node_fsm_->get_state());
         handle_scan_retries(has_peers);
     }
@@ -682,8 +682,8 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
         ESP_LOGI(TAG, "Channel changed to %d", channel);
     }
 
-    // If NOTIFY_STOP is set, we break the loop and exit the task.
-    if (notifications & NOTIFY_STOP) {
+    // If NOTIFY_TASK_TO_STOP is set, we break the loop and exit the task.
+    if (notifications & NOTIFY_TASK_TO_STOP) {
         should_stop = true;
     }
 }
@@ -879,7 +879,7 @@ void EspNowManager::signal_task_to_stop()
 {
     // Signal tasks to stop
     if (rx_task_handle_ != nullptr) {
-        hal_freertos_->task_notify(rx_task_handle_, NOTIFY_STOP, eSetBits);
+        hal_freertos_->task_notify(rx_task_handle_, NOTIFY_TASK_TO_STOP, eSetBits);
     }
 
     // Wait for tasks to exit (up to 1s).

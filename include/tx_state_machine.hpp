@@ -16,8 +16,8 @@ public:
     TxStateMachine();
     ~TxStateMachine() override = default;
 
-    /** @copydoc ITxStateMachine::on_tx_success(bool) */
-    TxState on_tx_success(bool requires_ack) override;
+    /** @copydoc ITxStateMachine::on_packet_sent(bool) */
+    TxState on_packet_sent(bool requires_ack) override;
 
     /** @copydoc ITxStateMachine::on_ack_received() */
     TxState on_ack_received() override;
@@ -31,8 +31,8 @@ public:
     /** @copydoc ITxStateMachine::on_link_alive() */
     void on_link_alive() override;
 
-    /** @copydoc ITxStateMachine::on_physical_fail() */
-    bool on_physical_fail() override;
+    /** @copydoc ITxStateMachine::on_delivery_failure() */
+    bool on_delivery_failure() override;
 
     /** @copydoc ITxStateMachine::get_state() */
     TxState get_state() const override { return current_state_; }

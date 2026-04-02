@@ -56,7 +56,7 @@ void DiscoveryManager::deinit()
 {
     // Wake task from any blocking state
     if (discovery_task_handle_ != nullptr) {
-        hal_freertos_.task_notify(discovery_task_handle_, NOTIFY_STOP | NOTIFY_STOP_SCAN, eSetBits);
+        hal_freertos_.task_notify(discovery_task_handle_, NOTIFY_TASK_TO_STOP | NOTIFY_STOP_SCAN, eSetBits);
     }
 
     // Wait for task to exit (worst case: full scan cycle)
@@ -140,7 +140,7 @@ void DiscoveryManager::discovery_task()
         // Wait blocked for any notification
         hal_freertos_.task_notify_wait(0, NOTIFY_ALL, &notifications, portMAX_DELAY);
 
-        if ((notifications & NOTIFY_STOP) == NOTIFY_STOP) {
+        if ((notifications & NOTIFY_TASK_TO_STOP) == NOTIFY_TASK_TO_STOP) {
             should_stop = true;
         }
         if ((notifications & NOTIFY_START_SCAN) == NOTIFY_START_SCAN) {

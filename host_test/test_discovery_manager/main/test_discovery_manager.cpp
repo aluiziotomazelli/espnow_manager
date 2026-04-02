@@ -111,7 +111,7 @@ TEST_F(DiscoveryManagerTest, InitFailsIfRxTaskHandleIsNull)
 TEST_F(DiscoveryManagerTest, DeinitNotifyTaskToStopScan)
 {
     init_node();
-    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_STOP | NOTIFY_STOP_SCAN, eSetBits))
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_TASK_TO_STOP | NOTIFY_STOP_SCAN, eSetBits))
         .WillOnce(Return(pdPASS));
     scanner->deinit();
 }

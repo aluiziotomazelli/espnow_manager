@@ -31,8 +31,8 @@ public:
     esp_err_t queue_packet(const DecodedTxPacket& packet) override;
 
     // Notifications from outside (ISRs or other tasks)
-    /** @copydoc ITxManager::notify_physical_fail */
-    void notify_physical_fail() override;
+    /** @copydoc ITxManager::notify_delivery_failure */
+    void notify_delivery_failure() override;
 
     /** @copydoc ITxManager::notify_link_alive */
     void notify_link_alive() override;

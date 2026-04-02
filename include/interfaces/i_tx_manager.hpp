@@ -54,11 +54,24 @@ public:
     /**
      * @brief Notifies the manager about a physical layer transmission failure.
      *
-     * This is typically called from the ESP-NOW send callback when status is FAIL.
+     * This is typically called from the ESP-NOW send callback when status is ESP_NOW_SEND_FAIL.
      * It triggers retransmission or failure handling in the state machine.
      * @internal
      */
-    virtual void notify_physical_fail() = 0;
+    virtual void notify_delivery_failure() = 0;
+
+    /**
+     * @brief Notifies the manager about a successful physical layer transmission.
+     *
+     * This method is called from the ESP-NOW send callback when the delivery status
+     * indicates success (ESP_NOW_SEND_SUCCESS). It triggers the transmission state
+     * machine to mark the current packet as delivered and proceed to the next queued
+     * packet.
+     *
+     * @note This is different from notify_logical_ack() which handles protocol-level ACKs.
+     * @internal
+     */
+    virtual void notify_delivery_success() = 0;
 
     /**
      * @brief Notifies the manager that a peer is still alive/reachable.

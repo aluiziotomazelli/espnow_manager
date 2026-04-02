@@ -77,8 +77,7 @@ public:
 
     /**
      * @brief Event: Channel scan failed after all attempts.
-     * @param has_peers True if the node has known peers.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual esp_err_t on_scan_failed(bool has_peers) = 0;
+    virtual esp_err_t on_scan_failed() = 0;
 };

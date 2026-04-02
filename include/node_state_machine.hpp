@@ -38,7 +38,7 @@ public:
     esp_err_t on_channel_found() override;
 
     /** @copydoc INodeStateMachine::on_scan_failed */
-    esp_err_t on_scan_failed(bool has_peers) override;
+    esp_err_t on_scan_failed() override;
 
 private:
     std::atomic<NodeState> state_;

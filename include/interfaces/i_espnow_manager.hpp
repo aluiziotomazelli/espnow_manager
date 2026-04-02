@@ -323,6 +323,7 @@ public:
      *
      * @return ESP_OK on success
      * @return ESP_ERR_INVALID_STATE if node is not in IDLE state
+     * @return ESP_ERR_INVALID_ARG if there are no peers
      */
     virtual esp_err_t reconnect() = 0;
 
@@ -345,12 +346,4 @@ public:
      * @note This method does not return errors.
      */
     virtual bool is_initialized() const = 0;
-
-    /**
-     * @brief Get the current WiFi channel
-     *
-     * @return The current WiFi channel (1-13).
-     * @note This method does not return errors.
-     */
-    virtual uint8_t get_wifi_channel() const = 0;
 };

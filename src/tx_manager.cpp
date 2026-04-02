@@ -76,7 +76,7 @@ void TxManager::deinit()
 {
     if (tx_task_handle_ != nullptr) {
         // Notify task to stop
-        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_STOP, eSetBits);
+        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_TASK_TO_STOP, eSetBits);
 
         // Send dummy packet to wakeup task
         DecodedTxPacket stop_packet = {};
@@ -131,10 +131,10 @@ esp_err_t TxManager::queue_packet(const DecodedTxPacket& packet)
     return ESP_OK;
 }
 
-void TxManager::notify_physical_fail()
+void TxManager::notify_delivery_failure()
 {
     if (tx_task_handle_ != nullptr) {
-        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_PHYSICAL_FAIL, eSetBits);
+        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_DELIVERY_FAILURE, eSetBits);
     }
 }
 
@@ -173,7 +173,7 @@ void TxManager::handle_esp_now_send_errors(esp_err_t error)
     else {
         // ESP_ERR_ESPNOW_NOT_FOUND, CHAN, IF, INTERNAL — link-level failures
         ESP_LOGW(TAG, "hal_esp_now_send failed: %s", esp_err_to_name(error));
-        fsm_.on_physical_fail();
+        fsm_.on_delivery_failure();
     }
 }
 
@@ -184,12 +184,13 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
     if ((notifications & NOTIFY_LINK_ALIVE) == NOTIFY_LINK_ALIVE) {
         fsm_.on_link_alive();
     }
-    // Each NOTIFY_PHYSICAL_FAIL is delegated to FSM decide if MAX_FAILURES was reached
-    if ((notifications & NOTIFY_PHYSICAL_FAIL) == NOTIFY_PHYSICAL_FAIL) {
+    // Each NOTIFY_DELIVERY_FAILURE is delegated to FSM decide if MAX_FAILURES was reached
+    if ((notifications & NOTIFY_DELIVERY_FAILURE) == NOTIFY_DELIVERY_FAILURE) {
         // FSM check if MAX_FAILURES was reached and observer should be notified
-        bool max_failures = fsm_.on_physical_fail();
+        bool max_failures = fsm_.on_delivery_failure();
         if (max_failures) {
             // Notify RX task that max failures were reached
+            ESP_LOGW(TAG, "Max failures reached, notifying RX task");
             freertos_hal_.task_notify(rx_task_handle_, NOTIFY_MAX_FAILURES, eSetBits);
         }
     }
@@ -200,7 +201,7 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
     if ((notifications & NOTIFY_ACK_TIMEOUT) == NOTIFY_ACK_TIMEOUT) {
         fsm_.on_ack_timeout();
     }
-    if ((notifications & NOTIFY_STOP) == NOTIFY_STOP) {
+    if ((notifications & NOTIFY_TASK_TO_STOP) == NOTIFY_TASK_TO_STOP) {
         should_stop = true;
     }
 }
@@ -257,7 +258,7 @@ void TxManager::tx_task()
                     hal_espnow_.hal_esp_now_send(raw_packet.dest_mac, raw_packet.data, raw_packet.len);
 
                 if (send_result == ESP_OK) {
-                    TxState next = fsm_.on_tx_success(raw_packet.requires_ack);
+                    TxState next = fsm_.on_packet_sent(raw_packet.requires_ack);
                     if (next == TxState::WAITING_FOR_ACK) {
                         PendingAck pending = {
                             .sequence_number = structured_packet.header.sequence_number,
@@ -287,7 +288,7 @@ void TxManager::tx_task()
         {
             // The task MUST NOT consume new packets while waiting for a network ACK from the peer.
             // It blocks here completely until a notification arrives (like NOTIFY_LOGICAL_ACK, NOTIFY_ACK_TIMEOUT, or
-            // NOTIFY_PHYSICAL_FAIL).
+            // NOTIFY_DELIVERY_FAILURE).
             if (freertos_hal_.task_notify_wait(0, 0xFFFFFFFF, &notifications, portMAX_DELAY) == pdTRUE) {
                 // If a NOTIFY_LOGICAL_ACK arrives, handle_notifications() warns the TxStateMachine and stops the timer.
                 // If a NOTIFY_ACK_TIMEOUT arrives, the FSM transitions to RETRYING.
@@ -315,7 +316,7 @@ void TxManager::tx_task()
                 if (send_result == ESP_OK) {
                     // Retry sent successfully, go back to WAITING_FOR_ACK and wait for the response again.
                     freertos_hal_.timer_start(ack_timeout_timer_, pdMS_TO_TICKS(10));
-                    fsm_.on_tx_success(true); // Back to WAITING_FOR_ACK
+                    fsm_.on_packet_sent(true); // Back to WAITING_FOR_ACK
                 }
                 else {
                     handle_esp_now_send_errors(send_result);

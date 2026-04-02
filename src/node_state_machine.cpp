@@ -4,24 +4,24 @@
 /**
  * State Transition Table
  * ----------------------
- * | Current State   | Event                      | New State     | Condition / Rationale                                     |
- * | :-------------- | :------------------------- | :------------ | :-------------------------------------------------------- |
- * | UNINITIALIZED   | on_init(is_hub, has_peers) | OPERATIONAL   | has_peers == true                                         |
- * | UNINITIALIZED   | on_init(is_hub, has_peers) | PAIRING       | has_peers == false && is_hub == true                      |
- * | UNINITIALIZED   | on_init(is_hub, has_peers) | PAIRING_SCAN  | has_peers == false && is_hub == false                     |
- * | IDLE            | on_pairing_requested       | PAIRING       | is_hub == true || has_peers == true                       |
- * | IDLE            | on_pairing_requested       | PAIRING_SCAN  | is_hub == false && has_peers == false                     |
- * | OPERATIONAL     | on_pairing_requested       | PAIRING       | is_hub == true || has_peers == true                       |
- * | OPERATIONAL     | on_pairing_requested       | PAIRING_SCAN  | is_hub == false && has_peers == false                     |
- * | OPERATIONAL     | on_scan_requested          | RECOVERY_SCAN | Link lost, try to find channel                            |
- * | PAIRING         | on_scan_requested          | RECOVERY_SCAN | Scan requested during pairing                             |
- * | IDLE            | on_scan_requested          | RECOVERY_SCAN | Scan requested from idle                                  |
- * | PAIRING_SCAN    | on_channel_found           | PAIRING       | Channel found, ready to pair                              |
- * | RECOVERY_SCAN   | on_channel_found           | OPERATIONAL   | Back to normal                                            |
- * | PAIRING_SCAN    | on_scan_failed(has_peers)  | IDLE          | No HUB found. App can retry.                              |
- * | RECOVERY_SCAN   | on_scan_failed(has_peers)  | IDLE          | Channel lost and not rediscovered.                        |
- * | PAIRING         | on_pairing_timeout         | OPERATIONAL   | has_peers == true                                         |
- * | PAIRING         | on_pairing_timeout         | IDLE          | has_peers == false                                        |
+ * | Current State   | Event                      | New State     | Condition / Rationale | | :-------------- |
+ * :------------------------- | :------------ | :-------------------------------------------------------- | |
+ * UNINITIALIZED   | on_init(is_hub, has_peers) | OPERATIONAL   | has_peers == true | | UNINITIALIZED   |
+ * on_init(is_hub, has_peers) | PAIRING       | has_peers == false && is_hub == true                      | |
+ * UNINITIALIZED   | on_init(is_hub, has_peers) | PAIRING_SCAN  | has_peers == false && is_hub == false | | IDLE |
+ * on_pairing_requested       | PAIRING       | is_hub == true || has_peers == true                       | | IDLE |
+ * on_pairing_requested       | PAIRING_SCAN  | is_hub == false && has_peers == false                     | |
+ * OPERATIONAL     | on_pairing_requested       | PAIRING       | is_hub == true || has_peers == true | | OPERATIONAL |
+ * on_pairing_requested       | PAIRING_SCAN  | is_hub == false && has_peers == false                     | |
+ * OPERATIONAL     | on_scan_requested          | RECOVERY_SCAN | Link lost, try to find channel | | PAIRING         |
+ * on_scan_requested          | RECOVERY_SCAN | Scan requested during pairing                             | | IDLE |
+ * on_scan_requested          | RECOVERY_SCAN | Scan requested from idle                                  | |
+ * PAIRING_SCAN    | on_channel_found           | PAIRING       | Channel found, ready to pair | | RECOVERY_SCAN   |
+ * on_channel_found           | OPERATIONAL   | Back to normal                                            | |
+ * PAIRING_SCAN    | on_scan_failed(has_peers)  | IDLE          | No HUB found. App can retry. | | RECOVERY_SCAN   |
+ * on_scan_failed(has_peers)  | IDLE          | Channel lost and not rediscovered.                        | | PAIRING |
+ * on_pairing_timeout         | OPERATIONAL   | has_peers == true                                         | | PAIRING |
+ * on_pairing_timeout         | IDLE          | has_peers == false                                        |
  */
 
 static const char* TAG = "NodeStateMachine";
@@ -105,7 +105,7 @@ esp_err_t NodeStateMachine::on_channel_found()
     return ESP_ERR_INVALID_STATE;
 }
 
-esp_err_t NodeStateMachine::on_scan_failed(bool has_peers)
+esp_err_t NodeStateMachine::on_scan_failed()
 {
     NodeState current = state_.load();
 

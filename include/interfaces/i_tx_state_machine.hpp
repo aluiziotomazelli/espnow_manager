@@ -49,7 +49,7 @@ public:
      * @return New state after transition.
      * @note Resets failure counter.
      */
-    virtual TxState on_tx_success(bool requires_ack) = 0;
+    virtual TxState on_packet_sent(bool requires_ack) = 0;
 
     /**
      * @brief Handle logical ACK reception.
@@ -80,13 +80,13 @@ public:
     virtual void on_link_alive() = 0;
 
     /**
-     * @brief Handle physical transmission failure.
+     * @brief Handle packet delivery failure.
      * @return true if MAX_FAILURES reached (observer should be notified).
      * @return false if still retrying.
      * @note Increments failure counter. Resets at MAX_FAILURES.
      * @internal
      */
-    virtual bool on_physical_fail() = 0;
+    virtual bool on_delivery_failure() = 0;
 
     /**
      * @brief Get current transmission state.

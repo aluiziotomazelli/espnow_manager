@@ -13,15 +13,15 @@
  * Example usage:
  * @code
  * MockTxStateMachine mock_fsm;
- * EXPECT_CALL(mock_fsm, on_physical_fail())
+ * EXPECT_CALL(mock_fsm, on_delivery_failure())
  *     .WillOnce(Return(true));  // MAX_FAILURES reached
  * @endcode
  */
 class MockTxStateMachine : public ITxStateMachine
 {
 public:
-    /** @copydoc ITxStateMachine::on_tx_success(bool) */
-    MOCK_METHOD(TxState, on_tx_success, (bool requires_ack), (override));
+    /** @copydoc ITxStateMachine::on_packet_sent(bool) */
+    MOCK_METHOD(TxState, on_packet_sent, (bool requires_ack), (override));
 
     /** @copydoc ITxStateMachine::on_ack_received() */
     MOCK_METHOD(TxState, on_ack_received, (), (override));
@@ -35,8 +35,8 @@ public:
     /** @copydoc ITxStateMachine::on_link_alive() */
     MOCK_METHOD(void, on_link_alive, (), (override));
 
-    /** @copydoc ITxStateMachine::on_physical_fail() */
-    MOCK_METHOD(bool, on_physical_fail, (), (override));
+    /** @copydoc ITxStateMachine::on_delivery_failure() */
+    MOCK_METHOD(bool, on_delivery_failure, (), (override));
 
     /** @copydoc ITxStateMachine::get_state() */
     MOCK_METHOD(TxState, get_state, (), (const, override));
