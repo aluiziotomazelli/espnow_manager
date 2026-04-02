@@ -109,6 +109,49 @@ TEST_F(PeerManagerTest, AddPeerWithSameIdButDifferentMAcCallsDelAndAdd)
     EXPECT_EQ(1, manager->get_all().size());                 // Must be only one peer
 }
 
+TEST_F(PeerManagerTest, AddPeerWithSameMacButDifferentIdReassigns)
+{
+    // First, add a peer with ID=2 and MAC=0x02
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+
+    EXPECT_CALL(espnow_hal, hal_esp_now_add_peer(_)).Times(1);
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));
+
+    // Verify peer was added with ID=2
+    auto peers = manager->get_all();
+    EXPECT_EQ(1, peers.size());
+    EXPECT_EQ(ID_2, peers[0].node_id);
+
+    // Now add a NEW ID=3 with the SAME MAC=0x02
+    // This should trigger reassign_mac_to_new_id - no driver calls needed
+    EXPECT_CALL(espnow_hal, hal_esp_now_add_peer(_)).Times(0); // Should NOT call add
+    EXPECT_CALL(espnow_hal, hal_esp_now_del_peer(_)).Times(0); // Should NOT call del
+    EXPECT_EQ(ESP_OK, manager->add(ID_3, mac, NODE, 20));      // Same MAC, different ID
+
+    // Should still have only 1 peer
+    peers = manager->get_all();
+    EXPECT_EQ(1, peers.size());
+
+    // The peer should now have ID=3 (reassigned)
+    EXPECT_EQ(ID_3, peers[0].node_id) << "Peer should be reassigned to new ID";
+
+    // The type and heartbeat should be updated
+    EXPECT_EQ(NODE, peers[0].type) << "Type should be updated to new type";
+    EXPECT_EQ(20, peers[0].heartbeat_interval_ms) << "Heartbeat interval should be updated";
+
+    // last_seen_ms should be reset to 0
+    EXPECT_EQ(0, peers[0].last_seen_ms) << "last_seen_ms should be reset";
+
+    // ID=2 should no longer be findable
+    uint8_t found_mac[6];
+    EXPECT_FALSE(manager->find_mac(ID_2, found_mac)) << "Old ID should not be findable";
+
+    // But the MAC should be findable with the new ID
+    EXPECT_TRUE(manager->find_mac(ID_3, found_mac));
+    EXPECT_EQ(0, memcmp(mac, found_mac, 6));
+}
+
 TEST_F(PeerManagerTest, AddSameIdDifferentMAcDelFailsAndReturnsError)
 {
     uint8_t mac[6];

@@ -49,6 +49,13 @@ private:
     etl::vector<PeerInfo, MAX_PEERS> peers_;
     SemaphoreHandle_t mutex_;
 
+    // Helper methods for add() refactoring
+    PeerInfo* find_peer_by_id(NodeId id);
+    PeerInfo* find_peer_by_mac(const uint8_t* mac);
+    esp_err_t update_existing_peer_by_id(PeerInfo* peer, const uint8_t* new_mac, NodeType type, uint32_t heartbeat_interval_ms);
+    void reassign_mac_to_new_id(PeerInfo* peer, NodeId new_id, NodeType type, uint32_t heartbeat_interval_ms);
+    esp_err_t add_new_peer_to_empty_slot(NodeId id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms);
+
     esp_err_t save_peers_to_storage();
     PersistentPeer info_to_persistent(const PeerInfo& info);
     PeerInfo persistent_to_info(const PersistentPeer& persistent);

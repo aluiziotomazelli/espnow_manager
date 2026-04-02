@@ -7,14 +7,14 @@
 | `IntegrationHubAndNodePairSuccessfully` | Real HUB + NODE → complete pairing | Critical | **OK** |
 | `IntegrationNodeSendsDataHubReceivesAndAcks` | NODE → DATA → HUB → ACK | Critical | **OK** |
 | `IntegrationAckTimeoutRetriesAndSuccess` | Timeout → retry → success | High | **OK** |
-| `IntegrationMaxFailuresTriggersRecoveryScan` | Max failures → real scan | High | |
+| `IntegrationMaxFailuresTriggersRecoveryScan` | Max failures → real scan | High | *Implicitly covered by HubChangesChannel* |
 
 ### 3.2 Channel Scanning
 
 | Test | Description | Priority | Status |
 |-------|-----------|------------|--------|
 | `IntegrationDiscoveryScanFindsHubOnDifferentChannel` | HUB on different channel → scan finds | Critical | **OK** |
-| `IntegrationFullChannelScan1to13` | Full scan channels 1-13 | High | |
+| `IntegrationFullChannelScan1to13` | Full scan channels 1-13 | High | *not useful* |
 | `IntegrationHubChangesChannelNodesRecover` | HUB changes channel → NODEs recover | Critical | **OK** |
 | `IntegrationScanFailsWhenNoHubPresent` | Scan without HUB → expected failure | High | **OK** |
 
@@ -22,7 +22,8 @@
 
 | Test | Description | Priority | Status |
 |-------|-----------|------------|--------|
-| `IntegrationPairingHubAcceptsNode` | HUB accepts NODE → peer added | Critical | |
+| `IntegrationPairingHubAcceptsNode` | HUB accepts NODE → peer added | Critical | *Covered by HubAndNodePairSuccessfully* |
+| `IntegrationHubUpdatesNodeIdOnMacCollision` | HUB updates peer ID when the same MAC address re-pairs with a different ID | Critical | |
 | `IntegrationPairingTimeoutWithoutResponse` | Pairing timeout without response | High | |
 
 
@@ -41,6 +42,8 @@
 |-------|-----------|------------|--------|
 | `IntegrationPeersPersistedToNvsAndRestored` | Peers persisted to NVS → restored | Critical | **OK** |
 | `IntegrationChannelPersistedAndRestored` | Channel persisted → restored | High | |
+| `IntegrationNodeRebootsAndReconnects` | Node reboots (init/deinit) and reconnects without re-pairing | Critical | |
+| `IntegrationHubFullPeerListEviction` | Hub list overflow (LRU) evicts oldest peer | High | |
 | `IntegrationRtcStorageSurvivesDeepSleep` | RTC RAM survives deep sleep | High | |
 | `IntegrationNvsBackupUsedWhenRtcCorrupt` | NVS used when RTC corrupted | Medium | |
 | `IntegrationSyncRtcToNvsOnPairingSuccess` | Sync RTC → NVS on pairing | High | |
@@ -57,7 +60,7 @@
 
 | Test | Description | Priority | Status |
 |-------|-----------|------------|--------|
-| `StressHighFrequencyDataTransmission` | High frequency transmission | Medium | |
+| `IntegrationDataStressTest` | High frequency transmission (100+ packets) | Medium | |
 
 
 ### 3.8 Edge Cases & Error Handling

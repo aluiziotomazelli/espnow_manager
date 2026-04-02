@@ -31,6 +31,10 @@ PeerManager::~PeerManager()
     }
 }
 
+// =====================================================================================
+// Public methods
+// =====================================================================================
+
 esp_err_t PeerManager::add(NodeId id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms)
 {
     if (mac == nullptr) {
@@ -41,76 +45,26 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t* mac, NodeType type, uint32_
         return ESP_ERR_TIMEOUT;
     }
 
+    // Find existing peers
+    PeerInfo* existing_by_id = find_peer_by_id(id);
+    PeerInfo* existing_by_mac = find_peer_by_mac(mac);
+
     esp_err_t ret = ESP_OK;
 
-    // Check if peer already exists
-    auto it = std::find_if(peers_.begin(), peers_.end(), [id](const PeerInfo& p) { return p.node_id == id; });
-
-    if (it != peers_.end()) {
-        ESP_LOGI(TAG, "Node ID %d already exists. Updating peer info.", (int)id);
-
-        bool mac_changed = (memcmp(it->mac, mac, 6) != 0);
-
-        if (mac_changed) {
-            auto peer_info = make_espnow_peer_info(mac);
-
-            // Delete peer
-            ret = hal_espnow_.hal_esp_now_del_peer(it->mac);
-            // Add peer with new MAC
-            if (ret == ESP_OK) {
-                ret = hal_espnow_.hal_esp_now_add_peer(&peer_info);
-            }
-        }
-
-        // Update peer info even if MAC was not changed
-        if (ret == ESP_OK) {
-            memcpy(it->mac, mac, 6);
-            it->type = type;
-            it->heartbeat_interval_ms = heartbeat_interval_ms;
-            // Move to front (LRU)
-            PeerInfo updated = *it;
-            peers_.erase(it);
-            peers_.insert(peers_.begin(), updated);
-        }
+    // Case 1: ID exists → update
+    if (existing_by_id != nullptr) {
+        ret = update_existing_peer_by_id(existing_by_id, mac, type, heartbeat_interval_ms);
     }
+    // Case 2: MAC exists with different ID → reassign
+    else if (existing_by_mac != nullptr) {
+        reassign_mac_to_new_id(existing_by_mac, id, type, heartbeat_interval_ms);
+    }
+    // Case 3: New peer → add
     else {
-        // New peer
-        if (peers_.size() >= MAX_PEERS) {
-            ESP_LOGW(TAG, "Peer list is full. Removing the oldest seen peer.");
-
-            // Returns a iterator to the element with the smallest last_seen_ms
-            auto oldest = std::min_element(peers_.begin(), peers_.end(), [](const PeerInfo& a, const PeerInfo& b) {
-                return a.last_seen_ms < b.last_seen_ms;
-            });
-
-            // Delete the last seen peers
-            ret = hal_espnow_.hal_esp_now_del_peer(oldest->mac);
-            if (ret == ESP_OK) {
-                // Erase from peers_ list
-                peers_.erase(oldest);
-            }
-        }
-        // Only add the new peer if the oldest was removed successfully
-        if (ret == ESP_OK) {
-            auto peer_info = make_espnow_peer_info(mac);
-            ret = hal_espnow_.hal_esp_now_add_peer(&peer_info);
-        }
-
-        // If the new peer was added successfully to ESP-NOW driver, add it to peers_ list
-        if (ret == ESP_OK) {
-            PeerInfo new_peer;
-            memcpy(new_peer.mac, mac, 6);
-            new_peer.node_id = id;
-            new_peer.type = type;
-            new_peer.last_seen_ms = 0; // Will be updated by caller if needed
-            new_peer.paired = true;
-            new_peer.heartbeat_interval_ms = heartbeat_interval_ms;
-            peers_.insert(peers_.begin(), new_peer);
-            ESP_LOGI(TAG, "New peer added: ID %d", (int)id);
-        }
+        ret = add_new_peer_to_empty_slot(id, mac, type, heartbeat_interval_ms);
     }
 
-    // Save to storage if everything was successful
+    // Save to storage if successful
     if (ret == ESP_OK) {
         ret = save_peers_to_storage();
     }
@@ -279,4 +233,128 @@ esp_now_peer_info_t PeerManager::make_espnow_peer_info(const uint8_t* mac)
     peer_info.ifidx = WIFI_IF_STA;
     peer_info.encrypt = false;
     return peer_info;
+}
+
+// =====================================================================================
+// Private helper methods for add()
+// =====================================================================================
+
+PeerInfo* PeerManager::find_peer_by_id(NodeId id)
+{
+    for (auto& peer : peers_) {
+        if (peer.node_id == id) {
+            return &peer;
+        }
+    }
+    return nullptr;
+}
+
+PeerInfo* PeerManager::find_peer_by_mac(const uint8_t* mac)
+{
+    for (auto& peer : peers_) {
+        if (memcmp(peer.mac, mac, 6) == 0) {
+            return &peer;
+        }
+    }
+    return nullptr;
+}
+
+esp_err_t PeerManager::update_existing_peer_by_id(
+    PeerInfo* peer,
+    const uint8_t* new_mac,
+    NodeType type,
+    uint32_t heartbeat_interval_ms)
+{
+    ESP_LOGI(TAG, "Node ID %d already exists. Updating peer info.", (int)peer->node_id);
+
+    bool mac_changed = (memcmp(peer->mac, new_mac, 6) != 0);
+    esp_err_t ret = ESP_OK;
+
+    if (mac_changed) {
+        // Delete old MAC from ESP-NOW driver
+        ret = hal_espnow_.hal_esp_now_del_peer(peer->mac);
+        // Add peer with new MAC
+        if (ret == ESP_OK) {
+            auto peer_info = make_espnow_peer_info(new_mac);
+            ret = hal_espnow_.hal_esp_now_add_peer(&peer_info);
+        }
+    }
+
+    if (ret == ESP_OK) {
+        // Update peer info in our list
+        memcpy(peer->mac, new_mac, 6);
+        peer->type = type;
+        peer->heartbeat_interval_ms = heartbeat_interval_ms;
+
+        // Move to front (LRU)
+        PeerInfo updated = *peer;
+        auto it = std::find_if(peers_.begin(), peers_.end(), [peer](const PeerInfo& p) { return &p == peer; });
+        if (it != peers_.end()) {
+            peers_.erase(it);
+            peers_.insert(peers_.begin(), updated);
+        }
+    }
+
+    return ret;
+}
+
+void PeerManager::reassign_mac_to_new_id(PeerInfo* peer, NodeId new_id, NodeType type, uint32_t heartbeat_interval_ms)
+{
+    ESP_LOGI(TAG, "MAC address already exists with ID %d. Re-assigning to new ID %d.", (int)peer->node_id, (int)new_id);
+
+    // Update the existing entry with the new ID and other info
+    peer->node_id = new_id;
+    peer->type = type;
+    peer->heartbeat_interval_ms = heartbeat_interval_ms;
+    peer->last_seen_ms = 0; // Reset as it's practically a new node identity
+
+    // Move to front (LRU)
+    PeerInfo updated = *peer;
+    auto it = std::find_if(peers_.begin(), peers_.end(), [peer](const PeerInfo& p) { return &p == peer; });
+    if (it != peers_.end()) {
+        peers_.erase(it);
+        peers_.insert(peers_.begin(), updated);
+    }
+}
+
+esp_err_t
+PeerManager::add_new_peer_to_empty_slot(NodeId id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms)
+{
+    esp_err_t ret = ESP_OK;
+
+    // Check if peer list is full
+    if (peers_.size() >= MAX_PEERS) {
+        ESP_LOGW(TAG, "Peer list is full. Removing the oldest seen peer.");
+
+        // Evict based on LRU (least recently seen)
+        auto oldest = std::min_element(peers_.begin(), peers_.end(), [](const PeerInfo& a, const PeerInfo& b) {
+            return a.last_seen_ms < b.last_seen_ms;
+        });
+
+        ret = hal_espnow_.hal_esp_now_del_peer(oldest->mac);
+        if (ret == ESP_OK) {
+            peers_.erase(oldest);
+        }
+    }
+
+    // Add new peer to ESP-NOW driver
+    if (ret == ESP_OK) {
+        auto peer_info = make_espnow_peer_info(mac);
+        ret = hal_espnow_.hal_esp_now_add_peer(&peer_info);
+    }
+
+    // Create and insert new peer info
+    if (ret == ESP_OK) {
+        PeerInfo new_peer;
+        memcpy(new_peer.mac, mac, 6);
+        new_peer.node_id = id;
+        new_peer.type = type;
+        new_peer.last_seen_ms = 0;
+        new_peer.paired = true;
+        new_peer.heartbeat_interval_ms = heartbeat_interval_ms;
+        peers_.insert(peers_.begin(), new_peer);
+        ESP_LOGI(TAG, "New peer added: ID %d", (int)id);
+    }
+
+    return ret;
 }
