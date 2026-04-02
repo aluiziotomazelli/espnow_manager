@@ -330,13 +330,13 @@ esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
 
     bool is_hub = (config_.node_type == ReservedTypes::HUB);
     bool has_peers = !peer_manager_->get_all().empty();
-    node_fsm_->on_pairing_requested(is_hub, has_peers);
+    esp_err_t ret = node_fsm_->on_pairing_requested(is_hub, has_peers);
 
     NodeState new_state = node_fsm_->get_state();
 
     handle_state_transition(old_state, new_state);
 
-    return ESP_OK;
+    return ret;
 }
 
 esp_err_t EspNowManager::send_data(
@@ -419,8 +419,10 @@ esp_err_t EspNowManager::remove_peer(NodeId node_id)
 
 etl::vector<NodeId, MAX_PEERS> EspNowManager::get_offline_peers() const
 {
-    if (node_fsm_->get_state() != NodeState::OPERATIONAL)
+    NodeState state = node_fsm_->get_state();
+    if (state != NodeState::OPERATIONAL && state != NodeState::PAIRING) {
         return {};
+    }
     return peer_manager_->get_offline(get_time_ms());
 }
 
@@ -505,10 +507,8 @@ void EspNowManager::rx_task(void* arg)
                 // Decode header
                 auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
                 if (header_opt) {
-                    // Any valid packet is proof the link is alive
-                    // Notify tx_manager link alive and update peer manager last_seen
+                    // Any valid packet is proof the link is alive notify tx_manager about it
                     self->tx_manager_->notify_link_alive();
-                    self->peer_manager_->update_last_seen(header_opt->sender_node_id, self->get_time_ms());
 
                     decoded = {packet, header_opt.value()};
 
@@ -541,6 +541,9 @@ void EspNowManager::rx_task(void* arg)
                         //     self->node_fsm_->on_pairing_timeout(has_peers);
                         // }
                     }
+                    // After processing (Routing or App delivery), update peer last_seen.
+                    // If it was a new pairing, the peer is now in the list.
+                    self->peer_manager_->update_last_seen(decoded.header.sender_node_id, self->get_time_ms());
                 }
             }
         }
@@ -565,7 +568,6 @@ void EspNowManager::rx_task(void* arg)
             self->channel_monitor_->tick(now_ms);
             self->heartbeat_manager_->tick(now_ms);
         }
-
         self->tick_scan_retry(now_ms);
     }
 
