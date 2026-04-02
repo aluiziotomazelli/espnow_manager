@@ -48,9 +48,6 @@ void HeartbeatManager::tick(uint64_t now_ms)
 void HeartbeatManager::handle_response()
 {
     ESP_LOGI(TAG, "Heartbeat response received from Hub");
-
-    // link_alive already notified by rx_task on packet reception
-    tx_mgr_.notify_link_alive();
 }
 
 void HeartbeatManager::handle_request(const DecodedRxPacket& decoded)

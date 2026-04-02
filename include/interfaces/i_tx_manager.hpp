@@ -20,6 +20,8 @@
  * - Notifying observers about transmission failures.
  *
  * @note This is an internal component used by EspNowManager.
+ * @note All public methods are thread-safe and may be called from any context.
+ *       Callback notification methods (notify_*) may be called from ISR context.
  * @internal
  */
 class ITxManager
@@ -29,33 +31,63 @@ public:
 
     /**
      * @brief Initializes the TxManager and starts the background task.
-     * @param stack_size Stack size for the background TX task.
+     * @param stack_size Stack size for the background TX task (in words).
      * @param priority Priority for the background TX task.
      * @param rx_task_handle Handle of the RX task (used for synchronization/notifications).
-     * @return ESP_OK on success, or an error code.
+     * @return ESP_OK: Initialization successful, background task started.
+     * @return ESP_ERR_NO_MEM: Failed to allocate task stack or queue memory.
+     * @return ESP_FAIL: Failed to create background task.
+     * @return ESP_ERR_INVALID_STATE: Already initialized.
      * @internal
      */
     virtual esp_err_t init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle) = 0;
 
     /**
-     * @brief Stops the background task and clean up resources.
+     * @brief Stops the background task and cleans up all allocated resources.
+     *
+     * This method:
+     * - Stops the TX background task
+     * - Deletes the task handle
+     * - Clears the transmission queue
+     * - Releases any allocated memory
+     *
+     * @note After calling deinit(), the manager must be re-initialized via init()
+     *       before further use.
+     * @note This method blocks until the background task has fully terminated.
      * @internal
      */
     virtual void deinit() = 0;
 
     /**
      * @brief Adds a packet to the transmission queue.
+     *
+     * The packet is copied into an internal queue and will be processed by the
+     * background TX task. Queue processing follows FIFO order with priority
+     * handling for retransmissions.
+     *
      * @param packet The decoded packet to be sent.
-     * @return ESP_OK if queued successfully.
-     * @return ESP_ERR_NO_MEM if queue is full.
+     * @return ESP_OK: Packet queued successfully.
+     * @return ESP_ERR_NO_MEM: Queue is full, packet dropped.
+     * @return ESP_ERR_INVALID_STATE: Manager not initialized.
+     *
+     * @note This method is thread-safe and may be called from any task context.
+     * @note The packet is copied internally; caller retains ownership of the input.
      */
     virtual esp_err_t queue_packet(const DecodedTxPacket& packet) = 0;
 
     /**
      * @brief Notifies the manager about a physical layer transmission failure.
      *
-     * This is typically called from the ESP-NOW send callback when status is ESP_NOW_SEND_FAIL.
-     * It triggers retransmission or failure handling in the state machine.
+     * This method is called from the ESP-NOW send callback (esp_now_send_cb_t) when
+     * the transmission status is ESP_NOW_SEND_FAIL. It triggers the TxStateMachine
+     * to handle retransmission logic or mark the peer for channel scanning.
+     *
+     * @note This method may be called from interrupt context (ESP-NOW callback).
+     *       Implementation must be ISR-safe.
+     * @note This handles physical layer failures only. Protocol-level failures
+     *       (missing logical ACK) are handled by other mechanisms.
+     * @see notify_delivery_success()
+     * @see notify_logical_ack()
      * @internal
      */
     virtual void notify_delivery_failure() = 0;
@@ -63,36 +95,73 @@ public:
     /**
      * @brief Notifies the manager about a successful physical layer transmission.
      *
-     * This method is called from the ESP-NOW send callback when the delivery status
-     * indicates success (ESP_NOW_SEND_SUCCESS). It triggers the transmission state
-     * machine to mark the current packet as delivered and proceed to the next queued
-     * packet.
+     * This method is called from the ESP-NOW send callback (esp_now_send_cb_t) when
+     * the transmission status is ESP_NOW_SEND_SUCCESS. It triggers the TxStateMachine
+     * to mark the current packet as successfully delivered and proceed to process
+     * the next queued packet.
      *
-     * @note This is different from notify_logical_ack() which handles protocol-level ACKs.
+     * @note This method may be called from interrupt context (ESP-NOW callback).
+     *       Implementation must be ISR-safe.
+     * @note This indicates physical layer success only. Protocol-level acknowledgment
+     *       (logical ACK) is handled separately via notify_logical_ack().
+     * @see notify_delivery_failure()
+     * @see notify_logical_ack()
      * @internal
      */
     virtual void notify_delivery_success() = 0;
 
     /**
-     * @brief Notifies the manager that a peer is still alive/reachable.
+     * @brief Notifies the manager that a peer is still alive and reachable.
      *
-     * Called when any packet is received from a peer, indicating the link is active.
-     * Resets failure counters for that peer.
+     * This method is called from the RX path when any valid packet is received from
+     * a peer. It indicates that the communication link is active and resets the
+     * failure counters for that peer, preventing unnecessary channel scanning or
+     * peer eviction.
+     *
+     * @note The peer identification is handled internally (typically via the currently
+     *       processing context or packet metadata).
+     * @note This method integrates with the HeartbeatManager to update link health
+     *       monitoring.
+     * @note Called after CRC validation passes, before message routing.
+     * @see HeartbeatManager
      * @internal
      */
     virtual void notify_link_alive() = 0;
 
     /**
-     * @brief Notifies the manager that a logical ACK has been received.
+     * @brief Notifies the manager that a protocol-level acknowledgment (ACK) has been received.
      *
-     * Called by the RX path when a protocol-level ACK arrives for a pending packet.
+     * This method is called by the RX path when an ACK packet arrives from a peer,
+     * confirming successful receipt and processing of a previously transmitted packet.
+     * The ACK is matched against pending transmissions using sequence numbers.
+     *
+     * Upon receiving a logical ACK, the TxManager:
+     * - Marks the corresponding packet as successfully delivered
+     * - Clears the packet from the retry queue
+     * - Proceeds to the next queued transmission
+     *
+     * @note This is distinct from physical layer success (notify_delivery_success()),
+     *       which only confirms the packet was transmitted over the air.
+     * @note Logical ACKs are part of the reliability protocol implemented at the
+     *       application layer.
+     * @see notify_delivery_success()
+     * @see DecodedTxPacket
      * @internal
      */
     virtual void notify_logical_ack() = 0;
 
     /**
      * @brief Gets the background task handle.
-     * @return TaskHandle_t of the TX task.
+     *
+     * Returns the FreeRTOS task handle for the TX background task. This can be used
+     * for task monitoring, stack watermark checking, or task notifications.
+     *
+     * @return TaskHandle_t: Handle of the TX background task.
+     * @return nullptr: If the manager is not initialized.
+     *
+     * @note The returned handle is valid only after successful init() and before
+     *       deinit() is called.
+     * @note Use uxTaskGetStackHighWaterMark() to monitor task stack usage.
      * @internal
      */
     virtual TaskHandle_t get_task_handle() const = 0;

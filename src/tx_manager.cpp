@@ -138,6 +138,13 @@ void TxManager::notify_delivery_failure()
     }
 }
 
+void TxManager::notify_delivery_success()
+{
+    if (tx_task_handle_ != nullptr) {
+        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_DELIVERY_SUCCESS, eSetBits);
+    }
+}
+
 void TxManager::notify_link_alive()
 {
     if (tx_task_handle_ != nullptr) {
@@ -193,6 +200,9 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
             ESP_LOGW(TAG, "Max failures reached, notifying RX task");
             freertos_hal_.task_notify(rx_task_handle_, NOTIFY_MAX_FAILURES, eSetBits);
         }
+    }
+    if ((notifications & NOTIFY_DELIVERY_SUCCESS) == NOTIFY_DELIVERY_SUCCESS) {
+        fsm_.on_delivery_success();
     }
     if ((notifications & NOTIFY_LOGICAL_ACK) == NOTIFY_LOGICAL_ACK) {
         fsm_.on_ack_received();

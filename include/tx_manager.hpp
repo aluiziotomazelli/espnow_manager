@@ -34,6 +34,9 @@ public:
     /** @copydoc ITxManager::notify_delivery_failure */
     void notify_delivery_failure() override;
 
+    /** @copydoc ITxManager::notify_delivery_success */
+    void notify_delivery_success() override;
+
     /** @copydoc ITxManager::notify_link_alive */
     void notify_link_alive() override;
 

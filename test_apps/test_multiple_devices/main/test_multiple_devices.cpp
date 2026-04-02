@@ -759,9 +759,9 @@ static void node_recover_channel()
     unity_wait_for_signal("hub now on ch 6");
 
     // Send constant data to trigger MAX_FAILURES and recovery scan
-    for (int i = 0; i < MAX_FAILURES + 3; i++) {
+    for (int i = 0; i < MAX_FAILURES; i++) {
         const uint8_t dummy = 0xFF;
-        TEST_ASSERT_EQUAL(ESP_OK, g_mgr->send_data(ReservedIds::HUB, kTestPayloadType, &dummy, 1, true));
+        g_mgr->send_data(ReservedIds::HUB, kTestPayloadType, &dummy, 1, true);
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 

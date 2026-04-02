@@ -34,6 +34,9 @@ public:
     /** @copydoc ITxStateMachine::on_delivery_failure() */
     bool on_delivery_failure() override;
 
+    /** @copydoc ITxStateMachine::on_delivery_success(bool) */
+    void on_delivery_success() override;
+
     /** @copydoc ITxStateMachine::get_state() */
     TxState get_state() const override { return current_state_; }
 
@@ -50,7 +53,7 @@ public:
     std::optional<PendingAck> get_pending_ack() const override { return pending_ack_; }
 
 private:
-    TxState current_state_;               ///< Current transmission state
+    TxState current_state_;                 ///< Current transmission state
     std::optional<PendingAck> pending_ack_; ///< Pending ACK information
-    uint8_t send_fail_count_;             ///< Consecutive failure counter
+    uint8_t send_fail_count_;               ///< Consecutive failure counter
 };
