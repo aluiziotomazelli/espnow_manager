@@ -413,7 +413,7 @@ TEST_F(StorageManagerTest, SavePeersWithMorePeersThanMaxTruncatesPeersAtMax)
     auto peers = create_test_peers(MAX_PEERS + 1);
 
     auto peers_data = create_valid_persistent_peers(MAX_PEERS + 1);
-    for (int i = 0; i < MAX_PEERS + 1; ++i) {
+    for (int i = 0; i < MAX_PEERS; ++i) {
         peers_data.peers[i] = peers[i];
     }
     peers_data.crc = manager->calculate_crc(peers_data);
