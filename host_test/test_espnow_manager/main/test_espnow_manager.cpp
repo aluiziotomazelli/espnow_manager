@@ -39,11 +39,9 @@ using ::testing::SetArgReferee;
 // dereferences them directly, so any non-null address is sufficient.
 // ---------------------------------------------------------------------------
 static int fake_queue_storage = 0;
-static int fake_mutex_storage = 0;
 static int fake_rx_task_storage = 0;
 
 static QueueHandle_t fake_tx_queue = reinterpret_cast<QueueHandle_t>(&fake_queue_storage);
-static SemaphoreHandle_t fake_mutex = reinterpret_cast<SemaphoreHandle_t>(&fake_mutex_storage);
 static TaskHandle_t fake_rx_task = reinterpret_cast<TaskHandle_t>(&fake_rx_task_storage);
 
 // ---------------------------------------------------------------------------
@@ -82,19 +80,13 @@ static EspNowConfig make_valid_config()
 }
 
 // --------------------------------------------------------------------------
-// Testable EspNowManager class to manipulate
-// last_header_requiring_ack_ and node_state_
+// Testable EspNowManager class to manipulate node_state_
 // --------------------------------------------------------------------------
 class EspNowManagerTestable : public EspNowManager
 {
 public:
     using EspNowManager::EspNowManager;
 
-    void set_last_header(const MessageHeader& header) { last_header_requiring_ack_ = header; }
-    void reset_last_header() { last_header_requiring_ack_.reset(); }
-    std::optional<MessageHeader> get_last_header() { return last_header_requiring_ack_; }
-
-    using EspNowManager::ack_mutex_;
     using EspNowManager::build_app_message;
     using EspNowManager::handle_notifications;
     using EspNowManager::node_fsm_;
@@ -105,7 +97,6 @@ public:
         // Uses MockNodeStateMachine which defaults to returning OPERATIONAL
         // on_init(bool is_hub, bool has_peers)
         node_fsm_->on_init(false, true);
-        ack_mutex_ = fake_mutex; // Necessary for confirm_reception tests
     }
 };
 
@@ -201,10 +192,6 @@ protected:
         ON_CALL(*espnow_driver_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*espnow_driver_, deinit()).WillByDefault(Return(ESP_OK));
 
-        // Creating mutex
-        ON_CALL(*hal_freertos_, mutex_create()).WillByDefault(Return(fake_mutex));
-        ON_CALL(*hal_freertos_, semaphore_delete(_)).WillByDefault(Return());
-
         // Creating queues
         ON_CALL(*hal_freertos_, queue_create(_, _)).WillByDefault(Return(fake_tx_queue));
         ON_CALL(*hal_freertos_, queue_delete(_)).WillByDefault(Return());
@@ -220,7 +207,7 @@ protected:
         ON_CALL(*tx_mgr_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(fake_rx_task));
         ON_CALL(*scanner_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*pairing_mgr_, init(_, _, fake_rx_task)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*pairing_mgr_, init(_, _, fake_rx_task, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*channel_monitor_, init(_, _)).WillByDefault(Return(ESP_OK));
 
         ON_CALL(*hal_freertos_, semaphore_give(_)).WillByDefault(Return(pdTRUE));
@@ -334,19 +321,6 @@ TEST_F(EspNowManagerTest, IsInitializedReturnsTrueAfterSuccessfulInit)
 // init() - FreeRTOS resources creation
 // ===========================================================================
 
-TEST_F(EspNowManagerTest, InitCallsMutexCreate)
-{
-    EXPECT_CALL(*hal_freertos_, mutex_create()).WillOnce(Return(fake_mutex));
-    sut_->init(make_valid_config());
-}
-
-TEST_F(EspNowManagerTest, InitReturnsFailIfMutexCreateFails)
-{
-    ON_CALL(*hal_freertos_, mutex_create()).WillByDefault(Return(nullptr));
-    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
-    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
-}
-
 TEST_F(EspNowManagerTest, InitCallsQueueCreate)
 {
     EXPECT_CALL(*hal_freertos_, queue_create(_, _)).WillOnce(Return(fake_tx_queue));
@@ -438,7 +412,7 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfDiscoveryManagerInitFails)
 
 TEST_F(EspNowManagerTest, InitCallsPairingManagerInit)
 {
-    EXPECT_CALL(*pairing_mgr_, init(_, _, fake_rx_task)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*pairing_mgr_, init(_, _, fake_rx_task, _)).WillOnce(Return(ESP_OK));
     sut_->init(make_valid_config());
 }
 
@@ -450,7 +424,7 @@ TEST_F(EspNowManagerTest, InitCallsChannelMonitorInit)
 
 TEST_F(EspNowManagerTest, InitReturnsFailIfPairingManagerInitFails)
 {
-    ON_CALL(*pairing_mgr_, init(_, _, fake_rx_task)).WillByDefault(Return(ESP_FAIL));
+    ON_CALL(*pairing_mgr_, init(_, _, fake_rx_task, _)).WillByDefault(Return(ESP_FAIL));
     EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
@@ -472,7 +446,7 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfChannelMonitorInitFails)
 TEST_F(EspNowManagerTest, InitPropagatesCorrectNodeIdAndTypeToPairingManager)
 {
     // If id and type are swapped in EspNowManager::init(), this test fails
-    EXPECT_CALL(*pairing_mgr_, init(kNodeId, kNodeType, fake_rx_task)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*pairing_mgr_, init(kNodeId, kNodeType, fake_rx_task, _)).WillOnce(Return(ESP_OK));
     sut_->init(make_valid_config());
 }
 
@@ -494,7 +468,6 @@ TEST_F(EspNowManagerTest, DeinitDoesNotCleanResourcesWhenNotInitialized)
 {
     EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(0);
     EXPECT_CALL(*hal_freertos_, queue_delete(_)).Times(0);
-    EXPECT_CALL(*hal_freertos_, semaphore_delete(_)).Times(0);
     EXPECT_CALL(*hal_espnow_, hal_esp_now_del_peer(_)).Times(0);
 
     sut_->deinit();
@@ -521,7 +494,6 @@ TEST_F(EspNowManagerTest, DeinitCallsAllDeleteFunctions)
     EXPECT_CALL(*tx_mgr_, deinit()).Times(1);
     EXPECT_CALL(*hal_freertos_, task_delete(_)).Times(1);
     EXPECT_CALL(*hal_freertos_, queue_delete(_)).Times(1);
-    EXPECT_CALL(*hal_freertos_, semaphore_delete(_)).Times(1);
     EXPECT_CALL(*hal_espnow_, hal_esp_now_del_peer(_)).Times(1);
     EXPECT_CALL(*espnow_driver_, deinit()).Times(1);
 
@@ -676,30 +648,7 @@ TEST_F(EspNowManagerTest, SendDataWithOversizedPayloadReturnsInvalidArg)
 TEST_F(EspNowManagerTest, ConfirmReceptionNonOperationalStateReturnsInvalidState)
 {
     // Node is not initialized, NodeState::UNINITIALIZED
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_INVALID_STATE);
-}
-
-TEST_F(EspNowManagerTest, ConfirmReceptionFailingToAquireMutexReturnsTimeout)
-{
-    init_sut();
-    node_fsm_->set_state(NodeState::OPERATIONAL);
-
-    // Fail to take the semaphore
-    ON_CALL(*hal_freertos_, semaphore_take(_, _)).WillByDefault(Return(pdFALSE));
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_TIMEOUT);
-}
-
-TEST_F(EspNowManagerTest, ConfirmReceptionHeaderWithoutValueReturnsInvalidState)
-{
-    init_sut();
-    node_fsm_->set_state(NodeState::OPERATIONAL);
-
-    MessageHeader header{};         // Declare a header
-    header.sender_node_id = kHubId; // Set a valid sender node id
-    sut_->set_last_header(header);  // Set the header
-    sut_->reset_last_header();      // Reset the header
-
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_INVALID_STATE);
+    EXPECT_EQ(sut_->confirm_reception(kHubId, 42, kAckStatus), ESP_ERR_INVALID_STATE);
 }
 
 TEST_F(EspNowManagerTest, ConfirmReceptionNonExistentPeerReturnsNotFound)
@@ -707,36 +656,10 @@ TEST_F(EspNowManagerTest, ConfirmReceptionNonExistentPeerReturnsNotFound)
     init_sut();
     node_fsm_->set_state(NodeState::OPERATIONAL);
 
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sequence_number = 42;
-    sut_->set_last_header(header);
-
-    // Semaphore take succeeds, find_mac fails
-    ON_CALL(*hal_freertos_, semaphore_take(_, _)).WillByDefault(Return(pdTRUE));
-    ON_CALL(*hal_freertos_, semaphore_give(_)).WillByDefault(Return(pdTRUE));
+    // find_mac fails
     ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(false));
 
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_NOT_FOUND);
-}
-
-TEST_F(EspNowManagerTest, ConfirmReceptionNonExistentPeerResetsLastHeaderRequiringAck)
-{
-    init_sut();
-    node_fsm_->set_state(NodeState::OPERATIONAL);
-
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sequence_number = 42;
-    sut_->set_last_header(header);
-
-    // Semaphore take succeeds, find_mac fails
-    ON_CALL(*hal_freertos_, semaphore_take(_, _)).WillByDefault(Return(pdTRUE));
-    ON_CALL(*hal_freertos_, semaphore_give(_)).WillByDefault(Return(pdTRUE));
-    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(false));
-
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_NOT_FOUND);
-    EXPECT_FALSE(sut_->get_last_header().has_value());
+    EXPECT_EQ(sut_->confirm_reception(kHubId, 42, kAckStatus), ESP_ERR_NOT_FOUND);
 }
 
 TEST_F(EspNowManagerTest, ConfirmReceptionEnqueueFailureReturnsFail)
@@ -744,18 +667,11 @@ TEST_F(EspNowManagerTest, ConfirmReceptionEnqueueFailureReturnsFail)
     init_sut();
     node_fsm_->set_state(NodeState::OPERATIONAL);
 
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sequence_number = 42;
-    sut_->set_last_header(header);
-
-    // Semaphore take succeeds, find_mac succeeds, but queue_packet fails
-    ON_CALL(*hal_freertos_, semaphore_take(_, _)).WillByDefault(Return(pdTRUE));
-    ON_CALL(*hal_freertos_, semaphore_give(_)).WillByDefault(Return(pdTRUE));
+    // find_mac succeeds, but queue_packet fails
     ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(true));
     ON_CALL(*tx_mgr_, queue_packet(_)).WillByDefault(Return(ESP_FAIL));
 
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_FAIL);
+    EXPECT_EQ(sut_->confirm_reception(kHubId, 42, kAckStatus), ESP_FAIL);
 }
 
 TEST_F(EspNowManagerTest, ConfirmReceptionSuccess)
@@ -763,61 +679,21 @@ TEST_F(EspNowManagerTest, ConfirmReceptionSuccess)
     init_sut();
     node_fsm_->set_state(NodeState::OPERATIONAL);
 
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sequence_number = 42;
-    sut_->set_last_header(header);
-
-    // Semaphore take/give succeeds, find_mac succeeds, queue_packet succeeds
-    EXPECT_CALL(*hal_freertos_, semaphore_take(_, _)).WillOnce(Return(pdTRUE));
-    EXPECT_CALL(*hal_freertos_, semaphore_give(_)).WillOnce(Return(pdTRUE));
+    // find_mac succeeds, queue_packet succeeds
     EXPECT_CALL(*peer_mgr_, find_mac(_, _)).WillOnce(Return(true));
     EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
 
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_OK);
+    EXPECT_EQ(sut_->confirm_reception(kHubId, 42, kAckStatus), ESP_OK);
 }
 
 TEST_F(EspNowManagerTest, ConfirmReceptionResetsHeaderWhenPeerNotFound)
 {
     init_operational_sut();
 
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sequence_number = 42;
-    sut_->set_last_header(header);
+    // find_mac fails
+    EXPECT_CALL(*peer_mgr_, find_mac(_, _)).WillOnce(Return(false));
 
-    // Semaphore take/give succeeds, but find_mac fails
-    EXPECT_CALL(*hal_freertos_, semaphore_take(_, _)).WillOnce(Return(pdTRUE));
-    EXPECT_CALL(*hal_freertos_, semaphore_give(_)).WillOnce(Return(pdTRUE));
-    ON_CALL(*peer_mgr_, find_mac(_, _)).WillByDefault(Return(false));
-
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_ERR_NOT_FOUND);
-
-    // Verify header was reset
-    auto last_header = sut_->get_last_header();
-    EXPECT_FALSE(last_header.has_value());
-}
-
-TEST_F(EspNowManagerTest, ConfirmReceptionResetsLastHeaderRequiringAck)
-{
-    init_operational_sut();
-
-    MessageHeader header{};
-    header.sender_node_id = kHubId;
-    header.sequence_number = 42;
-    sut_->set_last_header(header);
-
-    // Semaphore take/give succeeds, find_mac succeeds, queue_packet succeeds
-    EXPECT_CALL(*hal_freertos_, semaphore_take(_, _)).WillOnce(Return(pdTRUE));
-    EXPECT_CALL(*hal_freertos_, semaphore_give(_)).WillOnce(Return(pdTRUE));
-    EXPECT_CALL(*peer_mgr_, find_mac(_, _)).WillOnce(Return(true));
-    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
-
-    EXPECT_EQ(sut_->confirm_reception(kAckStatus), ESP_OK);
-
-    // Verify header was reset
-    auto last_header = sut_->get_last_header();
-    EXPECT_FALSE(last_header.has_value());
+    EXPECT_EQ(sut_->confirm_reception(kHubId, 42, kAckStatus), ESP_ERR_NOT_FOUND);
 }
 
 // ===========================================================================
@@ -1029,9 +905,9 @@ TEST_F(EspNowManagerTest, NotifyPairingDoneCheckForPeers)
 
 TEST_F(EspNowManagerTest, NotifyScanFailedCallsOnScanFailed)
 {
-    // NOTIFY_SCAN_FAILED → NodeFSM: on_scan_failed(has_peers)
+    // NOTIFY_SCAN_FAILED → NodeFSM: on_scan_failed()
     init_sut();
-    EXPECT_CALL(*node_fsm_, on_scan_failed(_)).Times(1);
+    EXPECT_CALL(*node_fsm_, on_scan_failed()).Times(1);
     sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
 }
 

@@ -58,13 +58,10 @@ static constexpr uint8_t rx_queue_length = 30;
 class EspNowManagerTestable : public EspNowManager
 {
 public:
-    using EspNowManager::ack_mutex_;
     using EspNowManager::EspNowManager;
     using EspNowManager::node_fsm_;
     using EspNowManager::rx_queue_handle_;
     using EspNowManager::rx_task_handle_;
-
-    std::optional<MessageHeader> get_last_header_ack() const { return last_header_requiring_ack_; }
 };
 
 // ---------------------------------------------------------------------------
@@ -151,7 +148,7 @@ protected:
         // Submodule inits succeed
         ON_CALL(*tx_mgr_, init(_, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*scanner_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*pairing_mgr_, init(_, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*pairing_mgr_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*channel_monitor_, init(_, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(nullptr));
 
@@ -501,7 +498,7 @@ TEST_F(EspNowManagerTaskTest, FailedHeaderDecodeIsNotRouted)
     receive_valid_rx_packet();
 }
 
-TEST_F(EspNowManagerTaskTest, DataPacketRequiringAckStoresHeader)
+TEST_F(EspNowManagerTaskTest, DataPacketRequiringAckDeliveredToAppQueueWithRequiresAckFlag)
 {
     init_and_wait();
 
@@ -514,25 +511,10 @@ TEST_F(EspNowManagerTaskTest, DataPacketRequiringAckStoresHeader)
 
     receive_valid_rx_packet();
 
-    auto stored = sut_->get_last_header_ack();
-    EXPECT_TRUE(stored.has_value());
-    EXPECT_EQ(stored->msg_type, MessageType::DATA);
-    EXPECT_EQ(stored->sender_node_id, kNodeId);
-}
-
-TEST_F(EspNowManagerTaskTest, DataPacketNotRequiringAckDoesNotStoreHeader)
-{
-    init_and_wait();
-
-    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
-    MessageHeader header{};
-    header.msg_type = MessageType::DATA;
-    header.requires_ack = false;
-    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
-
-    receive_valid_rx_packet();
-
-    EXPECT_FALSE(sut_->get_last_header_ack().has_value());
+    AppMessage msg{};
+    EXPECT_EQ(xQueueReceive(app_queue_handle, &msg, pdMS_TO_TICKS(50)), pdTRUE);
+    EXPECT_TRUE(msg.requires_ack);
+    EXPECT_EQ(msg.sender_id, kNodeId);
 }
 
 TEST_F(EspNowManagerTaskTest, ProtocolPacketIsRoutedViaMessageRouter)
@@ -672,6 +654,7 @@ TEST_F(EspNowManagerTaskTest, DataPacketWithRequiresAckDeliveredToAppQueueAndSto
     header.msg_type = MessageType::DATA;
     header.requires_ack = true;
     header.sender_node_id = kNodeId;
+    header.sequence_number = 42;
     ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
 
     receive_valid_rx_packet();
@@ -680,12 +663,8 @@ TEST_F(EspNowManagerTaskTest, DataPacketWithRequiresAckDeliveredToAppQueueAndSto
     AppMessage msg{};
     EXPECT_EQ(xQueueReceive(app_queue_handle, &msg, pdMS_TO_TICKS(50)), pdTRUE);
     EXPECT_EQ(msg.sender_id, kNodeId);
-
-    // Verify header stored for confirm_reception
-    auto stored = sut_->get_last_header_ack();
-    EXPECT_TRUE(stored.has_value());
-    EXPECT_EQ(stored->sender_node_id, kNodeId);
-    EXPECT_TRUE(stored->requires_ack);
+    EXPECT_EQ(msg.sequence_number, 42);
+    EXPECT_TRUE(msg.requires_ack);
 }
 
 TEST_F(EspNowManagerTaskTest, ProtocolPacketDoesNotReachAppQueue)

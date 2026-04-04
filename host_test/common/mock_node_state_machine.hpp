@@ -43,7 +43,7 @@ public:
             state_ = (state_ == NodeState::RECOVERY_SCAN) ? NodeState::OPERATIONAL : NodeState::PAIRING;
             return ESP_OK;
         }));
-        ON_CALL(*this, on_scan_failed(_)).WillByDefault(Invoke([this](bool has_peers) {
+        ON_CALL(*this, on_scan_failed()).WillByDefault(Invoke([this]() {
             state_ = NodeState::IDLE;
             return ESP_OK;
         }));
@@ -60,7 +60,7 @@ public:
     MOCK_METHOD(esp_err_t, on_pairing_requested, (bool is_hub, bool has_peers), (override));
     MOCK_METHOD(esp_err_t, on_scan_requested, (), (override));
     MOCK_METHOD(esp_err_t, on_channel_found, (), (override));
-    MOCK_METHOD(esp_err_t, on_scan_failed, (bool has_peers), (override));
+    MOCK_METHOD(esp_err_t, on_scan_failed, (), (override));
     MOCK_METHOD(esp_err_t, on_pairing_timeout, (bool has_peers), (override));
 
 private:
