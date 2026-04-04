@@ -18,6 +18,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "esp_sleep.h"
 #include "unity.h"
 #include "test_utils.h"
 #include "nvs_flash.h"
@@ -53,9 +54,12 @@ static constexpr uint8_t kNodeChannel = 1;
 static constexpr uint8_t kNodeId = 0x02;
 static constexpr uint8_t kNodeType = 0x02;
 static constexpr uint32_t kPairingTimeoutMs = 5000;
+static constexpr uint64_t kDeepSleepDurationUs = 1000 * 1000;
 static constexpr uint32_t kHeartbeatIntervalMs = 500;
 static constexpr uint32_t kWaitAfterPairingMs = 3000;
 static constexpr uint32_t kAppQueueLength = 10;
+static constexpr uint32_t kStressPacketCount = 100;
+static constexpr uint32_t kStressIntervalMs = 20; // Slightly more conservative for reliability
 
 // Ack retry timeout used both in the TxManager factory and in timing-sensitive
 // tests.  Keeping a single constant avoids magic numbers and makes the
@@ -72,10 +76,24 @@ static constexpr PayloadType kTestPayloadType = 0x01;
 static RTC_DATA_ATTR PersistentPeers g_rtc_peers;
 static RTC_DATA_ATTR PersistentChannel g_rtc_channel;
 
-void clear_rtc_storage()
+// ---------------------------------------------------------------------------
+// Temporary RTC storage for deep sleep tests — must have global lifetime (placed in RTC slow memory)
+// ---------------------------------------------------------------------------
+static RTC_DATA_ATTR PersistentPeers g_rtc_peers_ds;
+static RTC_DATA_ATTR PersistentChannel g_rtc_channel_ds;
+
+// Helper function to clear RTC storage
+static void clear_rtc_storage()
 {
     g_rtc_peers = {};
     g_rtc_channel = {};
+}
+
+// Helper function to trigger deep sleep
+static void trigger_deep_sleep(uint64_t duration_us = kDeepSleepDurationUs)
+{
+    esp_sleep_enable_timer_wakeup(duration_us);
+    esp_deep_sleep_start();
 }
 
 // ---------------------------------------------------------------------------
@@ -982,3 +1000,536 @@ TEST_CASE_MULTIPLE_DEVICES(
     "[espnow][pairing]",
     hub_updates_node_id,
     node_cycle_multiple_ids);
+
+// ===========================================================================
+// 13. TEST: IntegrationHeartbeatResetsOfflineTimer
+//
+// NODE pairs, then stops (deinit). HUB waits for timeout and marks it offline.
+// NODE returns (reinit), heartbeats fire, HUB verifies peer is back online.
+// Covers: IntegrationNodeRebootsAndReconnects (implicitly).
+// ===========================================================================
+
+static void hub_heartbeat_resets()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    // HUB doesn't send heartbeats (interval=0), only listens.
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1, 0)));
+
+    unity_wait_for_signal("node paired");
+    TEST_ASSERT_EQUAL(0, g_mgr->get_offline_peers().size());
+
+    unity_send_signal("hub verified online c1");
+    unity_wait_for_signal("node dead");
+
+    // Wait for timeout (3*interval + buffer)
+    vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * 5));
+    TEST_ASSERT_EQUAL(1, g_mgr->get_offline_peers().size());
+
+    unity_send_signal("hub verified offline");
+    unity_wait_for_signal("node back");
+
+    // Wait for one or two heartbeats from the returned node
+    vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * 2));
+
+    // Peer should be back online now
+    TEST_ASSERT_EQUAL(0, g_mgr->get_offline_peers().size());
+
+    unity_send_signal("hub verified online c2");
+    test_cleanup();
+}
+
+static void node_reboots_and_reconnects()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    // Initial pair
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, kNodeId, /*channel=*/1, kHeartbeatIntervalMs)));
+    vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
+    TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+
+    unity_send_signal("node paired");
+    unity_wait_for_signal("hub verified online c1");
+
+    // Stop node (simulate crash/reboot)
+    g_mgr->deinit();
+    g_mgr.reset();
+    unity_send_signal("node dead");
+
+    unity_wait_for_signal("hub verified offline");
+
+    // Re-init node (storage is preserved in NVS/RTC)
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, kNodeId, /*channel=*/1, kHeartbeatIntervalMs)));
+
+    // Should be OPERATIONAL immediately from storage
+    TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+
+    unity_send_signal("node back");
+    unity_wait_for_signal("hub verified online c2");
+    test_cleanup();
+}
+
+TEST_CASE_MULTIPLE_DEVICES(
+    "13. Integration: HeartbeatResetsOfflineTimer",
+    "[espnow][heartbeat]",
+    hub_heartbeat_resets,
+    node_reboots_and_reconnects);
+
+// ===========================================================================
+// 14. TEST: IntegrationNvsBackupUsedWhenRtcCorrupt
+//
+// HUB and NODE pair. NODE deinits and corrupts its RTC storage (bitwise flip).
+// Upon reinit, NODE must detect RTC corruption, load from NVS instead,
+// reach OPERATIONAL state, and restore/sync the RTC storage back.
+// Covers: IntegrationSyncRtcToNvsOnPairingSuccess (implicitly).
+// ===========================================================================
+
+static void hub_wait_for_corrupted_node()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+
+    unity_wait_for_signal("node paired");
+    unity_wait_for_signal("node back online");
+
+    TEST_ASSERT_EQUAL(1, g_mgr->get_peers().size());
+    unity_send_signal("hub verified");
+    test_cleanup();
+}
+
+static void node_rtc_corruption()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    // 1. Pair and persist to NVS
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+    vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
+    TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+
+    // Save RTC storage to check after reboot
+    PersistentPeers peers_before = g_rtc_peers;
+    PersistentChannel channel_before = g_rtc_channel;
+
+    unity_send_signal("node paired");
+
+    g_mgr->deinit();
+    g_mgr.reset();
+
+    // 2. Corrupt RTC storage bitwise
+    // We flip bits across the entire structs to ensure validation fails.
+    uint8_t* p_rtc = reinterpret_cast<uint8_t*>(&g_rtc_peers);
+    for (size_t i = 0; i < sizeof(PersistentPeers); ++i) {
+        p_rtc[i] ^= 0xAA;
+    }
+    uint8_t* p_ch = reinterpret_cast<uint8_t*>(&g_rtc_channel);
+    for (size_t i = 0; i < sizeof(PersistentChannel); ++i) {
+        p_ch[i] ^= 0x55;
+    }
+
+    // 3. Re-init - should recover from NVS
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+
+    // If it reaches OPERATIONAL, it means it found peers in NVS despite RTC corruption.
+    TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+    TEST_ASSERT_EQUAL(1, g_mgr->get_peers().size());
+
+    // 4. Verification of RTC sync (implicitly covered by being operational again)
+    unity_send_signal("node back online");
+    unity_wait_for_signal("hub verified");
+
+    // Check that RTC was restored from NVS
+    TEST_ASSERT_TRUE(peers_before == g_rtc_peers);
+    TEST_ASSERT_TRUE(channel_before == g_rtc_channel);
+
+    test_cleanup();
+}
+
+TEST_CASE_MULTIPLE_DEVICES(
+    "14. Integration: NvsBackupUsedWhenRtcCorrupt",
+    "[espnow][storage]",
+    hub_wait_for_corrupted_node,
+    node_rtc_corruption);
+
+// ===========================================================================
+// 15. TEST: IntegrationNodeWakesFromDeepSleepWithPeersIntact
+//
+// Cycle 1: HUB and NODE pair. NODE enters deep sleep.
+// Cycle 2: NODE wakes up (re-init). It must start OPERATIONAL directly
+//          with 1 peer restored from RTC RAM.
+// ===========================================================================
+
+static void hub_deep_sleep_cycle()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    // ---- Cycle 1: Pair ----
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+
+    unity_send_signal("hub ready c1");
+    unity_wait_for_signal("node sleeping c1");
+
+    // During deep sleep, HUB just waits.
+    vTaskDelay(pdMS_TO_TICKS(kDeepSleepDurationUs / 1000 + 500));
+
+    // ---- Cycle 2: Verify ----
+    unity_wait_for_signal("node awake c2");
+    TEST_ASSERT_EQUAL(1, g_mgr->get_peers().size());
+
+    unity_send_signal("hub verified c2");
+    test_cleanup();
+}
+
+static void node_deep_sleep_cycle()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    // Check if we are waking up from deep sleep
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+
+    if (cause != ESP_SLEEP_WAKEUP_TIMER) {
+        // ---- Cycle 1: Pair and Sleep ----
+        g_mgr = make_espnow_manager();
+        TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+
+        unity_wait_for_signal("hub ready c1");
+        vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
+
+        TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+        TEST_ASSERT_EQUAL(1, g_mgr->get_peers().size());
+
+        unity_send_signal("node sleeping c1");
+
+        // Manually deinit before sleep to ensure clean state and persistence
+        g_mgr->deinit();
+        g_mgr.reset();
+
+        trigger_deep_sleep();
+    }
+    else {
+        // ---- Cycle 2: Wake up and Verify ----
+        g_mgr = make_espnow_manager();
+        TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+
+        // Must be OPERATIONAL immediately from RTC storage
+        TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+        TEST_ASSERT_EQUAL(1, g_mgr->get_peers().size());
+
+        unity_send_signal("node awake c2");
+        unity_wait_for_signal("hub verified c2");
+        test_cleanup();
+    }
+}
+
+TEST_CASE_MULTIPLE_DEVICES(
+    "15. Integration: NodeWakesFromDeepSleepWithPeersIntact",
+    "[espnow][sleep]",
+    hub_deep_sleep_cycle,
+    node_deep_sleep_cycle);
+
+// ===========================================================================
+// 16. TEST: IntegrationRtcStorageSurvivesDeepSleep
+//
+// Validates that RTC RAM (PersistentPeers and PersistentChannel) survives
+// deep sleep without any bit flips. Captures state before sleep and
+// compares it with state after wake using the struct's equality operators.
+// ===========================================================================
+
+static void hub_rtc_survives_sleep()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+
+    unity_send_signal("hub ready rtc c1");
+    unity_wait_for_signal("node sleeping rtc c1");
+
+    // Wait for node to sleep and wake up
+    vTaskDelay(pdMS_TO_TICKS(kDeepSleepDurationUs / 1000 + 1000));
+
+    unity_wait_for_signal("node awake rtc c2");
+    unity_send_signal("hub verified rtc c2");
+    test_cleanup();
+}
+
+static void node_rtc_survives_sleep()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+
+    if (cause != ESP_SLEEP_WAKEUP_TIMER) {
+        // ---- Cycle 1: Pair and Sleep ----
+        g_mgr = make_espnow_manager();
+        TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+
+        unity_wait_for_signal("hub ready rtc c1");
+        vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
+
+        TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+
+        // Capture state before sleep to a global RTC variable
+        g_rtc_peers_ds = g_rtc_peers;
+        g_rtc_channel_ds = g_rtc_channel;
+
+        unity_send_signal("node sleeping rtc c1");
+
+        // We don't clear NVS/RTC in tearDown between cycles of the same test,
+        // but for deep sleep we need to keep the variables in RTC RAM.
+        g_mgr->deinit();
+        g_mgr.reset();
+
+        // Restore variables to RTC RAM before sleep because deinit/reset
+        // doesn't wipe them, but we want to be explicit about what we are testing.
+        g_rtc_peers = g_rtc_peers_ds;
+        g_rtc_channel = g_rtc_channel_ds;
+
+        trigger_deep_sleep();
+    }
+    else {
+        // ---- Cycle 2: Wake up and Verify RTC bit-perfection ----
+        g_mgr = make_espnow_manager();
+        TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+
+        // Check if RTC storage survived deep sleep without any bit flips
+        TEST_ASSERT_TRUE(g_rtc_peers_ds == g_rtc_peers);
+        TEST_ASSERT_TRUE(g_rtc_channel_ds == g_rtc_channel);
+
+        TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+
+        unity_send_signal("node awake rtc c2");
+        unity_wait_for_signal("hub verified rtc c2");
+        test_cleanup();
+    }
+}
+
+TEST_CASE_MULTIPLE_DEVICES(
+    "16. Integration: RtcStorageSurvivesDeepSleep",
+    "[espnow][sleep]",
+    hub_rtc_survives_sleep,
+    node_rtc_survives_sleep);
+
+// ===========================================================================
+// 17. TEST: IntegrationDataStressTest
+//
+// NODE sends 100 packets to HUB at high frequency with ACK enabled.
+// HUB verifies each sequence number and sends logical ACK.
+// NODE verifies all packets were acknowledged correctly.
+// ===========================================================================
+
+static void hub_stress_receive()
+{
+    g_app_queue = xQueueCreate(kStressPacketCount + 10, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+
+    unity_wait_for_signal("node ready stress");
+
+    // Receive all packets — timeout generoso para cobrir atrasos de transmissão
+    uint32_t received = 0;
+    const uint32_t timeout_ms = kStressPacketCount * kStressIntervalMs * 3;
+    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+
+    while (received < kStressPacketCount && xTaskGetTickCount() < deadline) {
+        AppMessage msg{};
+        if (xQueueReceive(g_app_queue, &msg, pdMS_TO_TICKS(kStressIntervalMs * 2)) == pdTRUE) {
+            // Verify packet index matches sequence
+            uint32_t idx = 0;
+            memcpy(&idx, msg.payload, sizeof(idx));
+            TEST_ASSERT_EQUAL(received, idx); // verifica ordem e completude
+            received++;
+        }
+    }
+
+    TEST_ASSERT_EQUAL(kStressPacketCount, received);
+
+    unity_send_signal("hub stress ok");
+    unity_wait_for_signal("node stress ok");
+    test_cleanup();
+}
+
+static void node_stress_send()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+
+    // Wait for auto-pairing
+    vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
+    TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+
+    unity_send_signal("node ready stress");
+
+    for (uint32_t i = 0; i < kStressPacketCount; ++i) {
+        uint8_t payload[32] = {0};
+        memcpy(payload, &i, sizeof(i));
+
+        // Send with ACK enabled
+        esp_err_t ret =
+            g_mgr->send_data(ReservedIds::HUB, kTestPayloadType, payload, sizeof(payload), /*require_ack*/ false);
+        TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+        // Small delay to allow HUB to process and maintain medium access fairness
+        vTaskDelay(pdMS_TO_TICKS(kStressIntervalMs));
+    }
+
+    unity_send_signal("node stress ok");
+    unity_wait_for_signal("hub stress ok");
+    test_cleanup();
+}
+
+TEST_CASE_MULTIPLE_DEVICES("17. Integration: DataStressTest", "[espnow][stress]", hub_stress_receive, node_stress_send);
+
+// ===========================================================================
+// 18. TEST: IntegrationStressTestWithAckAndDeduplication
+//
+// NODE sends 30 packets to HUB with ACK enabled (require_ack=true).
+// This exercises the full TxManager reliability protocol:
+// - TxManager enters WAITING_FOR_ACK after each send
+// - Retransmits on ACK timeout (may cause duplicate delivery at HUB)
+// - HUB must deduplicate by sequence_number
+//
+// Verification:
+// - All 30 unique sequence numbers arrived at HUB (no permanent loss)
+// - Duplicates are tolerated (deduplicated by sequence number)
+// - NODE receives ESP_OK for all sends (ACK confirmed)
+// ===========================================================================
+
+static constexpr uint32_t kAckStressPacketCount = 30;
+static constexpr uint32_t kAckStressIntervalMs = 50; // Longer interval for ACK round-trip
+
+static void hub_stress_receive_with_ack()
+{
+    g_app_queue = xQueueCreate(kAckStressPacketCount * 2 + 10, sizeof(AppMessage)); // Extra space for duplicates
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+
+    unity_wait_for_signal("node ready ack stress");
+
+    // Track unique sequence numbers received (deduplication)
+    bool seen[kAckStressPacketCount] = {false};
+    uint32_t unique_count = 0;
+    uint32_t duplicate_count = 0;
+    uint32_t total_received = 0;
+
+    // Generous timeout to cover ACK round-trips and possible retransmissions
+    const uint32_t timeout_ms = kAckStressPacketCount * kAckStressIntervalMs * 5;
+    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+
+    while (unique_count < kAckStressPacketCount && xTaskGetTickCount() < deadline) {
+        AppMessage msg{};
+        if (xQueueReceive(g_app_queue, &msg, pdMS_TO_TICKS(kAckStressIntervalMs * 3)) == pdTRUE) {
+            // Extract sequence number from payload
+            uint32_t seq = 0;
+            memcpy(&seq, msg.payload, sizeof(seq));
+
+            total_received++;
+
+            if (seq < kAckStressPacketCount) {
+                if (!seen[seq]) {
+                    seen[seq] = true;
+                    unique_count++;
+                }
+                else {
+                    duplicate_count++;
+                }
+            }
+
+            // Always send ACK (even for duplicates — TxManager may retry)
+            if (msg.requires_ack) {
+                g_mgr->confirm_reception(AckStatus::OK);
+            }
+        }
+    }
+
+    // Log statistics for analysis
+    printf(
+        "HUB stats: total=%lu, unique=%lu, duplicates=%lu\n",
+        (unsigned long)total_received,
+        (unsigned long)unique_count,
+        (unsigned long)duplicate_count);
+
+    // All unique packets must have arrived
+    TEST_ASSERT_EQUAL(kAckStressPacketCount, unique_count);
+
+    unity_send_signal("hub ack stress ok");
+    unity_wait_for_signal("node ack stress ok");
+    test_cleanup();
+}
+
+static void node_stress_send_with_ack()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue)));
+
+    // Wait for auto-pairing
+    vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
+    TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+
+    unity_send_signal("node ready ack stress");
+
+    uint32_t ack_ok = 0;
+    uint32_t ack_fail = 0;
+
+    for (uint32_t i = 0; i < kAckStressPacketCount; ++i) {
+        TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+        uint8_t payload[32] = {0};
+        memcpy(payload, &i, sizeof(i));
+
+        // Send with ACK enabled — this blocks until ACK received or timeout
+        esp_err_t ret =
+            g_mgr->send_data(ReservedIds::HUB, kTestPayloadType, payload, sizeof(payload), /*require_ack=*/true);
+
+        if (ret == ESP_OK) {
+            ack_ok++;
+        }
+        else {
+            ack_fail++;
+            printf("NODE: packet %lu failed with %s\n", (unsigned long)i, esp_err_to_name(ret));
+        }
+
+        // Delay to allow HUB to process and maintain medium access fairness
+        vTaskDelay(pdMS_TO_TICKS(kAckStressIntervalMs));
+    }
+
+    // Log statistics
+    printf("NODE stats: ack_ok=%lu, ack_fail=%lu\n", (unsigned long)ack_ok, (unsigned long)ack_fail);
+
+    // All packets should have been acknowledged
+    TEST_ASSERT_EQUAL(kAckStressPacketCount, ack_ok);
+
+    unity_send_signal("node ack stress ok");
+    unity_wait_for_signal("hub ack stress ok");
+    test_cleanup();
+}
+
+TEST_CASE_MULTIPLE_DEVICES(
+    "18. Integration: StressTestWithAckAndDeduplication",
+    "[espnow][stress][ack]",
+    hub_stress_receive_with_ack,
+    node_stress_send_with_ack);

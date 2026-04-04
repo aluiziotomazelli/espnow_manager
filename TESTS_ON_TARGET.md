@@ -23,8 +23,8 @@
 | Test | Description | Priority | Status |
 |-------|-----------|------------|--------|
 | `IntegrationPairingHubAcceptsNode` | HUB accepts NODE → peer added | Critical | *Covered by HubAndNodePairSuccessfully* |
-| `IntegrationHubUpdatesNodeIdOnMacCollision` | HUB updates peer ID when the same MAC address re-pairs with a different ID | Critical | |
-| `IntegrationPairingTimeoutWithoutResponse` | Pairing timeout without response | High | |
+| `IntegrationHubUpdatesNodeIdOnMacCollision` | HUB updates peer ID when the same MAC address re-pairs with a different ID | Critical | **OK** |
+| `IntegrationPairingTimeoutWithoutResponse` | Pairing timeout without response | High | *Implicitly covered by ScanFailsWhenNoHubPresent* |
 
 
 ### 3.4 Heartbeat & Link Monitoring
@@ -33,44 +33,42 @@
 |-------|-----------|------------|--------|
 | `IntegrationHeartbeatSentPeriodically` | Heartbeats sent periodically | High | **OK** |
 | `IntegrationHeartbeatTimeoutMarksPeerOffline` | Heartbeat timeout → peer offline | High | **OK** |
-| `IntegrationHeartbeatResetsOfflineTimer` | Heartbeat received → reset timer | High | |
-| `IntegrationGetOfflinePeersReturnsCorrectList` | Correct offline peers list | High | |
+| `IntegrationHeartbeatResetsOfflineTimer` | Heartbeat received → reset timer | High | **OK** |
+| `IntegrationGetOfflinePeersReturnsCorrectList` | Correct offline peers list | High | *Covered by HeartbeatTimeoutMarksPeerOffline* |
 
 ### 3.5 Persistent Storage
 
 | Test | Description | Priority | Status |
 |-------|-----------|------------|--------|
 | `IntegrationPeersPersistedToNvsAndRestored` | Peers persisted to NVS → restored | Critical | **OK** |
-| `IntegrationChannelPersistedAndRestored` | Channel persisted → restored | High | |
-| `IntegrationNodeRebootsAndReconnects` | Node reboots (init/deinit) and reconnects without re-pairing | Critical | |
+| `IntegrationChannelPersistedAndRestored` | Channel persisted → restored | High | *Covered by PeersPersistedToNvsAndRestored* |
+| `IntegrationNodeRebootsAndReconnects` | Node reboots (init/deinit) and reconnects without re-pairing | Critical | *Implicitly covered by HeartbeatResetsOfflineTimer* |
 | `IntegrationHubFullPeerListEviction` | Hub list overflow (LRU) evicts oldest peer | High | |
-| `IntegrationRtcStorageSurvivesDeepSleep` | RTC RAM survives deep sleep | High | |
-| `IntegrationNvsBackupUsedWhenRtcCorrupt` | NVS used when RTC corrupted | Medium | |
-| `IntegrationSyncRtcToNvsOnPairingSuccess` | Sync RTC → NVS on pairing | High | |
+| `IntegrationRtcStorageSurvivesDeepSleep` | RTC RAM survives deep sleep | High | **OK** |
+| `IntegrationSyncRtcToNvsOnPairingSuccess` | Sync RTC → NVS on pairing | High | *Covered by NvsBackupUsedWhenRtcCorrupt* |
 
 ### 3.6 Deep Sleep & Wake-up
 
 | Test | Description | Priority | Status |
 |-------|-----------|------------|--------|
-| `IntegrationNodeWakesFromDeepSleepWithPeersIntact` | Wake-up with peers intact | Critical | |
-| `IntegrationNodeOperationalImmediatelyAfterWake` | Operational immediately after wake | High | |
-| `IntegrationNoRePairingRequiredAfterWake` | No re-pairing after wake | Critical | |
+| `IntegrationNodeWakesFromDeepSleepWithPeersIntact` | Wake-up with peers intact | Critical | **OK** |
+| `IntegrationNodeOperationalImmediatelyAfterWake` | Operational immediately after wake | High | *Covered by NodeWakesFromDeepSleep* |
+| `IntegrationNoRePairingRequiredAfterWake` | No re-pairing after wake | Critical | *Covered by NodeWakesFromDeepSleep* |
+| `IntegrationNvsBackupUsedWhenRtcCorrupt` | NVS used when RTC corrupted | Medium | **OK** |
 
 ### 3.7 Stress & Performance
 
 | Test | Description | Priority | Status |
 |-------|-----------|------------|--------|
-| `IntegrationDataStressTest` | High frequency transmission (100+ packets) | Medium | |
+| `IntegrationDataStressTest` | High frequency transmission (100+ packets) | Medium | **OK** |
 
 
 ### 3.8 Edge Cases & Error Handling
 
 | Test | Description | Priority | Status |
 |-------|-----------|------------|--------|
-| `EdgeCaseHubGoesOfflineNodesRecover` | HUB offline → NODEs recover | High | |
+| `EdgeCaseHubGoesOfflineNodesRecover` | HUB offline → NODEs recover | High | *Implicitly covered by HeartbeatTimeoutMarksPeerOffline* |
 | `EdgeCasePeerRemovedDuringTransmission` | Peer removed during transmission | Medium | |
 | `EdgeCaseMalformedPacketsIgnored` | Malformed packets → ignored | High | |
 | `EdgeCaseDuplicateSequenceNumbersHandled` | Duplicate sequence numbers | Medium | |
 | `EdgeCaseRssiBasedLinkQualityMonitoring` | RSSI for link quality | Low | |
-
----
