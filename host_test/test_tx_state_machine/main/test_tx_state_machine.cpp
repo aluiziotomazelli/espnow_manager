@@ -157,3 +157,16 @@ TEST_F(TxStateMachineTest, OnLinkAliveClearFailCount)
 
     EXPECT_EQ(fsm.get_fail_count(), 0);
 }
+
+TEST_F(TxStateMachineTest, OnDeliverySuccessClearsFailCount)
+{
+    // Simulate some failures
+    for (int i = 0; i < MAX_FAILURES - 1; i++) {
+        fsm.on_delivery_failure();
+    }
+    EXPECT_EQ(fsm.get_fail_count(), MAX_FAILURES - 1);
+
+    // Delivery success should clear the fail count
+    fsm.on_delivery_success();
+    EXPECT_EQ(fsm.get_fail_count(), 0);
+}
