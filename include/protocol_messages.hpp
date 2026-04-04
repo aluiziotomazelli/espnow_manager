@@ -24,6 +24,7 @@ struct MessageHeader
     PayloadType payload_type; /**< Identifier for the content format (for DATA/COMMAND) */
     bool requires_ack;        /**< If true, the receiver should send an ACK message */
     NodeId dest_node_id;      /**< Unique ID of the destination node (or BROADCAST) */
+    AckStatus ack_status;     /**< ACK status for the acknowledged message */
     uint64_t timestamp_ms;    /**< Millisecond timestamp of when the message was sent */
 };
 
@@ -84,9 +85,9 @@ struct HeartbeatResponse
  */
 struct AckMessage
 {
-    MessageHeader header;        /**< Universal message header */
-    AckStatus status;            /**< Processing status of the acknowledged message */
-    uint16_t ack_sequence;       /**< Sequence number of the message being acknowledged */
+    MessageHeader header; /**< Universal message header */
+    // AckStatus status;     /**< Processing status of the acknowledged message */
+    // uint16_t ack_sequence;       /**< Sequence number of the message being acknowledged */
     uint32_t processing_time_us; /**< Time taken to process the message in microseconds */
 };
 

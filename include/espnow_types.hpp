@@ -35,7 +35,7 @@ static constexpr uint8_t MAX_PEERS = 19;
  *       auto *report = reinterpret_cast<const SensorReport *>(msg.payload);
  *   }
  *   if (msg.requires_ack) {
- *       espnow.confirm_reception(AckStatus::OK);
+ *       espnow.confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK);
  *   }
  */
 struct AppMessage
@@ -44,6 +44,7 @@ struct AppMessage
     NodeType sender_type;              ///< Role/type of the sending node
     MessageType msg_type;              ///< Type of the message, DATA, COMMAND...
     PayloadType payload_type;          ///< Application-defined payload identifier
+    uint16_t sequence_number;          ///< Sequence number for ACK validation
     bool requires_ack;                 ///< If true, call confirm_reception() after processing
     uint8_t src_mac[6];                ///< MAC address of the sender
     uint8_t payload[MAX_PAYLOAD_SIZE]; ///< Raw payload bytes (cast to your message struct)
@@ -141,16 +142,7 @@ struct TxPacket
 /**
  * @brief Enumeration of node states.
  *
- * NodeState transitions:
- * UNINITIALIZED → IDLE         (init(), no peers found)
- * UNINITIALIZED → OPERATIONAL  (init(), peers found in storage)
- * IDLE          → PAIRING      (start_pairing())
- * PAIRING       → OPERATIONAL  (pairing successful)
- * PAIRING       → IDLE         (pairing timeout)
- * OPERATIONAL   → PAIRING      (explicit pairing request)
- * OPERATIONAL   → SCANNING     (link lost, TX failures)
- * SCANNING      → OPERATIONAL  (channel rediscovered)
- * SCANNING      → PAIRING      (link lost and no peers found)
+ * NodeState transitions: in src/node_state_machine.cpp
  */
 enum class NodeState
 {
@@ -187,7 +179,7 @@ struct EspNowConfig
     uint32_t ack_timeout_ms;        /**< Timeout for logical acknowledgments (ms) */
     uint32_t heartbeat_interval_ms; /**< Interval for heartbeats; 0 disables generation (ms) */
     uint32_t channel_monitor_interval_ms; /**< Interval for channel monitoring (ms) */
-    uint8_t scan_max_retries;       /**< Maximum retries for recovery scan. Defaults to SCAN_MAX_RETRIES. */
+    uint8_t scan_max_retries;             /**< Maximum retries for recovery scan. Defaults to SCAN_MAX_RETRIES. */
 
     uint32_t stack_size_rx_task;        /**< Stack size for the internal packet dispatcher task */
     uint32_t stack_size_tx_task;        /**< Stack size for the transmission manager task */
@@ -217,7 +209,7 @@ struct EspNowConfig
         , priority_rx_task(10)
         , priority_tx_task(9)
         , rx_queue_length(30)
-        , tx_queue_length(20)
+        , tx_queue_length(30)
 
     {
     }
