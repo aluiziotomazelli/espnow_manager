@@ -611,6 +611,7 @@ AppMessage EspNowManager::build_app_message(const DecodedRxPacket& decoded)
     msg.sequence_number = decoded.header.sequence_number;
     msg.requires_ack = decoded.header.requires_ack;
     memcpy(msg.src_mac, decoded.raw.src_mac, 6);
+    msg.rssi = decoded.raw.rssi;
 
     const size_t payload_offset = sizeof(MessageHeader);
     msg.payload_len = decoded.raw.len - payload_offset - CRC_SIZE;

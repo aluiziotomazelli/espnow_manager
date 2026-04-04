@@ -218,10 +218,11 @@ protected:
     // -----------------------------------------------------------------------
     // Helper: enqueue a minimal RxPacket and wait for the rx_task to process it
     // -----------------------------------------------------------------------
-    void receive_valid_rx_packet()
+    void receive_valid_rx_packet(int8_t rssi = 0)
     {
         RxPacket packet{};
         packet.len = sizeof(MessageHeader) + CRC_SIZE;
+        packet.rssi = rssi;
         // packet.len = sizeof(MessageHeader) + 1;
         xQueueSend(sut_->rx_queue_handle_, &packet, 0);
         vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
@@ -681,4 +682,22 @@ TEST_F(EspNowManagerTaskTest, ProtocolPacketDoesNotReachAppQueue)
     // App queue must remain empty — protocol packets go to router only
     AppMessage msg{};
     EXPECT_EQ(xQueueReceive(app_queue_handle, &msg, pdMS_TO_TICKS(50)), pdFALSE);
+}
+
+TEST_F(EspNowManagerTaskTest, DataPacketIncludesRssiInAppMessage)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::DATA;
+    header.sender_node_id = kNodeId;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    receive_valid_rx_packet(-42); // Simulate RSSI of -42 dBm
+
+    // Verify RSSI is delivered to app queue
+    AppMessage msg{};
+    EXPECT_EQ(xQueueReceive(app_queue_handle, &msg, pdMS_TO_TICKS(50)), pdTRUE);
+    EXPECT_EQ(-42, msg.rssi);
 }

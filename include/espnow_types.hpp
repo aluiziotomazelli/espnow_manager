@@ -47,6 +47,7 @@ struct AppMessage
     uint16_t sequence_number;          ///< Sequence number for ACK validation
     bool requires_ack;                 ///< If true, call confirm_reception() after processing
     uint8_t src_mac[6];                ///< MAC address of the sender
+    int8_t rssi;                       ///< RSSI of the received signal (dBm)
     uint8_t payload[MAX_PAYLOAD_SIZE]; ///< Raw payload bytes (cast to your message struct)
     size_t payload_len;                ///< Number of valid bytes in payload[]
 };
