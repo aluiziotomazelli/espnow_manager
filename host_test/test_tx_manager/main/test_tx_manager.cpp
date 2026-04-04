@@ -210,6 +210,35 @@ TEST_F(TxManagerTest, NotifyWithoutTaskHandleDoesNotCallTaskNotify)
 }
 
 // ===================================================
+// TxManager::handle_ack()
+// ===================================================
+
+TEST_F(TxManagerTest, HandleAckWithNonOkStatusCallsDeliveryFailure)
+{
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
+
+    // Set up a pending ACK in the FSM
+    PendingAck pending = {};
+    pending.sequence_number = 42;
+    pending.retries_left = 3;
+    ON_CALL(fsm, get_pending_ack()).WillByDefault(Return(pending));
+
+    // Build an ACK packet with ERROR_INVALID_DATA status
+    DecodedRxPacket ack_packet = {};
+    ack_packet.header.msg_type = MessageType::ACK;
+    ack_packet.header.sequence_number = 42; // Matches pending ACK
+    ack_packet.header.ack_status = AckStatus::ERROR_INVALID_DATA;
+
+    // Should call notify_delivery_failure() which calls task_notify with NOTIFY_DELIVERY_FAILURE
+    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_DELIVERY_FAILURE, _)).Times(1);
+    // Should NOT call notify_logical_ack (which would use NOTIFY_LOGICAL_ACK)
+    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_LOGICAL_ACK, _)).Times(0);
+
+    manager->handle_ack(ack_packet);
+    deinit_after_init();
+}
+
+// ===================================================
 // TxManager::queue_packet(const DecodedTxPacket &packet)
 // ===================================================
 
