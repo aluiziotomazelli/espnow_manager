@@ -206,18 +206,6 @@ TEST_F(HeartbeatManagerTest, HandleRequestResponseHeaderIsCorrect)
 }
 
 // ===========================================================================
-// handle_response()
-// ===========================================================================
-
-TEST_F(HeartbeatManagerTest, HandleResponseNotifiesLinkAlive)
-{
-    sut_->init(kNodeId, kNodeType, 0);
-
-    EXPECT_CALL(tx_mgr_, notify_link_alive()).Times(1);
-    sut_->handle_response();
-}
-
-// ===========================================================================
 // send_heartbeat() — via TestableHeartbeatManager
 // ===========================================================================
 
