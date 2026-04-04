@@ -7,6 +7,7 @@
 #include "mock_tx_manager.hpp"
 
 #include "heartbeat_manager.hpp"
+#include "protocol_messages.hpp"
 
 using ::testing::_;
 using ::testing::Invoke;
@@ -203,6 +204,33 @@ TEST_F(HeartbeatManagerTest, HandleRequestResponseHeaderIsCorrect)
     EXPECT_EQ(MessageType::HEARTBEAT_RESPONSE, captured.header.msg_type);
     EXPECT_EQ(ReservedIds::HUB, captured.header.sender_node_id);
     EXPECT_EQ(kNodeId, captured.header.dest_node_id);
+}
+
+// ===========================================================================
+// handle_response() — RSSI capture
+// ===========================================================================
+
+TEST_F(HeartbeatManagerTest, HandleResponseCapturesRssiFromPacket)
+{
+    sut_testable_->init(kNodeId, kNodeType, 0);
+
+    // Simulate a heartbeat response packet with a specific RSSI value
+    DecodedRxPacket decoded{};
+    decoded.raw.rssi = -65; // dBm
+
+    sut_testable_->handle_response(decoded);
+
+    // Verify RSSI is included in the next heartbeat
+    HeartbeatMessage captured{};
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Invoke([&](const DecodedTxPacket& p) -> esp_err_t {
+        // Payload starts at uptime_ms, so copy into the payload portion of captured
+        memcpy(&captured.uptime_ms, p.payload, p.payload_len);
+        return ESP_OK;
+    }));
+
+    sut_testable_->force_send_heartbeat();
+
+    EXPECT_EQ(-65, captured.rssi);
 }
 
 // ===========================================================================
