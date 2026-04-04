@@ -55,8 +55,9 @@ public:
 
     /**
      * @brief Handles incoming heartbeat response packets.
+     * @param decoded The decoded response packet containing RSSI.
      */
-    virtual void handle_response() = 0;
+    virtual void handle_response(const DecodedRxPacket& decoded) = 0;
 
     /**
      * @brief Handles incoming heartbeat request packets.

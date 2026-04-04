@@ -43,11 +43,10 @@ void HeartbeatManager::tick(uint64_t now_ms)
     }
 }
 
-// TODO: After target tests, exclude this method and MessageRouter
-// calling andle_response on HEARTBEAT_RESPONSE case, handle_response useful in target tests because log
-void HeartbeatManager::handle_response()
+void HeartbeatManager::handle_response(const DecodedRxPacket& decoded)
 {
-    ESP_LOGI(TAG, "Heartbeat response received from Hub");
+    last_rssi_ = decoded.raw.rssi;
+    ESP_LOGI(TAG, "Heartbeat response received from Hub (RSSI: %d dBm)", last_rssi_);
 }
 
 void HeartbeatManager::handle_request(const DecodedRxPacket& decoded)
@@ -94,7 +93,8 @@ void HeartbeatManager::send_heartbeat()
     HeartbeatMessage hb{};
     uint64_t uptime = hal_timer_.get_time_us() / 1000;
     hb.uptime_ms = uptime;
-    // battery_mv and rssi remain zero until hardware support is added
+    hb.rssi = last_rssi_;
+    // battery_mv remains zero until hardware support is added
 
     // Copy only the payload portion of HeartbeatMessage, skipping MessageHeader.
     // &hb.uptime_ms points to the first field after the header.

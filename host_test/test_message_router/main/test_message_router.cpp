@@ -122,14 +122,14 @@ TEST_F(MessageRouterTest, ShortHeartbeatDoesNotCallHandleRequest)
 TEST_F(MessageRouterTest, HeartbeatResponseCallsHandleResponse)
 {
     DecodedRxPacket packet = create_packet(MessageType::HEARTBEAT_RESPONSE, sizeof(HeartbeatResponse));
-    EXPECT_CALL(heartbeat_manager, handle_response()).Times(1);
+    EXPECT_CALL(heartbeat_manager, handle_response(_)).Times(1);
     router.handle_packet(packet);
 }
 
 TEST_F(MessageRouterTest, ShortHeartbeatResponseDoesNotCallHandleResponse)
 {
     DecodedRxPacket packet = create_packet(MessageType::HEARTBEAT_RESPONSE, sizeof(HeartbeatResponse) - 1);
-    EXPECT_CALL(heartbeat_manager, handle_response()).Times(0);
+    EXPECT_CALL(heartbeat_manager, handle_response(_)).Times(0);
     router.handle_packet(packet);
 }
 
@@ -193,7 +193,7 @@ TEST_F(MessageRouterTest, UnknownMessageTypeDoesNotCallAnyManager)
     EXPECT_CALL(discovery_manager, handle_scan_response(_)).Times(0);
     EXPECT_CALL(tx_manager, handle_ack(_)).Times(0);
     EXPECT_CALL(heartbeat_manager, handle_request(_)).Times(0);
-    EXPECT_CALL(heartbeat_manager, handle_response()).Times(0);
+    EXPECT_CALL(heartbeat_manager, handle_response(_)).Times(0);
     EXPECT_CALL(pairing_manager, handle_request(_)).Times(0);
     EXPECT_CALL(pairing_manager, handle_response(_)).Times(0);
     router.handle_packet(packet);

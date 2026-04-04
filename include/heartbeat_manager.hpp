@@ -29,7 +29,7 @@ public:
     void set_interval_ms(uint32_t heartbeat_interval_ms) override;
 
     /** @copydoc IHeartbeatManager::handle_response */
-    void handle_response() override;
+    void handle_response(const DecodedRxPacket& decoded) override;
 
     /** @copydoc IHeartbeatManager::handle_request */
     void handle_request(const DecodedRxPacket& decoded) override;
@@ -46,6 +46,7 @@ private:
 
     NodeType my_type_;
     uint32_t interval_ms_;
+    int8_t last_rssi_ = 0; /**< RSSI of the Hub as seen by this Node */
 
     bool is_initialized_ = false;
     uint64_t last_heartbeat_ms_ = 0;
