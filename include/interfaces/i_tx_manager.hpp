@@ -129,28 +129,6 @@ public:
     virtual void notify_link_alive() = 0;
 
     /**
-     * @brief Notifies the manager that a protocol-level acknowledgment (ACK) has been received.
-     *
-     * This method is called by the RX path when an ACK packet arrives from a peer,
-     * confirming successful receipt and processing of a previously transmitted packet.
-     * The ACK is matched against pending transmissions using sequence numbers.
-     *
-     * Upon receiving a logical ACK, the TxManager:
-     * - Marks the corresponding packet as successfully delivered
-     * - Clears the packet from the retry queue
-     * - Proceeds to the next queued transmission
-     *
-     * @note This is distinct from physical layer success (notify_delivery_success()),
-     *       which only confirms the packet was transmitted over the air.
-     * @note Logical ACKs are part of the reliability protocol implemented at the
-     *       application layer.
-     * @see notify_delivery_success()
-     * @see DecodedTxPacket
-     * @internal
-     */
-    virtual void notify_logical_ack() = 0;
-
-    /**
      * @brief Handles a received ACK packet with sequence number validation.
      *
      * This method is called by the RX path when an ACK packet arrives. It extracts
