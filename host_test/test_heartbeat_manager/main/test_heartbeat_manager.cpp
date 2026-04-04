@@ -206,6 +206,33 @@ TEST_F(HeartbeatManagerTest, HandleRequestResponseHeaderIsCorrect)
 }
 
 // ===========================================================================
+// deinit()
+// ===========================================================================
+
+TEST_F(HeartbeatManagerTest, DeinitDisablesHeartbeatSending)
+{
+    ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
+    sut_->init(kNodeId, kNodeType, 5000);
+
+    // First tick sends heartbeat
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(1);
+    sut_->tick(5000);
+}
+
+TEST_F(HeartbeatManagerTest, TickAfterDeinitDoesNotSend)
+{
+    ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
+    sut_->init(kNodeId, kNodeType, 5000);
+
+    // Deinit should disable heartbeat sending
+    sut_->deinit();
+
+    // After deinit, tick() should not call queue_packet because is_initialized_ is false
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+    sut_->tick(5000);
+}
+
+// ===========================================================================
 // send_heartbeat() — via TestableHeartbeatManager
 // ===========================================================================
 
