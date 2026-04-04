@@ -40,9 +40,6 @@ public:
     /** @copydoc ITxManager::notify_link_alive */
     void notify_link_alive() override;
 
-    /** @copydoc ITxManager::notify_logical_ack */
-    void notify_logical_ack() override;
-
     /** @copydoc ITxManager::handle_ack */
     void handle_ack(const DecodedRxPacket& decoded) override;
 
@@ -50,6 +47,10 @@ public:
     TaskHandle_t get_task_handle() const override { return tx_task_handle_; }
 
 private:
+    // Internal notification (called by handle_ack after validation)
+    /** @copydoc ITxManager::notify_logical_ack */
+    void notify_logical_ack() override;
+
     // Dependencies
     ITxStateMachine& fsm_;
     IEspNowHAL& hal_espnow_;

@@ -152,13 +152,6 @@ void TxManager::notify_link_alive()
     }
 }
 
-void TxManager::notify_logical_ack()
-{
-    if (tx_task_handle_ != nullptr) {
-        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
-    }
-}
-
 void TxManager::handle_ack(const DecodedRxPacket& decoded)
 {
     auto pending_ack = fsm_.get_pending_ack();
@@ -376,4 +369,15 @@ void TxManager::tx_task()
     freertos_hal_.semaphore_give(task_done_semaphore_);
     freertos_hal_.task_suspend(nullptr); // NULL / nullptr == current task
     freertos_hal_.task_delete(nullptr);  // NULL / nullptr == current task
+}
+
+// =====================================================================================
+// Private methods
+// =====================================================================================
+
+void TxManager::notify_logical_ack()
+{
+    if (tx_task_handle_ != nullptr) {
+        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
+    }
 }
