@@ -163,18 +163,20 @@ public:
     /**
      * @brief Confirm the reception of a message that required an ACK
      *
-     * Sends a logical acknowledgment back to the sender of the last received message that had the `require_ack` flag
-     * set. This should be called by the application after successfully processing the received data.
+     * Sends a logical acknowledgment back to the specified sender. This should be called by the
+     * application after processing a received message that had the `require_ack` flag set, to inform
+     * the sender of the processing outcome.
      *
-     * @param status Status of the processing: OK, ERROR_INVALID_DATA or ERROR_PROCESSING
-     * @return ESP_OK: ACK was sent.
-     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL state or no message pending ACK.
-     * @return ESP_ERR_TIMEOUT: failed to acquire mutex within timeout.
-     * @return ESP_ERR_NOT_FOUND: peer MAC not found for the pending message.
-     * @return ESP_ERR_INVALID_STATE: tx_queue not initialized (from internal tx_manager call).
+     * @param sender_id Logical ID of the sender node to acknowledge.
+     * @param sequence_number Sequence number of the original message being acknowledged.
+     * @param status Processing outcome: `AckStatus::OK` for success, `AckStatus::ERROR_INVALID_DATA`
+     *               for invalid payload, or `AckStatus::ERROR_PROCESSING` for internal errors.
+     * @return ESP_OK: ACK was queued successfully.
+     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL/PAIRING state, or tx_queue not initialized.
+     * @return ESP_ERR_NOT_FOUND: peer MAC not found for the specified sender_id.
      * @return ESP_FAIL: failed to queue ACK packet for transmission.
      */
-    virtual esp_err_t confirm_reception(AckStatus status) = 0;
+    virtual esp_err_t confirm_reception(NodeId sender_id, uint16_t sequence_number, AckStatus status) = 0;
 
     // ========================================
     // Peer Management

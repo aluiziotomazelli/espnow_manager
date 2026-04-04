@@ -165,11 +165,6 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
     }
     esp_now_initialized_ = true;
 
-    ret = create_mutex();
-    if (ret != ESP_OK) {
-        return init_fail(ret, "Mutex");
-    }
-
     ret = create_queue();
     if (ret != ESP_OK) {
         return init_fail(ret, "Queues");
@@ -265,7 +260,7 @@ void EspNowManager::deinit()
     }
 
     // Call cleanup_resources to delete queues and mutex
-    if (rx_queue_handle_ != nullptr || ack_mutex_ != nullptr) {
+    if (rx_queue_handle_ != nullptr) {
         cleanup_resources();
     }
 
@@ -288,7 +283,6 @@ void EspNowManager::deinit()
 
     // Reset state
     esp_now_initialized_ = false;
-    last_header_requiring_ack_.reset();
     config_ = EspNowConfig();
     node_fsm_->on_deinit();
 
@@ -360,50 +354,39 @@ esp_err_t EspNowManager::send_command(
         dest_node_id, MessageType::COMMAND, static_cast<PayloadType>(command_type), payload, len, require_ack);
 }
 
-esp_err_t EspNowManager::confirm_reception(AckStatus status)
+esp_err_t EspNowManager::confirm_reception(NodeId sender_id, uint16_t sequence_number, AckStatus status)
 {
     auto current_state = node_fsm_->get_state();
     if (current_state != NodeState::OPERATIONAL && current_state != NodeState::PAIRING)
         return ESP_ERR_INVALID_STATE;
 
-    if (hal_freertos_->semaphore_take(ack_mutex_, pdMS_TO_TICKS(100)) != pdTRUE)
-        return ESP_ERR_TIMEOUT;
-
-    if (!last_header_requiring_ack_.has_value()) {
-        hal_freertos_->semaphore_give(ack_mutex_);
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    const auto& header_to_ack = last_header_requiring_ack_.value();
-
     DecodedTxPacket tx_packet{};
-    if (!peer_manager_->find_mac(header_to_ack.sender_node_id, tx_packet.dest_mac)) {
-        last_header_requiring_ack_.reset();
-        hal_freertos_->semaphore_give(ack_mutex_);
+    if (!peer_manager_->find_mac(sender_id, tx_packet.dest_mac)) {
         return ESP_ERR_NOT_FOUND;
     }
 
-    tx_packet.header.msg_type = MessageType::ACK;
-    tx_packet.header.sender_node_id = config_.node_id;
-    tx_packet.header.sender_type = config_.node_type;
-    tx_packet.header.dest_node_id = header_to_ack.sender_node_id;
-    tx_packet.header.requires_ack = false;
-    tx_packet.header.timestamp_ms = get_time_ms();
+    // Make a header for the ack message
+    MessageHeader ack_header{};
+    ack_header.msg_type = MessageType::ACK;
+    ack_header.sequence_number = sequence_number;
+    ack_header.sender_type = config_.node_type;
+    ack_header.sender_node_id = config_.node_id;
+    ack_header.dest_node_id = sender_id;
+    ack_header.requires_ack = false;
+    ack_header.ack_status = status;
+    ack_header.timestamp_ms = get_time_ms();
+
+    tx_packet.header = ack_header;
 
     // Payload for ACK matches AckMessage structure fields after header
     AckMessage ack_message{};
-    ack_message.status = status;
-    ack_message.ack_sequence = header_to_ack.sequence_number;
-    ack_message.processing_time_us = 0;
+    ack_message.processing_time_us = 0; // Not in use yet
 
     // Copy only the payload portion of AckMessage, skipping MessageHeader.
     tx_packet.payload_len = sizeof(AckMessage) - sizeof(MessageHeader);
-    memcpy(tx_packet.payload, &ack_message.status, tx_packet.payload_len);
+    memcpy(tx_packet.payload, &ack_message.processing_time_us, tx_packet.payload_len);
 
-    esp_err_t err = tx_manager_->queue_packet(tx_packet);
-    last_header_requiring_ack_.reset();
-    hal_freertos_->semaphore_give(ack_mutex_);
-    return err;
+    return tx_manager_->queue_packet(tx_packet);
 }
 
 // Peer management
@@ -515,12 +498,6 @@ void EspNowManager::rx_task(void* arg)
                     // Application-level packets — deliver directly to app queue
                     if (decoded.header.msg_type == MessageType::DATA ||
                         decoded.header.msg_type == MessageType::COMMAND) {
-                        if (decoded.header.requires_ack) {
-                            if (self->hal_freertos_->semaphore_take(self->ack_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-                                self->last_header_requiring_ack_ = decoded.header;
-                                self->hal_freertos_->semaphore_give(self->ack_mutex_);
-                            }
-                        }
                         if (self->config_.app_rx_queue != nullptr) {
                             AppMessage msg = self->build_app_message(decoded);
                             if (self->hal_freertos_->queue_send(self->config_.app_rx_queue, &msg, 0) != pdTRUE) {
@@ -631,6 +608,7 @@ AppMessage EspNowManager::build_app_message(const DecodedRxPacket& decoded)
     msg.sender_type = decoded.header.sender_type;
     msg.msg_type = decoded.header.msg_type;
     msg.payload_type = decoded.header.payload_type;
+    msg.sequence_number = decoded.header.sequence_number;
     msg.requires_ack = decoded.header.requires_ack;
     memcpy(msg.src_mac, decoded.raw.src_mac, 6);
 
@@ -785,15 +763,6 @@ void EspNowManager::handle_scan_retries(bool has_peers)
 // Init helpers
 // ==================================================================
 
-esp_err_t EspNowManager::create_mutex()
-{
-    ack_mutex_ = hal_freertos_->mutex_create();
-    if (ack_mutex_ == nullptr) {
-        return ESP_FAIL;
-    }
-    return ESP_OK;
-}
-
 esp_err_t EspNowManager::create_queue()
 {
     rx_queue_handle_ = hal_freertos_->queue_create(config_.rx_queue_length, sizeof(RxPacket));
@@ -917,9 +886,5 @@ void EspNowManager::cleanup_resources()
     if (rx_queue_handle_ != nullptr) {
         hal_freertos_->queue_delete(rx_queue_handle_);
         rx_queue_handle_ = nullptr;
-    }
-    if (ack_mutex_ != nullptr) {
-        hal_freertos_->semaphore_delete(ack_mutex_);
-        ack_mutex_ = nullptr;
     }
 }

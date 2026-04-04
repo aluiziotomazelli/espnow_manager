@@ -95,7 +95,7 @@ public:
         bool require_ack = false) override;
 
     /** @copydoc IEspNowManager::confirm_reception */
-    esp_err_t confirm_reception(AckStatus status) override;
+    esp_err_t confirm_reception(NodeId sender_id, uint16_t sequence_number, AckStatus status) override;
 
     // ========================================
     // Peer Management
@@ -158,9 +158,7 @@ protected:
     std::unique_ptr<INodeStateMachine> node_fsm_;          ///< Pointer to node state machine
 
     bool esp_now_initialized_ = false;
-    std::optional<MessageHeader> last_header_requiring_ack_{}; // protected
 
-    SemaphoreHandle_t ack_mutex_ = nullptr; // protected
     QueueHandle_t rx_queue_handle_ = nullptr;
     TaskHandle_t rx_task_handle_ = nullptr;
 
@@ -180,7 +178,6 @@ protected:
     void update_wifi_channel(uint8_t channel);
 
     // Init helpers
-    esp_err_t create_mutex();
     esp_err_t create_queue();
     esp_err_t create_task();
     esp_err_t init_tx_manager();
