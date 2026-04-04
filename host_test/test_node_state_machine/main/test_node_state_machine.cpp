@@ -82,7 +82,7 @@ TEST_F(NodeStateMachineTest, PairingRequestedInPairingReturnsError)
 TEST_F(NodeStateMachineTest, PairingRequestedFromIdleWithoutPeersTransitionsToPairingScan)
 {
     fsm.on_init(false, false); // Not a HUB, no peers -> PAIRING_SCAN
-    fsm.on_scan_failed(false); // Go to IDLE
+    fsm.on_scan_failed(); // Go to IDLE
     ASSERT_EQ(fsm.get_state(), NodeState::IDLE);
 
     EXPECT_EQ(fsm.on_pairing_requested(false, false), ESP_OK);
@@ -94,7 +94,7 @@ TEST_F(NodeStateMachineTest, PairingRequestedFromIdleWithPeersTransitionsToPairi
 {
     fsm.on_init(true, false);
     fsm.on_scan_requested();
-    fsm.on_scan_failed(true); // Go to IDLE (per revised table)
+    fsm.on_scan_failed(); // Go to IDLE (per revised table)
     ASSERT_EQ(fsm.get_state(), NodeState::IDLE);
 
     EXPECT_EQ(fsm.on_pairing_requested(true, true), ESP_OK);
@@ -153,7 +153,7 @@ TEST_F(NodeStateMachineTest, ScanRequestedFromPairingTransitionsToRecoveryScan)
 TEST_F(NodeStateMachineTest, ScanRequestedFromIdleTransitionsToRecoveryScan)
 {
     fsm.on_init(false, false);
-    fsm.on_scan_failed(false); // IDLE
+    fsm.on_scan_failed(); // IDLE
     EXPECT_EQ(fsm.on_scan_requested(), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::RECOVERY_SCAN);
 }
@@ -194,7 +194,7 @@ TEST_F(NodeStateMachineTest, ChannelFoundInUninitializedReturnsError)
 TEST_F(NodeStateMachineTest, ChannelFoundInIdleReturnsError)
 {
     fsm.on_init(false, false);
-    fsm.on_scan_failed(false); // IDLE
+    fsm.on_scan_failed(); // IDLE
     EXPECT_EQ(fsm.on_channel_found(), ESP_ERR_INVALID_STATE);
     EXPECT_EQ(fsm.get_state(), NodeState::IDLE);
 }
@@ -216,7 +216,7 @@ TEST_F(NodeStateMachineTest, ChannelFoundInPairingReturnsError)
 TEST_F(NodeStateMachineTest, ScanFailedInPairingScanTransitionsToIdle)
 {
     fsm.on_init(false, false); // PAIRING_SCAN
-    EXPECT_EQ(fsm.on_scan_failed(false), ESP_OK);
+    EXPECT_EQ(fsm.on_scan_failed(), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::IDLE);
 }
 
@@ -225,14 +225,14 @@ TEST_F(NodeStateMachineTest, ScanFailedInRecoveryScanTransitionsToIdle)
 {
     fsm.on_init(false, true);
     fsm.on_scan_requested(); // RECOVERY_SCAN
-    EXPECT_EQ(fsm.on_scan_failed(true), ESP_OK);
+    EXPECT_EQ(fsm.on_scan_failed(), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::IDLE);
 }
 
 // Scan failed in UNINITIALIZED state should return error.
 TEST_F(NodeStateMachineTest, ScanFailedInUninitializedReturnsError)
 {
-    EXPECT_EQ(fsm.on_scan_failed(false), ESP_ERR_INVALID_STATE);
+    EXPECT_EQ(fsm.on_scan_failed(), ESP_ERR_INVALID_STATE);
     EXPECT_EQ(fsm.get_state(), NodeState::UNINITIALIZED);
 }
 
@@ -240,7 +240,7 @@ TEST_F(NodeStateMachineTest, ScanFailedInUninitializedReturnsError)
 TEST_F(NodeStateMachineTest, ScanFailedInOperationalReturnsError)
 {
     fsm.on_init(false, true);
-    EXPECT_EQ(fsm.on_scan_failed(true), ESP_ERR_INVALID_STATE);
+    EXPECT_EQ(fsm.on_scan_failed(), ESP_ERR_INVALID_STATE);
     EXPECT_EQ(fsm.get_state(), NodeState::OPERATIONAL);
 }
 
@@ -249,7 +249,7 @@ TEST_F(NodeStateMachineTest, ScanFailedInPairingReturnsError)
 {
     fsm.on_init(false, false);
     fsm.on_channel_found(); // PAIRING
-    EXPECT_EQ(fsm.on_scan_failed(false), ESP_ERR_INVALID_STATE);
+    EXPECT_EQ(fsm.on_scan_failed(), ESP_ERR_INVALID_STATE);
     EXPECT_EQ(fsm.get_state(), NodeState::PAIRING);
 }
 
@@ -257,8 +257,8 @@ TEST_F(NodeStateMachineTest, ScanFailedInPairingReturnsError)
 TEST_F(NodeStateMachineTest, ScanFailedInIdleReturnsError)
 {
     fsm.on_init(false, false);
-    fsm.on_scan_failed(false); // IDLE
-    EXPECT_EQ(fsm.on_scan_failed(false), ESP_ERR_INVALID_STATE);
+    fsm.on_scan_failed(); // IDLE
+    EXPECT_EQ(fsm.on_scan_failed(), ESP_ERR_INVALID_STATE);
     EXPECT_EQ(fsm.get_state(), NodeState::IDLE);
 }
 
@@ -285,7 +285,7 @@ TEST_F(NodeStateMachineTest, PairingTimeoutInOperationalReturnsError)
 TEST_F(NodeStateMachineTest, PairingTimeoutInIdleReturnsError)
 {
     fsm.on_init(false, false);
-    fsm.on_scan_failed(false); // IDLE
+    fsm.on_scan_failed(); // IDLE
     EXPECT_EQ(fsm.on_pairing_timeout(false), ESP_ERR_INVALID_STATE);
     EXPECT_EQ(fsm.get_state(), NodeState::IDLE);
 }
