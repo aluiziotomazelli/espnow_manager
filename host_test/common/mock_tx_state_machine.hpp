@@ -38,6 +38,9 @@ public:
     /** @copydoc ITxStateMachine::on_delivery_failure() */
     MOCK_METHOD(bool, on_delivery_failure, (), (override));
 
+    /** @copydoc ITxStateMachine::on_delivery_success() */
+    MOCK_METHOD(void, on_delivery_success, (), (override));
+
     /** @copydoc ITxStateMachine::get_state() */
     MOCK_METHOD(TxState, get_state, (), (const, override));
 

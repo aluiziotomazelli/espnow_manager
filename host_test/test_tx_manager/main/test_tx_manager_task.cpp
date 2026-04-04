@@ -282,7 +282,13 @@ TEST_F(TxManagerTaskTest, WaitingForAckNotifyLogicalAckCallsOnAckReceived)
     EXPECT_CALL(*fsm, on_ack_timeout()).Times(0);  // Should not call on_ack_timeout
     EXPECT_CALL(*fsm, on_ack_received()).Times(1); // Should call on_ack_received
 
-    manager->notify_logical_ack();
+    // Simulate ACK packet arriving via handle_ack()
+    // sequence_number = 0 because it's the first packet (sequence_counter_ starts at 0)
+    DecodedRxPacket ack_packet = {};
+    ack_packet.header.msg_type = MessageType::ACK;
+    ack_packet.header.sequence_number = 0; // First packet sequence number
+    ack_packet.header.ack_status = AckStatus::OK;
+    manager->handle_ack(ack_packet);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     EXPECT_EQ(TxState::IDLE, current_state);

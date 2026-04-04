@@ -181,18 +181,19 @@ TEST_F(TxManagerTest, NotifyDeliveryFailureCallsTaskNotify)
     deinit_after_init();
 }
 
+TEST_F(TxManagerTest, NotifyDeliverySuccessCallsTaskNotify)
+{
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
+    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_DELIVERY_SUCCESS, _)).Times(1);
+    manager->notify_delivery_success();
+    deinit_after_init();
+}
+
 TEST_F(TxManagerTest, NotifyLinKAliveCallsTaskNotify)
 {
     EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
     EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_LINK_ALIVE, _)).Times(1);
     manager->notify_link_alive();
-}
-
-TEST_F(TxManagerTest, NotifyLogicalAckCallsTaskNotify)
-{
-    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
-    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_LOGICAL_ACK, _)).Times(1);
-    manager->notify_logical_ack();
 }
 
 TEST_F(TxManagerTest, NotifyWithoutTaskHandleDoesNotCallTaskNotify)
@@ -204,7 +205,7 @@ TEST_F(TxManagerTest, NotifyWithoutTaskHandleDoesNotCallTaskNotify)
     EXPECT_CALL(freertos_hal, task_notify(_, _, _)).Times(0);
 
     manager->notify_delivery_failure();
-    manager->notify_logical_ack();
+    manager->notify_delivery_success();
     manager->notify_link_alive();
 }
 
