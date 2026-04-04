@@ -137,17 +137,17 @@ TEST_F(MessageRouterTest, ShortHeartbeatResponseDoesNotCallHandleResponse)
 // ACK
 // ==========================================================================
 
-TEST_F(MessageRouterTest, AckCallsNotifyLogicalAck)
+TEST_F(MessageRouterTest, AckCallsHandleAck)
 {
     DecodedRxPacket packet = create_packet(MessageType::ACK, sizeof(AckMessage));
-    EXPECT_CALL(tx_manager, notify_logical_ack()).Times(1);
+    EXPECT_CALL(tx_manager, handle_ack(_)).Times(1);
     router.handle_packet(packet);
 }
 
-TEST_F(MessageRouterTest, ShortAckDoesNotCallNotifyLogicalAck)
+TEST_F(MessageRouterTest, ShortAckDoesNotCallHandleAck)
 {
     DecodedRxPacket packet = create_packet(MessageType::ACK, sizeof(AckMessage) - 1);
-    EXPECT_CALL(tx_manager, notify_logical_ack()).Times(0);
+    EXPECT_CALL(tx_manager, handle_ack(_)).Times(0);
     router.handle_packet(packet);
 }
 
@@ -191,7 +191,7 @@ TEST_F(MessageRouterTest, UnknownMessageTypeDoesNotCallAnyManager)
     DecodedRxPacket packet = create_packet(static_cast<MessageType>(999), sizeof(MessageHeader));
     EXPECT_CALL(discovery_manager, handle_scan_probe(_)).Times(0);
     EXPECT_CALL(discovery_manager, handle_scan_response(_)).Times(0);
-    EXPECT_CALL(tx_manager, notify_logical_ack()).Times(0);
+    EXPECT_CALL(tx_manager, handle_ack(_)).Times(0);
     EXPECT_CALL(heartbeat_manager, handle_request(_)).Times(0);
     EXPECT_CALL(heartbeat_manager, handle_response()).Times(0);
     EXPECT_CALL(pairing_manager, handle_request(_)).Times(0);
