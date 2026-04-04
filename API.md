@@ -511,33 +511,32 @@ esp_err_t send_command(T dest_node_id, CommandType command_type, const void* pay
 Confirms reception of a message that required an ACK.
 
 ```cpp
-esp_err_t confirm_reception(AckStatus status)
+esp_err_t confirm_reception(NodeId sender_id, uint16_t sequence_number, AckStatus status)
 ```
 
-**Description:**  
-Sends a logical acknowledgment back to the sender of the last received message that had the `require_ack` flag set. This should be called by the application after successfully processing the received data.
+**Description:**
+Sends a logical acknowledgment back to the specified sender. This should be called by the application after processing a received message that had the `require_ack` flag set, to inform the sender of the processing outcome.
 
 **Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `status` | `AckStatus` | Status of processing: `OK`, `ERROR_INVALID_DATA`, or `ERROR_PROCESSING` |
+| `sender_id` | `NodeId` | Logical ID of the sender node to acknowledge. |
+| `sequence_number` | `uint16_t` | Sequence number of the original message being acknowledged. |
+| `status` | `AckStatus` | Processing outcome: `AckStatus::OK` for success, `AckStatus::ERROR_INVALID_DATA` for invalid payload, or `AckStatus::ERROR_PROCESSING` for internal errors. |
 
 **Returns:**
 | Error Code | Description |
 |------------|-------------|
-| `ESP_OK` | ACK was sent |
-| `ESP_ERR_INVALID_STATE` | Manager not in `OPERATIONAL` state or no message pending ACK |
-| `ESP_ERR_TIMEOUT` | Failed to acquire mutex within timeout |
-| `ESP_ERR_NOT_FOUND` | Peer MAC not found for the pending message |
+| `ESP_OK` | ACK was queued successfully |
+| `ESP_ERR_INVALID_STATE` | Manager not in `OPERATIONAL`/`PAIRING` state, or `tx_queue` not initialized |
+| `ESP_ERR_NOT_FOUND` | Peer MAC not found for the specified sender_id |
 | `ESP_FAIL` | Failed to queue ACK packet for transmission |
 
 **Example:**
 ```cpp
 // In your RX task, after processing a received message:
-if (process_message(msg) == SUCCESS) {
-    manager.confirm_reception(AckStatus::OK);
-} else {
-    manager.confirm_reception(AckStatus::ERROR_INVALID_DATA);
+if (msg.requires_ack) {
+    manager.confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK);
 }
 ```
 
