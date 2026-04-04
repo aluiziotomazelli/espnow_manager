@@ -397,6 +397,26 @@ TEST_F(PeerManagerTest, GetOfflineReturnsEmptyWhenHeartbeatIntervalIsZero)
 }
 
 // =========================================================================
+// PeerManager::update_last_seen — missing branch coverage
+// =========================================================================
+
+TEST_F(PeerManagerTest, UpdateLastSeenNonExistentPeerDoesNothing)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 1000);
+
+    // Update last_seen for a peer that does NOT exist
+    // The loop in update_last_seen completes without finding the peer
+    manager->update_last_seen(99, 5000);
+
+    // Peer ID_2 should still have last_seen_ms = 0 (never updated)
+    auto peers = manager->get_all();
+    ASSERT_EQ(1, peers.size());
+    EXPECT_EQ(0, peers[0].last_seen_ms);
+}
+
+// =========================================================================
 // PeerManager::load_peers_from_storage
 // =========================================================================
 
