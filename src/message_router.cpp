@@ -61,7 +61,7 @@ void MessageRouter::handle_packet(const DecodedRxPacket& decoded)
             ESP_LOGW(TAG, "Malformed ACK: len %d < %d", (int)decoded.raw.len, (int)sizeof(AckMessage));
             return;
         }
-        tx_manager_.notify_logical_ack();
+        tx_manager_.handle_ack(decoded);
         break;
     case MessageType::CHANNEL_SCAN_PROBE:
         if (decoded.raw.len < sizeof(MessageHeader)) {
