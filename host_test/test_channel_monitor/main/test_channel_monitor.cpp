@@ -119,3 +119,18 @@ TEST_F(ChannelMonitorTest, MonitorReturnTheSAmeChannelIfWifiGetChannelFail)
 
     monitor->tick(INTERVAL_MS);
 }
+
+TEST_F(ChannelMonitorTest, DeinitDisablesMonitoring)
+{
+    init_monitor();
+    monitor->tick(0);
+
+    // Deinit should disable monitoring
+    monitor->deinit();
+
+    // After deinit, tick() should not call wifi_get_channel because is_active_ is false
+    EXPECT_CALL(wifi_hal, wifi_get_channel(_, _)).Times(0);
+    EXPECT_CALL(freertos_hal, task_notify(_, _, _)).Times(0);
+
+    monitor->tick(INTERVAL_MS);
+}
