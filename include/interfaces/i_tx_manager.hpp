@@ -151,6 +151,18 @@ public:
     virtual void notify_logical_ack() = 0;
 
     /**
+     * @brief Handles a received ACK packet with sequence number validation.
+     *
+     * This method is called by the RX path when an ACK packet arrives. It extracts
+     * the sequence number from the ACK payload and validates it against the pending
+     * transmission. If valid, it notifies the TX task to proceed.
+     *
+     * @param decoded The decoded ACK packet containing the sequence number.
+     * @internal
+     */
+    virtual void handle_ack(const DecodedRxPacket& decoded) = 0;
+
+    /**
      * @brief Gets the background task handle.
      *
      * Returns the FreeRTOS task handle for the TX background task. This can be used

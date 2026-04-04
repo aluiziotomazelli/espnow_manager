@@ -159,6 +159,31 @@ void TxManager::notify_logical_ack()
     }
 }
 
+void TxManager::handle_ack(const DecodedRxPacket& decoded)
+{
+    auto pending_ack = fsm_.get_pending_ack();
+    if (!pending_ack.has_value()) {
+        ESP_LOGW(TAG, "ACK received but no pending packet");
+        return;
+    }
+
+    if (decoded.header.sequence_number != pending_ack->sequence_number) {
+        ESP_LOGW(
+            TAG,
+            "ACK seq_num mismatch, expected: %d, got: %d",
+            (int)pending_ack->sequence_number,
+            (int)decoded.header.sequence_number);
+        return;
+    }
+
+    if (decoded.header.ack_status != AckStatus::OK) {
+        notify_delivery_failure();
+        return;
+    }
+
+    notify_logical_ack();
+}
+
 void TxManager::tx_task_func(void* arg)
 {
     static_cast<TxManager*>(arg)->tx_task();

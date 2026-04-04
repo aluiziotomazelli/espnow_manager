@@ -43,6 +43,9 @@ public:
     /** @copydoc ITxManager::notify_logical_ack */
     void notify_logical_ack() override;
 
+    /** @copydoc ITxManager::handle_ack */
+    void handle_ack(const DecodedRxPacket& decoded) override;
+
     /** @copydoc ITxManager::get_task_handle */
     TaskHandle_t get_task_handle() const override { return tx_task_handle_; }
 
