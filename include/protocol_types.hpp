@@ -34,7 +34,7 @@ static constexpr uint32_t NOTIFY_ALL = 0xFFFFFFFF;
 static constexpr uint8_t BROADCAST_MAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 /** @brief Correct size of the universal message header */
-constexpr size_t MESSAGE_HEADER_SIZE = 16;
+constexpr size_t MESSAGE_HEADER_SIZE = 17;
 /** @brief Size of the CRC field in the packet */
 constexpr size_t CRC_SIZE = 1;
 /** @brief The maximum payload size is the total ESP-NOW size minus the header and CRC */
