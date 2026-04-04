@@ -47,10 +47,6 @@ public:
     TaskHandle_t get_task_handle() const override { return tx_task_handle_; }
 
 private:
-    // Internal notification (called by handle_ack after validation)
-    /** @copydoc ITxManager::notify_logical_ack */
-    void notify_logical_ack() override;
-
     // Dependencies
     ITxStateMachine& fsm_;
     IEspNowHAL& hal_espnow_;
@@ -77,4 +73,5 @@ private:
     // Helper methods
     void handle_esp_now_send_errors(esp_err_t error);
     void handle_notifications(uint32_t notification, bool& should_stop);
+    void notify_logical_ack();
 };
