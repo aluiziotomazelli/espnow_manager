@@ -25,7 +25,7 @@ public:
      * @return ESP_OK if loaded successfully, error otherwise.
      * @internal
      */
-    virtual esp_err_t load_channel(uint8_t &channel) = 0;
+    virtual esp_err_t load_channel(uint8_t& channel) = 0;
 
     /**
      * @brief Stores the WiFi channel to storage.
@@ -41,7 +41,7 @@ public:
      * @return ESP_OK if loaded successfully, error otherwise.
      * @internal
      */
-    virtual esp_err_t load_peers(etl::ivector<PersistentPeer> &peers) = 0;
+    virtual esp_err_t load_peers(etl::ivector<PersistentPeer>& peers) = 0;
 
     /**
      * @brief Stores the peers to storage.
@@ -50,5 +50,21 @@ public:
      * @return ESP_OK if stored successfully, error otherwise.
      * @internal
      */
-    virtual esp_err_t store_peers(const etl::ivector<PersistentPeer> &peers, bool force_nvs_commit = true) = 0;
+    virtual esp_err_t store_peers(const etl::ivector<PersistentPeer>& peers, bool force_nvs_commit = true) = 0;
+
+    /**
+     * @brief Loads the peer statistics from storage.
+     * @param stats Output for the loaded peer statistics.
+     * @return ESP_OK if loaded successfully, error otherwise.
+     * @internal
+     */
+    virtual esp_err_t load_stats(etl::ivector<PeerStatisticsPersist>& stats) = 0;
+
+    /**
+     * @brief Stores peer statistics to storage.
+     * @param stats The statistics to store.
+     * @return ESP_OK if stored successfully, error otherwise.
+     * @internal
+     */
+    virtual esp_err_t store_stats(const etl::ivector<PeerStatisticsPersist>& stats) = 0;
 };
