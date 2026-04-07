@@ -1,0 +1,62 @@
+// include/statistics_manager.hpp
+#pragma once
+
+#include "i_statistics_manager.hpp"
+#include "i_storage_manager.hpp"
+#include "i_hal_freertos.hpp"
+#include "i_hal_timer.hpp"
+
+class StatisticsManager : public IStatisticsManager
+{
+public:
+    StatisticsManager(IStorageManager& storage, IFreeRTOSHAL& hal_freertos, ITimerHAL& hal_timer);
+    ~StatisticsManager();
+
+    esp_err_t init() override;
+    esp_err_t deinit() override;
+
+    void on_peer_added(NodeId node_id, uint32_t heartbeat_interval_ms) override;
+    void on_peer_removed(NodeId node_id) override;
+
+    void on_packet_received(NodeId node_id, int8_t rssi) override;
+    void on_ack_received(NodeId node_id, uint64_t sent_at_ms) override;
+
+    void on_packet_sent(NodeId node_id) override;
+    void on_packet_lost(NodeId node_id) override;
+    void on_retry(NodeId node_id) override;
+
+    bool get(NodeId node_id, PeerStatistics& out) const override;
+    etl::vector<PeerStatistics, MAX_PEERS> get_all() const override;
+
+private:
+    struct PeerStatisticsEntry
+    {
+        PeerStatistics stats;
+        uint8_t dirty_rx = 0;
+        uint8_t dirty_tx = 0;
+        uint8_t dirty_loss = 0;
+        uint8_t dirty_rtt = 0;
+    };
+
+    static constexpr uint8_t FLUSH_THRESHOLD_RX = 100;
+    static constexpr uint8_t FLUSH_THRESHOLD_TX = 100;
+    static constexpr uint8_t FLUSH_THRESHOLD_LOSS = 10;
+    static constexpr uint8_t FLUSH_THRESHOLD_RTT = 50;
+
+    static uint8_t compute_alpha(uint32_t heartbeat_interval_ms);
+    static int8_t update_ema_i8(int8_t avg, int8_t sample, uint8_t alpha);
+    static uint32_t update_ema_u32(uint32_t avg, uint32_t sample, uint8_t alpha);
+
+    PeerStatisticsEntry* find_entry(NodeId node_id);
+    const PeerStatisticsEntry* find_entry(NodeId node_id) const;
+
+    void maybe_flush(PeerStatisticsEntry& entry);
+    void flush(PeerStatisticsEntry& entry);
+
+    IStorageManager& storage_;
+    IFreeRTOSHAL& hal_freertos_;
+    ITimerHAL& hal_timer_;
+
+    etl::vector<PeerStatisticsEntry, MAX_PEERS> entries_;
+    SemaphoreHandle_t mutex_ = nullptr;
+};

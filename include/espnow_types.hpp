@@ -169,6 +169,37 @@ struct PendingAck
 };
 
 /**
+ * @brief Structure for peer statistics.
+ */
+struct PeerStatistics
+{
+    NodeId node_id = 0;        ///< Node ID
+    int8_t rssi_last = 0;      ///< Last received RSSI
+    uint8_t rssi_alpha = 20;   ///< Alpha derived from heartbeat interval
+    int8_t rssi_avg = 0;       ///< Exponential moving average
+    uint32_t packets_rx = 0;   ///< Number of packets received
+    uint32_t packets_tx = 0;   ///< Number of packets transmitted
+    uint32_t packets_lost = 0; ///< Number of packets lost
+    uint32_t retries = 0;      ///< Number of retries
+    uint32_t rtt_last_ms = 0;  ///< Last round-trip time in milliseconds
+    uint32_t rtt_avg_ms = 0;   ///< Average round-trip time in milliseconds
+    uint8_t dirty_count = 0;   ///< Flush to storage when threshold reached
+};
+
+/**
+ * @brief Structure for persistent peer statistics.
+ */
+struct PeerStatisticsPersist
+{
+    NodeId node_id = 0;        ///< Node ID
+    int8_t rssi_avg = 0;       ///< Exponential moving average
+    uint32_t packets_rx = 0;   ///< Number of packets received
+    uint32_t packets_tx = 0;   ///< Number of packets transmitted
+    uint32_t packets_lost = 0; ///< Number of packets lost
+    uint32_t rtt_avg_ms = 0;   ///< Average round-trip time in milliseconds
+};
+
+/**
  * @brief Configuration structure for initializing the EspNowManager.
  */
 struct EspNowConfig
