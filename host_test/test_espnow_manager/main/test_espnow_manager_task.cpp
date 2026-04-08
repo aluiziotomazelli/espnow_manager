@@ -63,6 +63,8 @@ public:
     using EspNowManager::node_fsm_;
     using EspNowManager::rx_queue_handle_;
     using EspNowManager::rx_task_handle_;
+    using EspNowManager::scan_retry_;
+    using EspNowManager::tick_scan_retry;
 };
 
 // ---------------------------------------------------------------------------
@@ -743,4 +745,78 @@ TEST_F(EspNowManagerTaskTest, FailedHeaderDecodeDoesNotCallOnPacketReceived)
     EXPECT_CALL(*stats_mgr_, on_packet_received(_, _, _)).Times(0);
 
     receive_valid_rx_packet();
+}
+
+// ===========================================================================
+// tick_scan_retry — scan retry logic
+// ===========================================================================
+
+TEST_F(EspNowManagerTaskTest, TickScanRetryInactiveDoesNothing)
+{
+    init_and_wait();
+
+    // Ensure scan_retry_ is inactive
+    sut_->scan_retry_.active = false;
+
+    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(0);
+    sut_->tick_scan_retry(999999); // Far in the future — should not trigger
+}
+
+TEST_F(EspNowManagerTaskTest, TickScanRetryBeforeNextAttemptDoesNothing)
+{
+    init_and_wait();
+
+    sut_->scan_retry_.active = true;
+    sut_->scan_retry_.next_attempt_ms = 999999; // Far in the future
+
+    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(0);
+    sut_->tick_scan_retry(0); // now_ms is before next_attempt_ms
+}
+
+TEST_F(EspNowManagerTaskTest, TickScanRetryWhenNotIdleResetsAndDoesNothing)
+{
+    init_and_wait();
+
+    // Set state to OPERATIONAL (not IDLE)
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+
+    // Add a peer via mock
+    PeerInfo p{};
+    p.node_id = kNodeId;
+    etl::vector<PeerInfo, MAX_PEERS> peers;
+    peers.push_back(p);
+    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+
+    sut_->scan_retry_.active = true;
+    sut_->scan_retry_.next_attempt_ms = 0; // Ready to trigger
+
+    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(0);
+    sut_->tick_scan_retry(999999);
+
+    // Should have reset the retry state
+    EXPECT_FALSE(sut_->scan_retry_.active);
+}
+
+TEST_F(EspNowManagerTaskTest, TickScanRetryWhenIdleTriggersRecoveryScan)
+{
+    init_and_wait();
+
+    // Set state to IDLE with peers
+    node_fsm_->set_state(NodeState::IDLE);
+
+    // Add a peer via mock
+    PeerInfo p{};
+    p.node_id = kNodeId;
+    etl::vector<PeerInfo, MAX_PEERS> peers;
+    peers.push_back(p);
+    ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(peers));
+
+    sut_->scan_retry_.active = true;
+    sut_->scan_retry_.next_attempt_ms = 0; // Ready to trigger
+
+    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(1);
+    sut_->tick_scan_retry(999999);
+
+    // Should have deactivated the retry state
+    EXPECT_FALSE(sut_->scan_retry_.active);
 }
