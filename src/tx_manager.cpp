@@ -185,55 +185,6 @@ void TxManager::tx_task_func(void* arg)
     vTaskDelete(NULL);
 }
 
-void TxManager::handle_esp_now_send_errors(esp_err_t error)
-{
-    if (error == ESP_ERR_ESPNOW_NO_MEM) {
-        // Transient: do not penalize the FSM, ACK timeout will handle retry
-        ESP_LOGW(TAG, "hal_esp_now_send: out of memory, will retry via timeout");
-    }
-    else if (error == ESP_ERR_ESPNOW_NOT_INIT || error == ESP_ERR_ESPNOW_ARG) {
-        // Programming errors: log and discard
-        ESP_LOGE(TAG, "hal_esp_now_send: unrecoverable error %s", esp_err_to_name(error));
-    }
-    else {
-        // ESP_ERR_ESPNOW_NOT_FOUND, CHAN, IF, INTERNAL — link-level failures
-        ESP_LOGW(TAG, "hal_esp_now_send failed: %s", esp_err_to_name(error));
-        fsm_.on_delivery_failure();
-    }
-}
-
-void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
-{
-    // Multiple notification bits can arrive simultaneously and must all be
-    // processed. else-if would silently drop bits after the first match.
-    if ((notifications & NOTIFY_LINK_ALIVE) == NOTIFY_LINK_ALIVE) {
-        fsm_.on_link_alive();
-    }
-    // Each NOTIFY_DELIVERY_FAILURE is delegated to FSM decide if MAX_FAILURES was reached
-    if ((notifications & NOTIFY_DELIVERY_FAILURE) == NOTIFY_DELIVERY_FAILURE) {
-        // FSM check if MAX_FAILURES was reached and observer should be notified
-        bool max_failures = fsm_.on_delivery_failure();
-        if (max_failures) {
-            // Notify RX task that max failures were reached
-            ESP_LOGW(TAG, "Max failures reached, notifying RX task");
-            freertos_hal_.task_notify(rx_task_handle_, NOTIFY_MAX_FAILURES, eSetBits);
-        }
-    }
-    if ((notifications & NOTIFY_DELIVERY_SUCCESS) == NOTIFY_DELIVERY_SUCCESS) {
-        fsm_.on_delivery_success();
-    }
-    if ((notifications & NOTIFY_LOGICAL_ACK) == NOTIFY_LOGICAL_ACK) {
-        fsm_.on_ack_received();
-        freertos_hal_.timer_stop(ack_timeout_timer_, pdMS_TO_TICKS(10));
-    }
-    if ((notifications & NOTIFY_ACK_TIMEOUT) == NOTIFY_ACK_TIMEOUT) {
-        fsm_.on_ack_timeout();
-    }
-    if ((notifications & NOTIFY_TASK_TO_STOP) == NOTIFY_TASK_TO_STOP) {
-        should_stop = true;
-    }
-}
-
 void TxManager::tx_task()
 {
     DecodedTxPacket structured_packet;
@@ -290,7 +241,7 @@ void TxManager::tx_task()
                     if (next == TxState::WAITING_FOR_ACK) {
                         PendingAck pending = {
                             .sequence_number = structured_packet.header.sequence_number,
-                            .timestamp_ms = 0,
+                            .timestamp_ms = structured_packet.header.timestamp_ms,
                             .retries_left = 3,
                             .packet = raw_packet,
                             .node_id = structured_packet.header.dest_node_id};
@@ -374,6 +325,55 @@ void TxManager::tx_task()
 // =====================================================================================
 // Private methods
 // =====================================================================================
+
+void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
+{
+    // Multiple notification bits can arrive simultaneously and must all be
+    // processed. else-if would silently drop bits after the first match.
+    if ((notifications & NOTIFY_LINK_ALIVE) == NOTIFY_LINK_ALIVE) {
+        fsm_.on_link_alive();
+    }
+    // Each NOTIFY_DELIVERY_FAILURE is delegated to FSM decide if MAX_FAILURES was reached
+    if ((notifications & NOTIFY_DELIVERY_FAILURE) == NOTIFY_DELIVERY_FAILURE) {
+        // FSM check if MAX_FAILURES was reached and observer should be notified
+        bool max_failures = fsm_.on_delivery_failure();
+        if (max_failures) {
+            // Notify RX task that max failures were reached
+            ESP_LOGW(TAG, "Max failures reached, notifying RX task");
+            freertos_hal_.task_notify(rx_task_handle_, NOTIFY_MAX_FAILURES, eSetBits);
+        }
+    }
+    if ((notifications & NOTIFY_DELIVERY_SUCCESS) == NOTIFY_DELIVERY_SUCCESS) {
+        fsm_.on_delivery_success();
+    }
+    if ((notifications & NOTIFY_LOGICAL_ACK) == NOTIFY_LOGICAL_ACK) {
+        fsm_.on_ack_received();
+        freertos_hal_.timer_stop(ack_timeout_timer_, pdMS_TO_TICKS(10));
+    }
+    if ((notifications & NOTIFY_ACK_TIMEOUT) == NOTIFY_ACK_TIMEOUT) {
+        fsm_.on_ack_timeout();
+    }
+    if ((notifications & NOTIFY_TASK_TO_STOP) == NOTIFY_TASK_TO_STOP) {
+        should_stop = true;
+    }
+}
+
+void TxManager::handle_esp_now_send_errors(esp_err_t error)
+{
+    if (error == ESP_ERR_ESPNOW_NO_MEM) {
+        // Transient: do not penalize the FSM, ACK timeout will handle retry
+        ESP_LOGW(TAG, "hal_esp_now_send: out of memory, will retry via timeout");
+    }
+    else if (error == ESP_ERR_ESPNOW_NOT_INIT || error == ESP_ERR_ESPNOW_ARG) {
+        // Programming errors: log and discard
+        ESP_LOGE(TAG, "hal_esp_now_send: unrecoverable error %s", esp_err_to_name(error));
+    }
+    else {
+        // ESP_ERR_ESPNOW_NOT_FOUND, CHAN, IF, INTERNAL — link-level failures
+        ESP_LOGW(TAG, "hal_esp_now_send failed: %s", esp_err_to_name(error));
+        fsm_.on_delivery_failure();
+    }
+}
 
 void TxManager::notify_logical_ack()
 {
