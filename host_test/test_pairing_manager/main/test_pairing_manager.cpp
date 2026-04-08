@@ -2,7 +2,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "mock_message_codec.hpp"
+#include "mock_hal_timer.hpp"
 #include "mock_peer_manager.hpp"
 #include "mock_tx_manager.hpp"
 #include "mock_hal_freertos.hpp"
@@ -36,8 +36,8 @@ static TaskHandle_t fake_rx_task = reinterpret_cast<TaskHandle_t>(&fake_task_sto
 class TestablePairingManager : public PairingManager
 {
 public:
-    TestablePairingManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, IFreeRTOSHAL& hal_freertos)
-        : PairingManager(tx_mgr, peer_mgr, hal_freertos)
+    TestablePairingManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, IFreeRTOSHAL& hal_freertos, ITimerHAL& hal_timer)
+        : PairingManager(tx_mgr, peer_mgr, hal_freertos, hal_timer)
     {
     }
 
@@ -47,12 +47,6 @@ public:
 
 // ---------------------------------------------------------------------------
 // Fixture — non-HUB node
-//
-// NiceMock rationale: codec_.encode() and tx_mgr_.queue_packet() are called
-// inside send_pair_request(), which fires on start() and on every tick()
-// interval. Tests focused on state transitions (is_active_, timeout)
-// should not fail on those incidental transmissions — NiceMock silences them.
-// Tests that explicitly verify transmission behaviour use EXPECT_CALL directly.
 // ---------------------------------------------------------------------------
 class PairingManagerTest : public ::testing::Test
 {
@@ -60,13 +54,13 @@ protected:
     NiceMock<MockTxManager> tx_mgr_;
     NiceMock<MockPeerManager> peer_mgr_;
     NiceMock<MockFreeRTOSHAL> hal_freertos_;
-    NiceMock<MockMessageCodec> codec_; // Kept for Mock setup if needed by helper
+    NiceMock<MockTimerHAL> hal_timer_;
 
     std::unique_ptr<TestablePairingManager> sut_;
 
     void SetUp() override
     {
-        sut_ = std::make_unique<TestablePairingManager>(tx_mgr_, peer_mgr_, hal_freertos_);
+        sut_ = std::make_unique<TestablePairingManager>(tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
         sut_->init(kNodeId, kNodeType, fake_rx_task, 0);
     }
 
@@ -120,13 +114,13 @@ protected:
     NiceMock<MockTxManager> tx_mgr_;
     NiceMock<MockPeerManager> peer_mgr_;
     NiceMock<MockFreeRTOSHAL> hal_freertos_;
-    NiceMock<MockMessageCodec> codec_;
+    NiceMock<MockTimerHAL> hal_timer_;
 
     std::unique_ptr<TestablePairingManager> sut_;
 
     void SetUp() override
     {
-        sut_ = std::make_unique<TestablePairingManager>(tx_mgr_, peer_mgr_, hal_freertos_);
+        sut_ = std::make_unique<TestablePairingManager>(tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
         sut_->init(kHubId, kHubType, fake_rx_task, 0);
     }
 
@@ -153,13 +147,13 @@ protected:
 
 TEST_F(PairingManagerTest, InitReturnsOk)
 {
-    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     EXPECT_EQ(pm.init(kNodeId, kNodeType, fake_rx_task, 0), ESP_OK);
 }
 
 TEST_F(PairingManagerTest, InitReturnsInvalidArgIfRxTaskHandleIsNull)
 {
-    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     // Pass nullptr as rx_task_handle — should return ESP_ERR_INVALID_ARG
     EXPECT_EQ(pm.init(kNodeId, kNodeType, nullptr, 0), ESP_ERR_INVALID_ARG);
 }
@@ -223,7 +217,7 @@ TEST_F(PairingManagerTest, DeinitClearsRxTaskHandle)
 
 TEST_F(PairingManagerTest, StartFailsIfNotInitialized)
 {
-    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     // init() not called — is_initialized_ is false
     EXPECT_EQ(pm.start(PAIRING_TIMEOUT_MS, kT0), ESP_ERR_INVALID_STATE);
 }
@@ -271,7 +265,7 @@ TEST_F(PairingManagerTest, TickDoesNothingIfNotActive)
 
 TEST_F(PairingManagerTest, TickDoesNothingIfNotInitialized)
 {
-    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
     pm.tick(kT0 + PAIRING_TIMEOUT_MS + 1);
 }
@@ -344,7 +338,7 @@ TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotActive)
 
 TEST_F(PairingManagerTest, HandleResponseIgnoredIfNotInitialized)
 {
-    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     // In actual implementation, it returns early before any logic if not initialized
     auto decoded = make_decoded_pair_response();
     pm.handle_response(decoded);
@@ -417,7 +411,7 @@ TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotActive)
 
 TEST_F(PairingManagerHubTest, HandleRequestIgnoredIfNotInitialized)
 {
-    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_);
+    TestablePairingManager pm(tx_mgr_, peer_mgr_, hal_freertos_, hal_timer_);
     auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
     pm.handle_request(decoded);
 }
