@@ -38,6 +38,8 @@ protected:
     void send_heartbeat();
 
 private:
+    uint64_t get_time_ms() const;
+
     NodeId my_id_;
 
     ITxManager& tx_mgr_;

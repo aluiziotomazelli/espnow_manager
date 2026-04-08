@@ -4,11 +4,12 @@
 #include "i_tx_manager.hpp"
 #include "i_peer_manager.hpp"
 #include "i_hal_freertos.hpp"
+#include "i_hal_timer.hpp"
 
 class PairingManager : public IPairingManager
 {
 public:
-    PairingManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, IFreeRTOSHAL& hal_freertos);
+    PairingManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, IFreeRTOSHAL& hal_freertos, ITimerHAL& hal_timer);
 
     ~PairingManager() = default;
 
@@ -41,6 +42,7 @@ private:
     ITxManager& tx_mgr_;
     IPeerManager& peer_mgr_;
     IFreeRTOSHAL& hal_freertos_;
+    ITimerHAL& hal_timer_;
 
     NodeType my_type_;
     NodeId my_id_;
@@ -57,4 +59,5 @@ private:
     static constexpr uint32_t periodic_interval_ms_ = PAIRING_PERIODIC_INTERVAL_MS;
 
     void notify_rx_task_pairing_done();
+    uint64_t get_time_ms() const;
 };

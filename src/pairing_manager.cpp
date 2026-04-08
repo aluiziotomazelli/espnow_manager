@@ -10,10 +10,15 @@
 
 static const char* TAG = "PairingMgr";
 
-PairingManager::PairingManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, IFreeRTOSHAL& hal_freertos)
+PairingManager::PairingManager(
+    ITxManager& tx_mgr,
+    IPeerManager& peer_mgr,
+    IFreeRTOSHAL& hal_freertos,
+    ITimerHAL& hal_timer)
     : tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
     , hal_freertos_(hal_freertos)
+    , hal_timer_(hal_timer)
 {
 }
 
@@ -98,10 +103,13 @@ void PairingManager::handle_request(const DecodedRxPacket& decoded)
     DecodedTxPacket tx_packet{};
     memcpy(tx_packet.dest_mac, decoded.raw.src_mac, 6);
 
+    uint64_t now_ms = get_time_ms();
+
     tx_packet.header.msg_type = MessageType::PAIR_RESPONSE;
     tx_packet.header.sender_node_id = my_id_;
     tx_packet.header.sender_type = my_type_;
     tx_packet.header.dest_node_id = header.sender_node_id;
+    tx_packet.header.timestamp_ms = now_ms;
 
     PairStatus status;
     if (header.sender_type == ReservedTypes::HUB) {
@@ -153,6 +161,7 @@ void PairingManager::send_pair_request()
     tx_packet.header.sender_node_id = my_id_;
     tx_packet.header.sender_type = my_type_;
     tx_packet.header.dest_node_id = ReservedIds::HUB;
+    tx_packet.header.timestamp_ms = get_time_ms();
 
     PairRequest req{};
     req.heartbeat_interval_ms = heartbeat_interval_ms_;
@@ -171,4 +180,9 @@ void PairingManager::notify_rx_task_pairing_done()
     if (rx_task_handle_ != nullptr) {
         hal_freertos_.task_notify(rx_task_handle_, NOTIFY_PAIRING_DONE, eSetBits);
     }
+}
+
+uint64_t PairingManager::get_time_ms() const
+{
+    return hal_timer_.get_time_us() / 1000;
 }

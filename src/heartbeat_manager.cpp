@@ -53,7 +53,7 @@ void HeartbeatManager::handle_request(const DecodedRxPacket& decoded)
 {
     const MessageHeader& header = decoded.header;
 
-    uint64_t now_ms = hal_timer_.get_time_us() / 1000;
+    uint64_t now_ms = get_time_ms();
 
     peer_mgr_.update_last_seen(header.sender_node_id, now_ms);
     ESP_LOGI(TAG, "Heartbeat received from Node ID %d.", (int)header.sender_node_id);
@@ -65,6 +65,7 @@ void HeartbeatManager::handle_request(const DecodedRxPacket& decoded)
     tx_packet.header.sender_node_id = my_id_;
     tx_packet.header.sender_type = my_type_;
     tx_packet.header.dest_node_id = header.sender_node_id;
+    tx_packet.header.timestamp_ms = now_ms;
 
     HeartbeatResponse resp{};
     resp.server_time_ms = now_ms;
@@ -85,14 +86,16 @@ void HeartbeatManager::send_heartbeat()
         memcpy(tx_packet.dest_mac, BROADCAST_MAC, 6);
     }
 
+    uint64_t now_ms = get_time_ms();
+
     tx_packet.header.msg_type = MessageType::HEARTBEAT;
     tx_packet.header.sender_node_id = my_id_;
     tx_packet.header.sender_type = my_type_;
     tx_packet.header.dest_node_id = ReservedIds::HUB;
+    tx_packet.header.timestamp_ms = now_ms;
 
     HeartbeatMessage hb{};
-    uint64_t uptime = hal_timer_.get_time_us() / 1000;
-    hb.uptime_ms = uptime;
+    hb.uptime_ms = now_ms;
     hb.rssi = last_rssi_;
     // battery_mv remains zero until hardware support is added
 
@@ -102,4 +105,13 @@ void HeartbeatManager::send_heartbeat()
     memcpy(tx_packet.payload, &hb.uptime_ms, tx_packet.payload_len);
 
     tx_mgr_.queue_packet(tx_packet);
+}
+
+// ==========================================================================================
+// Private methods
+// ==========================================================================================
+
+uint64_t HeartbeatManager::get_time_ms() const
+{
+    return hal_timer_.get_time_us() / 1000;
 }

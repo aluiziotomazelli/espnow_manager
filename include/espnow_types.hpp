@@ -61,7 +61,7 @@ struct RxPacket
     uint8_t data[ESP_NOW_MAX_DATA_LEN]; /**< Raw payload data */
     size_t len;                         /**< Length of the payload in bytes */
     int8_t rssi;                        /**< Received Signal Strength Indicator (dBm) */
-    uint64_t timestamp_us;              /**< Microsecond timestamp (esp_timer_get_time) */
+    uint64_t timestamp_ms;              /**< Microsecond timestamp (converted to ms in rx_task) */
 };
 
 /**

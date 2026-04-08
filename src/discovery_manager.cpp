@@ -230,6 +230,7 @@ MessageHeader DiscoveryManager::make_probe_header()
     resp.sender_node_id = my_node_id_;
     resp.sender_type = my_node_type_;
     resp.dest_node_id = ReservedIds::HUB;
+    resp.timestamp_ms = 0;
 
     return resp;
 }
@@ -278,6 +279,7 @@ MessageHeader DiscoveryManager::make_response_header()
     resp.sender_node_id = my_node_id_;
     resp.sender_type = my_node_type_;
     resp.dest_node_id = destination_node_id_;
+    resp.timestamp_ms = 0;
 
     return resp;
 }
