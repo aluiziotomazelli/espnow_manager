@@ -22,6 +22,7 @@
 #include "mock_storage_manager.hpp"
 #include "mock_channel_monitor.hpp"
 #include "mock_node_state_machine.hpp"
+#include "mock_statistics_manager.hpp"
 
 #include "espnow_manager.hpp"
 
@@ -132,6 +133,7 @@ protected:
     NiceMock<MockMessageRouter>* message_router_;
     NiceMock<MockChannelMonitor>* channel_monitor_;
     NiceMock<MockNodeStateMachine>* node_fsm_;
+    NiceMock<MockStatisticsManager>* stats_mgr_;
 
     std::unique_ptr<EspNowManagerTestable> sut_;
 
@@ -152,6 +154,7 @@ protected:
         auto heartbeat_mgr = std::make_unique<NiceMock<MockHeartbeatManager>>();
         auto pairing_mgr = std::make_unique<NiceMock<MockPairingManager>>();
         auto message_router = std::make_unique<NiceMock<MockMessageRouter>>();
+        auto stats_mgr = std::make_unique<NiceMock<MockStatisticsManager>>();
         auto node_fsm = std::make_unique<NiceMock<MockNodeStateMachine>>();
 
         // Save raw pointers before ownership is transferred to sut_
@@ -170,6 +173,7 @@ protected:
         heartbeat_mgr_ = heartbeat_mgr.get();
         pairing_mgr_ = pairing_mgr.get();
         message_router_ = message_router.get();
+        stats_mgr_ = stats_mgr.get();
         node_fsm_ = node_fsm.get();
 
         // Clear the variable between tests
@@ -232,6 +236,7 @@ protected:
             std::move(heartbeat_mgr),
             std::move(pairing_mgr),
             std::move(message_router),
+            std::move(stats_mgr),
             std::move(node_fsm));
     }
 

@@ -26,6 +26,7 @@
 #include "mock_channel_monitor.hpp"
 #include "mock_tx_manager.hpp"
 #include "mock_tx_state_machine.hpp"
+#include "mock_statistics_manager.hpp"
 #include "hal_real_freertos.hpp"
 
 #include "espnow_manager.hpp"
@@ -94,6 +95,7 @@ protected:
     NiceMock<MockPairingManager>* pairing_mgr_;
     NiceMock<MockMessageRouter>* message_router_;
     NiceMock<MockNodeStateMachine>* node_fsm_;
+    NiceMock<MockStatisticsManager>* stats_mgr_;
 
     std::unique_ptr<EspNowManagerTestable> sut_;
 
@@ -115,6 +117,7 @@ protected:
         auto heartbeat_mgr = std::make_unique<NiceMock<MockHeartbeatManager>>();
         auto pairing_mgr = std::make_unique<NiceMock<MockPairingManager>>();
         auto message_router = std::make_unique<NiceMock<MockMessageRouter>>();
+        auto stats_mgr = std::make_unique<NiceMock<MockStatisticsManager>>();
         auto node_fsm = std::make_unique<NiceMock<MockNodeStateMachine>>();
 
         storage_ = storage.get();
@@ -131,6 +134,7 @@ protected:
         heartbeat_mgr_ = heartbeat_mgr.get();
         pairing_mgr_ = pairing_mgr.get();
         message_router_ = message_router.get();
+        stats_mgr_ = stats_mgr.get();
         node_fsm_ = node_fsm.get();
 
         // EspNowDriver succeeds — no real WiFi on host
@@ -171,6 +175,7 @@ protected:
             std::move(heartbeat_mgr),
             std::move(pairing_mgr),
             std::move(message_router),
+            std::move(stats_mgr),
             std::move(node_fsm));
     }
 
