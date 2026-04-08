@@ -227,6 +227,6 @@ protected:
 
     ScanRetry scan_retry_{};
 
-    void tick_scan_retry(uint64_t now_ms);
+    void tick_scan_retry(uint64_t now_ms); // protected
     void handle_scan_retries(bool has_peers);
 };
