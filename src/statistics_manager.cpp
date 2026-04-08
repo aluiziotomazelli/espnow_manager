@@ -4,7 +4,7 @@
 #include "esp_log.h"
 #include "statistics_manager.hpp"
 
-static const char* TAG = "StatsMgr";
+// static const char* TAG = "StatsMgr";
 
 StatisticsManager::StatisticsManager(IStorageManager& storage, IFreeRTOSHAL& hal_freertos)
     : storage_(storage)
