@@ -90,6 +90,37 @@ struct PersistentChannel
 };
 
 /**
+ * @brief Internal structure for persistent statistics data
+ */
+struct PersistentStats
+{
+    static constexpr uint32_t MAGIC = 0x53544154; // "STAT"
+    static constexpr uint32_t VERSION = 1;
+
+    uint32_t magic;
+    uint32_t version;
+    uint8_t num_stats;
+    PeerStatisticsPersist stats[MAX_PEERS];
+    uint32_t crc;
+
+    bool operator==(const PersistentStats& other) const
+    {
+        if (num_stats != other.num_stats)
+            return false;
+        for (uint8_t i = 0; i < num_stats; ++i) {
+            if (stats[i].node_id != other.stats[i].node_id || stats[i].rssi_avg != other.stats[i].rssi_avg ||
+                stats[i].packets_rx != other.stats[i].packets_rx || stats[i].packets_tx != other.stats[i].packets_tx ||
+                stats[i].packets_lost != other.stats[i].packets_lost ||
+                stats[i].rtt_avg_ms != other.stats[i].rtt_avg_ms) {
+                return false;
+            }
+        }
+        return true;
+    }
+    bool operator!=(const PersistentStats& other) const { return !(*this == other); }
+};
+
+/**
  * @brief Class to handle persistence of EspNowManager component data in RTC memory and NVS.
  */
 class StorageManager : public IStorageManager
@@ -98,10 +129,12 @@ public:
     StorageManager(
         std::unique_ptr<IPersistenceBackend> rtc_peers,
         std::unique_ptr<IPersistenceBackend> rtc_channel,
+        std::unique_ptr<IPersistenceBackend> rtc_stats,
         std::unique_ptr<IPersistenceBackend> nvs_peers,
-        std::unique_ptr<IPersistenceBackend> nvs_channel);
+        std::unique_ptr<IPersistenceBackend> nvs_channel,
+        std::unique_ptr<IPersistenceBackend> nvs_stats);
 
-    ~StorageManager();
+    ~StorageManager() override;
 
     /** @copydoc IStorageManager::load_channel */
     esp_err_t load_channel(uint8_t& channel) override;
@@ -115,6 +148,12 @@ public:
     /** @copydoc IStorageManager::store_peers */
     esp_err_t store_peers(const etl::ivector<PersistentPeer>& peers, bool force_nvs_commit = true) override;
 
+    /** @copydoc IStorageManager::load_stats */
+    esp_err_t load_stats(etl::ivector<PeerStatisticsPersist>& stats) override;
+
+    /** @copydoc IStorageManager::store_stats */
+    esp_err_t store_stats(const PeerStatisticsPersist& stats) override;
+
     /**
      * @brief Calculates the CRC of the given data.
      * @tparam T The type of the data to calculate the CRC of.
@@ -126,8 +165,10 @@ public:
 private:
     std::unique_ptr<IPersistenceBackend> rtc_peers_backend_;
     std::unique_ptr<IPersistenceBackend> rtc_channel_backend_;
+    std::unique_ptr<IPersistenceBackend> rtc_stats_backend_;
     std::unique_ptr<IPersistenceBackend> nvs_peers_backend_;
     std::unique_ptr<IPersistenceBackend> nvs_channel_backend_;
+    std::unique_ptr<IPersistenceBackend> nvs_stats_backend_;
 
     esp_err_t load_raw_peers(PersistentPeers& out_peers);
     esp_err_t validate_peers_data(const PersistentPeers& peers);
@@ -136,4 +177,8 @@ private:
     esp_err_t load_raw_channel(PersistentChannel& out_channel);
     esp_err_t validate_channel_data(const PersistentChannel& channel);
     bool is_data_dirty(const PersistentChannel& new_channel);
+
+    esp_err_t load_raw_stats(PersistentStats& out_stats);
+    esp_err_t validate_stats_data(const PersistentStats& stats);
+    bool is_data_dirty(const PersistentStats& new_stats);
 };

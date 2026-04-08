@@ -25,16 +25,18 @@ esp_err_t StatisticsManager::init()
     }
 
     // Load existing statistics from storage if any
-    etl::vector<PeerStatisticsPersist, MAX_PEERS> persisted = storage_.get_all_stats();
-    for (const auto& p : persisted) {
-        PeerStatisticsEntry entry;
-        entry.stats.node_id = p.node_id;
-        entry.stats.rssi_avg = p.rssi_avg;
-        entry.stats.packets_rx = p.packets_rx;
-        entry.stats.packets_tx = p.packets_tx;
-        entry.stats.packets_lost = p.packets_lost;
-        entry.stats.rtt_avg_ms = p.rtt_avg_ms;
-        entries_.push_back(entry);
+    etl::vector<PeerStatisticsPersist, MAX_PEERS> persisted;
+    if (storage_.load_stats(persisted) == ESP_OK) {
+        for (const auto& p : persisted) {
+            PeerStatisticsEntry entry;
+            entry.stats.node_id = p.node_id;
+            entry.stats.rssi_avg = p.rssi_avg;
+            entry.stats.packets_rx = p.packets_rx;
+            entry.stats.packets_tx = p.packets_tx;
+            entry.stats.packets_lost = p.packets_lost;
+            entry.stats.rtt_avg_ms = p.rtt_avg_ms;
+            entries_.push_back(entry);
+        }
     }
 
     return ESP_OK;
@@ -74,9 +76,8 @@ void StatisticsManager::on_peer_added(NodeId node_id, uint32_t heartbeat_interva
 void StatisticsManager::on_peer_removed(NodeId node_id)
 {
     if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
-        auto it = std::find_if(entries_.begin(), entries_.end(), [node_id](const auto& e) {
-            return e.stats.node_id == node_id;
-        });
+        auto it = std::find_if(
+            entries_.begin(), entries_.end(), [node_id](const auto& e) { return e.stats.node_id == node_id; });
         if (it != entries_.end()) {
             entries_.erase(it);
         }
@@ -93,7 +94,8 @@ void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi, uint64_t
             entry->stats.rssi_last = rssi;
             if (entry->stats.rssi_avg == 0) {
                 entry->stats.rssi_avg = rssi;
-            } else {
+            }
+            else {
                 entry->stats.rssi_avg = update_ema_i8(entry->stats.rssi_avg, rssi, entry->stats.rssi_alpha);
             }
             entry->stats.packets_rx++;
@@ -112,7 +114,8 @@ void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_ms)
             entry->stats.rtt_last_ms = rtt_ms;
             if (entry->stats.rtt_avg_ms == 0) {
                 entry->stats.rtt_avg_ms = rtt_ms;
-            } else {
+            }
+            else {
                 // RTT uses the same alpha as RSSI for now, or a fixed one (e.g. 1/8)
                 entry->stats.rtt_avg_ms = update_ema_u32(entry->stats.rtt_avg_ms, rtt_ms, entry->stats.rssi_alpha);
             }
@@ -190,7 +193,9 @@ etl::vector<PeerStatistics, MAX_PEERS> StatisticsManager::get_all() const
     return result;
 }
 
+// =========================================================================================
 // Private methods
+// =========================================================================================
 
 StatisticsManager::PeerStatisticsEntry* StatisticsManager::find_entry(NodeId node_id)
 {
@@ -214,12 +219,18 @@ const StatisticsManager::PeerStatisticsEntry* StatisticsManager::find_entry(Node
 
 uint8_t StatisticsManager::compute_alpha(uint32_t heartbeat_interval_ms)
 {
-    // If heartbeat is fast (e.g. 1s), use small alpha for more smoothing.
-    // If heartbeat is slow (e.g. 60s), use larger alpha to react faster to changes.
-    // Fixed point alpha (0-255).
-    if (heartbeat_interval_ms <= 1000) return 20;  // ~0.08
-    if (heartbeat_interval_ms <= 10000) return 40; // ~0.15
-    return 60; // ~0.23
+    // Returns EMA alpha in fixed point (0-256), where 256 is 100% weight to new sample.
+    // Short intervals (1s)  -> alpha ~10% (26/256) - Smooth
+    // Medium intervals (10s) -> alpha ~20% (51/256)
+    // Long intervals (30s)   -> alpha ~25% (64/256)
+    // Very long/Unknown      -> alpha ~40% (102/256) - Reactive
+    if (heartbeat_interval_ms == 0)
+        return 51; // 20%
+    if (heartbeat_interval_ms < 5000)
+        return 26; // 10%
+    if (heartbeat_interval_ms < 30000)
+        return 64; // 25%
+    return 102;    // 40%
 }
 
 int8_t StatisticsManager::update_ema_i8(int8_t avg, int8_t sample, uint8_t alpha)
@@ -238,10 +249,8 @@ uint32_t StatisticsManager::update_ema_u32(uint32_t avg, uint32_t sample, uint8_
 
 void StatisticsManager::maybe_flush(PeerStatisticsEntry& entry)
 {
-    if (entry.dirty_rx >= FLUSH_THRESHOLD_RX ||
-        entry.dirty_tx >= FLUSH_THRESHOLD_TX ||
-        entry.dirty_loss >= FLUSH_THRESHOLD_LOSS ||
-        entry.dirty_rtt >= FLUSH_THRESHOLD_RTT) {
+    if (entry.dirty_rx >= FLUSH_THRESHOLD_RX || entry.dirty_tx >= FLUSH_THRESHOLD_TX ||
+        entry.dirty_loss >= FLUSH_THRESHOLD_LOSS || entry.dirty_rtt >= FLUSH_THRESHOLD_RTT) {
         flush(entry);
     }
 }

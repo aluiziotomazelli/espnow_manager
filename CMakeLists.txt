@@ -15,6 +15,7 @@ idf_component_register(
         "src/espnow_driver.cpp"
         "src/node_state_machine.cpp"
         "src/channel_monitor.cpp"
+        "src/statistics_manager.cpp"
     
     INCLUDE_DIRS
         "include"

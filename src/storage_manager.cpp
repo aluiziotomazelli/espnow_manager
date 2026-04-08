@@ -16,12 +16,16 @@ static const char* TAG = "StorageManager";
 StorageManager::StorageManager(
     std::unique_ptr<IPersistenceBackend> rtc_peers,
     std::unique_ptr<IPersistenceBackend> rtc_channel,
+    std::unique_ptr<IPersistenceBackend> rtc_stats,
     std::unique_ptr<IPersistenceBackend> nvs_peers,
-    std::unique_ptr<IPersistenceBackend> nvs_channel)
+    std::unique_ptr<IPersistenceBackend> nvs_channel,
+    std::unique_ptr<IPersistenceBackend> nvs_stats)
     : rtc_peers_backend_(std::move(rtc_peers))
     , rtc_channel_backend_(std::move(rtc_channel))
+    , rtc_stats_backend_(std::move(rtc_stats))
     , nvs_peers_backend_(std::move(nvs_peers))
     , nvs_channel_backend_(std::move(nvs_channel))
+    , nvs_stats_backend_(std::move(nvs_stats))
 {
 }
 
@@ -128,6 +132,59 @@ esp_err_t StorageManager::store_peers(const etl::ivector<PersistentPeer>& peers,
     }
 
     return err;
+}
+
+esp_err_t StorageManager::load_stats(etl::ivector<PeerStatisticsPersist>& stats)
+{
+    PersistentStats stats_data = {};
+    esp_err_t ret = load_raw_stats(stats_data);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    stats.clear();
+    const uint8_t count = std::min(stats_data.num_stats, (uint8_t)stats.capacity());
+    for (uint8_t i = 0; i < count; ++i) {
+        stats.push_back(stats_data.stats[i]);
+    }
+    return ESP_OK;
+}
+
+esp_err_t StorageManager::store_stats(const PeerStatisticsPersist& stats)
+{
+    PersistentStats stats_data = {};
+    load_raw_stats(stats_data); // Load existing or start with empty
+
+    // Update or Add
+    bool found = false;
+    for (uint8_t i = 0; i < stats_data.num_stats; ++i) {
+        if (stats_data.stats[i].node_id == stats.node_id) {
+            stats_data.stats[i] = stats;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        if (stats_data.num_stats >= MAX_PEERS) {
+            return ESP_ERR_NO_MEM;
+        }
+        stats_data.stats[stats_data.num_stats++] = stats;
+    }
+
+    // Check dirty before saving
+    if (!is_data_dirty(stats_data)) {
+        return ESP_OK;
+    }
+
+    // Prepare for saving
+    stats_data.magic = PersistentStats::MAGIC;
+    stats_data.version = PersistentStats::VERSION;
+    stats_data.crc = calculate_crc(stats_data);
+
+    // Save to RTC and NVS
+    rtc_stats_backend_->save(&stats_data, sizeof(stats_data));
+    return nvs_stats_backend_->save(&stats_data, sizeof(stats_data));
 }
 
 // ================================================================
@@ -244,4 +301,60 @@ bool StorageManager::is_data_dirty(const PersistentChannel& new_channel)
     }
 
     return (current_rtc != new_channel);
+}
+
+esp_err_t StorageManager::load_raw_stats(PersistentStats& out)
+{
+    esp_err_t ret;
+    // 1. Try RTC first (fast, survives deep-sleep)
+    ret = rtc_stats_backend_->load(&out, sizeof(PersistentStats));
+    if (ret == ESP_OK) {
+        ret = validate_stats_data(out);
+        if (ret == ESP_OK) {
+            ESP_LOGD(TAG, "Loaded stats from RTC");
+            return ESP_OK;
+        }
+    }
+    // 2. Fall back to NVS
+    ret = nvs_stats_backend_->load(&out, sizeof(PersistentStats));
+    if (ret == ESP_OK) {
+        ret = validate_stats_data(out);
+        if (ret == ESP_OK) {
+            // Sync RTC with NVS
+            rtc_stats_backend_->save(&out, sizeof(PersistentStats));
+            ESP_LOGD(TAG, "Loaded stats from NVS");
+            return ESP_OK;
+        }
+    }
+    return ret; // nothing valid found
+}
+
+esp_err_t StorageManager::validate_stats_data(const PersistentStats& data)
+{
+    // Validade MAGIC, VERSION and CRC
+    if (data.magic != PersistentStats::MAGIC) {
+        ESP_LOGW(TAG, "Stats magic mismatch: 0x%08X", (unsigned int)data.magic);
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (data.version != PersistentStats::VERSION) {
+        ESP_LOGW(TAG, "Stats version mismatch: %d", (int)data.version);
+        return ESP_ERR_INVALID_VERSION;
+    }
+    if (data.crc != calculate_crc(data)) {
+        ESP_LOGW(TAG, "Stats CRC mismatch");
+        return ESP_ERR_INVALID_CRC;
+    }
+    return ESP_OK;
+}
+
+bool StorageManager::is_data_dirty(const PersistentStats& new_stats)
+{
+    PersistentStats current_rtc;
+
+    // If we can't load from RTC, assume it's dirty to be safe
+    if (rtc_stats_backend_->load(&current_rtc, sizeof(PersistentStats)) != ESP_OK) {
+        return true;
+    }
+
+    return (current_rtc != new_stats);
 }

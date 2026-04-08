@@ -22,6 +22,7 @@
 #include "persistence_backend.hpp"
 #include "storage_manager.hpp"
 #include "channel_monitor.hpp"
+#include "statistics_manager.hpp"
 
 #include "espnow_manager.hpp"
 
@@ -30,6 +31,7 @@ static const char* TAG = "EspNowManager";
 // RTC storage for peer list persistence must stay in global scope
 static RTC_DATA_ATTR PersistentPeers g_rtc_peers;
 static RTC_DATA_ATTR PersistentChannel g_rtc_channel;
+static RTC_DATA_ATTR PersistentStats g_rtc_stats;
 
 // Pointer to the currently active (initialized) instance.
 // ESP-NOW only supports a single active context at a time, so a single
@@ -43,13 +45,17 @@ EspNowManager& EspNowManager::instance()
     static NvsHAL nvs_hal;
     static auto rtc_peers_backend = std::make_unique<RtcBackend>(&g_rtc_peers, sizeof(g_rtc_peers));
     static auto rtc_channel_backend = std::make_unique<RtcBackend>(&g_rtc_channel, sizeof(g_rtc_channel));
+    static auto rtc_stats_backend = std::make_unique<RtcBackend>(&g_rtc_stats, sizeof(g_rtc_stats));
     static auto nvs_peers_backend = std::make_unique<NvsBackend>(nvs_hal, "peers_data");
     static auto nvs_channel_backend = std::make_unique<NvsBackend>(nvs_hal, "channel_data");
+    static auto nvs_stats_backend = std::make_unique<NvsBackend>(nvs_hal, "stats_data");
     static auto storage = std::make_unique<StorageManager>(
         std::move(rtc_peers_backend),
         std::move(rtc_channel_backend),
+        std::move(rtc_stats_backend),
         std::move(nvs_peers_backend),
-        std::move(nvs_channel_backend));
+        std::move(nvs_channel_backend),
+        std::move(nvs_stats_backend));
 
     static auto hal_wifi = std::make_unique<WiFiHAL>();
     static auto hal_espnow = std::make_unique<EspNowHAL>();
@@ -522,8 +528,7 @@ void EspNowManager::rx_task(void* arg)
                     self->tx_manager_->notify_link_alive();
 
                     // Report packet reception to stats manager
-                    self->stats_mgr_->on_packet_received(
-                        header_opt->sender_node_id, packet.rssi, packet.timestamp_ms);
+                    self->stats_mgr_->on_packet_received(header_opt->sender_node_id, packet.rssi, packet.timestamp_ms);
 
                     decoded = {packet, header_opt.value()};
 

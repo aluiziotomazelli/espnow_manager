@@ -53,18 +53,18 @@ public:
     virtual esp_err_t store_peers(const etl::ivector<PersistentPeer>& peers, bool force_nvs_commit = true) = 0;
 
     /**
-     * @brief Loads the peer statistics from storage.
-     * @param stats Output for the loaded peer statistics.
-     * @return ESP_OK if loaded successfully, error otherwise.
+     * @brief Loads all peer statistics from storage.
+     * @param stats Output vector to be populated with statistics.
+     * @return ESP_OK if loaded successfully, or error code.
      * @internal
      */
     virtual esp_err_t load_stats(etl::ivector<PeerStatisticsPersist>& stats) = 0;
 
     /**
-     * @brief Stores peer statistics to storage.
-     * @param stats The statistics to store.
+     * @brief Stores a single peer's statistics to storage.
+     * @param stats The statistics entry to store.
      * @return ESP_OK if stored successfully, error otherwise.
      * @internal
      */
-    virtual esp_err_t store_stats(const etl::ivector<PeerStatisticsPersist>& stats) = 0;
+    virtual esp_err_t store_stats(const PeerStatisticsPersist& stats) = 0;
 };
