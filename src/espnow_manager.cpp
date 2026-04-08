@@ -572,7 +572,7 @@ void EspNowManager::rx_task(void* arg)
         // }
 
         // Tick submodules to handle timers
-        uint64_t now_ms = self->get_time_ms();
+        int64_t now_ms = self->get_time_ms();
         NodeState current_state = self->node_fsm_->get_state();
         if (current_state == NodeState::PAIRING) {
             self->channel_monitor_->tick(now_ms);
@@ -632,7 +632,7 @@ esp_err_t EspNowManager::send_packet(
     return tx_manager_->queue_packet(tx_packet);
 }
 
-uint64_t EspNowManager::get_time_ms() const
+int64_t EspNowManager::get_time_ms() const
 {
     return hal_timer_->get_time_us() / 1000;
 }
@@ -756,7 +756,7 @@ void EspNowManager::handle_state_transition(NodeState old_state, NodeState new_s
     }
 }
 
-void EspNowManager::tick_scan_retry(uint64_t now_ms)
+void EspNowManager::tick_scan_retry(int64_t now_ms)
 {
     if (!scan_retry_.active || now_ms < scan_retry_.next_attempt_ms) {
         return;

@@ -166,7 +166,7 @@ protected:
     TaskHandle_t rx_task_handle_ = nullptr;
 
     // --- Private Methods ---
-    uint64_t get_time_ms() const;
+    int64_t get_time_ms() const;
 
     // Send packet helper
     esp_err_t send_packet(
@@ -215,7 +215,7 @@ protected:
     {
         bool active = false;
         int count = 0;
-        uint64_t next_attempt_ms = 0;
+        int64_t next_attempt_ms = 0;
 
         void reset()
         {
@@ -227,6 +227,6 @@ protected:
 
     ScanRetry scan_retry_{};
 
-    void tick_scan_retry(uint64_t now_ms); // protected
+    void tick_scan_retry(int64_t now_ms); // protected
     void handle_scan_retries(bool has_peers);
 };

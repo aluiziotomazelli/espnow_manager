@@ -38,7 +38,7 @@ void ChannelMonitor::deinit()
     rx_task_handle_ = nullptr;
 }
 
-void ChannelMonitor::tick(uint64_t now_ms)
+void ChannelMonitor::tick(int64_t now_ms)
 {
     // If not initialized or the interval has not passed, nothing to do here
     if (!is_active_ || (now_ms - last_check_ms_ < interval_ms_)) {

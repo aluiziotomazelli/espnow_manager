@@ -39,5 +39,5 @@ public:
      * @brief Ticks the channel monitor.
      * @param now_ms Current time in milliseconds.
      */
-    virtual void tick(uint64_t now_ms) = 0;
+    virtual void tick(int64_t now_ms) = 0;
 };

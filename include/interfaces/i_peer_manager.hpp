@@ -103,7 +103,7 @@ public:
      * @return Vector of offline peers.
      * @internal
      */
-    virtual etl::vector<NodeId, MAX_PEERS> get_offline(uint64_t now_ms) = 0;
+    virtual etl::vector<NodeId, MAX_PEERS> get_offline(int64_t now_ms) = 0;
 
     /**
      * @brief Updates the last seen timestamp for a peer.
@@ -111,14 +111,14 @@ public:
      * @param now_ms Current time in milliseconds.
      * @internal
      */
-    virtual void update_last_seen(NodeId id, uint64_t now_ms) = 0;
+    virtual void update_last_seen(NodeId id, int64_t now_ms) = 0;
 
     /**
      * @brief Template for updating last seen.
      * @internal
      */
     template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
-    void update_last_seen(T id, uint64_t now_ms)
+    void update_last_seen(T id, int64_t now_ms)
     {
         update_last_seen(static_cast<NodeId>(id), now_ms);
     }

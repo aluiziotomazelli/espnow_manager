@@ -47,7 +47,7 @@ void PairingManager::deinit()
     rx_task_handle_ = nullptr;
 }
 
-void PairingManager::tick(uint64_t now_ms)
+void PairingManager::tick(int64_t now_ms)
 {
     if (!is_initialized_ || !is_active_) {
         return;
@@ -65,7 +65,7 @@ void PairingManager::tick(uint64_t now_ms)
     }
 }
 
-esp_err_t PairingManager::start(uint32_t timeout_ms, uint64_t now_ms)
+esp_err_t PairingManager::start(uint32_t timeout_ms, int64_t now_ms)
 {
     if (!is_initialized_ || is_active_) {
         return ESP_ERR_INVALID_STATE;
@@ -182,7 +182,7 @@ void PairingManager::notify_rx_task_pairing_done()
     }
 }
 
-uint64_t PairingManager::get_time_ms() const
+int64_t PairingManager::get_time_ms() const
 {
     return hal_timer_.get_time_us() / 1000;
 }

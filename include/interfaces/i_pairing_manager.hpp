@@ -49,7 +49,7 @@ public:
      * @brief Ticks the pairing manager.
      * @param now_ms Current time in milliseconds.
      */
-    virtual void tick(uint64_t now_ms) = 0;
+    virtual void tick(int64_t now_ms) = 0;
 
     /**
      * @brief Starts the pairing process.
@@ -57,7 +57,7 @@ public:
      * @param now_ms Current time in milliseconds.
      * @return ESP_OK on success.
      */
-    virtual esp_err_t start(uint32_t timeout_ms, uint64_t now_ms) = 0;
+    virtual esp_err_t start(uint32_t timeout_ms, int64_t now_ms) = 0;
 
     /**
      * @brief Handles incoming pair request packets.

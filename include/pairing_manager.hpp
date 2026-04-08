@@ -22,10 +22,10 @@ public:
     void deinit() override;
 
     /** @copydoc IPairingManager::tick */
-    void tick(uint64_t now_ms) override;
+    void tick(int64_t now_ms) override;
 
     /** @copydoc IPairingManager::start */
-    esp_err_t start(uint32_t timeout_ms, uint64_t now_ms) override;
+    esp_err_t start(uint32_t timeout_ms, int64_t now_ms) override;
 
     /** @copydoc IPairingManager::handle_request */
     void handle_request(const DecodedRxPacket& decoded) override;
@@ -53,11 +53,11 @@ private:
     TaskHandle_t rx_task_handle_;
     uint32_t heartbeat_interval_ms_ = 60000;
 
-    uint64_t started_at_ms_ = 0;
-    uint64_t last_request_ms_ = 0;
+    int64_t started_at_ms_ = 0;
+    int64_t last_request_ms_ = 0;
     uint32_t timeout_ms_ = PAIRING_TIMEOUT_MS;
     static constexpr uint32_t periodic_interval_ms_ = PAIRING_PERIODIC_INTERVAL_MS;
 
     void notify_rx_task_pairing_done();
-    uint64_t get_time_ms() const;
+    int64_t get_time_ms() const;
 };

@@ -23,7 +23,7 @@ public:
     void deinit() override;
 
     /** @copydoc IHeartbeatManager::tick */
-    void tick(uint64_t now_ms) override;
+    void tick(int64_t now_ms) override;
 
     /** @copydoc IHeartbeatManager::set_interval_ms */
     void set_interval_ms(uint32_t heartbeat_interval_ms) override;
@@ -38,7 +38,7 @@ protected:
     void send_heartbeat();
 
 private:
-    uint64_t get_time_ms() const;
+    int64_t get_time_ms() const;
 
     NodeId my_id_;
 
@@ -51,5 +51,5 @@ private:
     int8_t last_rssi_ = 0; /**< RSSI of the Hub as seen by this Node */
 
     bool is_initialized_ = false;
-    uint64_t last_heartbeat_ms_ = 0;
+    int64_t last_heartbeat_ms_ = 0;
 };

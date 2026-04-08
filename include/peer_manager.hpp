@@ -32,10 +32,10 @@ public:
     etl::vector<PeerInfo, MAX_PEERS> get_all() override;
 
     /** @copydoc IPeerManager::get_offline */
-    etl::vector<NodeId, MAX_PEERS> get_offline(uint64_t now_ms) override;
+    etl::vector<NodeId, MAX_PEERS> get_offline(int64_t now_ms) override;
 
     /** @copydoc IPeerManager::update_last_seen */
-    void update_last_seen(NodeId id, uint64_t now_ms) override;
+    void update_last_seen(NodeId id, int64_t now_ms) override;
 
     // Helper for initialization (loading from storage)
     /** @copydoc IPeerManager::load_peers_from_storage */

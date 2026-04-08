@@ -24,10 +24,10 @@ public:
     void on_peer_added(NodeId node_id, uint32_t heartbeat_interval_ms) override;
     void on_peer_removed(NodeId node_id) override;
 
-    void on_packet_received(NodeId node_id, int8_t rssi, uint64_t received_at_ms) override;
+    void on_packet_received(NodeId node_id, int8_t rssi, int64_t received_at_ms) override;
     void on_ack_received(NodeId node_id, uint32_t rtt_ms) override;
 
-    void on_packet_sent(NodeId node_id, uint64_t sent_at_ms) override;
+    void on_packet_sent(NodeId node_id, int64_t sent_at_ms) override;
     void on_packet_lost(NodeId node_id) override;
     void on_transmission_failure() override;
     void on_retry(NodeId node_id) override;

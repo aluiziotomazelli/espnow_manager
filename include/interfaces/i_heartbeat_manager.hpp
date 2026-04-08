@@ -45,7 +45,7 @@ public:
      * @brief Ticks the heartbeat manager.
      * @param now_ms Current time in milliseconds.
      */
-    virtual void tick(uint64_t now_ms) = 0;
+    virtual void tick(int64_t now_ms) = 0;
 
     /**
      * @brief Sets the heartbeat interval in milliseconds.

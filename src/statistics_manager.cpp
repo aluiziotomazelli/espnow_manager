@@ -83,7 +83,7 @@ void StatisticsManager::on_peer_removed(NodeId node_id)
     }
 }
 
-void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi, uint64_t received_at_ms)
+void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi, int64_t received_at_ms)
 {
     (void)received_at_ms; // Not used for now, could be used for jitter calculation
     if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
@@ -124,7 +124,7 @@ void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_ms)
     }
 }
 
-void StatisticsManager::on_packet_sent(NodeId node_id, uint64_t sent_at_ms)
+void StatisticsManager::on_packet_sent(NodeId node_id, int64_t sent_at_ms)
 {
     (void)sent_at_ms;
     if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {

@@ -61,7 +61,7 @@ struct RxPacket
     uint8_t data[ESP_NOW_MAX_DATA_LEN]; /**< Raw payload data */
     size_t len;                         /**< Length of the payload in bytes */
     int8_t rssi;                        /**< Received Signal Strength Indicator (dBm) */
-    uint64_t timestamp_ms;              /**< Microsecond timestamp (converted to ms in rx_task) */
+    int64_t timestamp_ms;              /**< Millisecond timestamp (esp_timer_get_time / 1000) */
 };
 
 /**
@@ -81,7 +81,7 @@ struct PeerInfo
     uint8_t mac[6];                 /**< 6-byte MAC address of the peer */
     NodeType type;                  /**< Categorization of the node (e.g., HUB or peripheral) */
     NodeId node_id;                 /**< Unique logical ID assigned to the node */
-    uint64_t last_seen_ms;          /**< Timestamp of the last message received (ms) */
+    int64_t last_seen_ms;          /**< Timestamp of the last message received (ms) */
     bool paired;                    /**< If true, the node has completed the pairing process */
     uint32_t heartbeat_interval_ms; /**< Expected frequency of heartbeat messages */
 };
@@ -162,7 +162,7 @@ enum class NodeState
 struct PendingAck
 {
     uint16_t sequence_number; /**< Sequence number of the message being tracked */
-    uint64_t timestamp_ms;    /**< Timestamp of the last attempt (ms) */
+    int64_t timestamp_ms;    /**< Timestamp of the last attempt (ms) */
     uint8_t retries_left;     /**< Remaining retransmission attempts */
     TxPacket packet;          /**< Copy of the packet to allow retransmission */
     NodeId node_id;           /**< Target Node ID for tracking and timeout logic */

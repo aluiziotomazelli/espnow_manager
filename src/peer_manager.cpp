@@ -130,7 +130,7 @@ etl::vector<PeerInfo, MAX_PEERS> PeerManager::get_all()
     return copy;
 }
 
-etl::vector<NodeId, MAX_PEERS> PeerManager::get_offline(uint64_t now_ms)
+etl::vector<NodeId, MAX_PEERS> PeerManager::get_offline(int64_t now_ms)
 {
     etl::vector<NodeId, MAX_PEERS> offline;
 
@@ -151,7 +151,7 @@ etl::vector<NodeId, MAX_PEERS> PeerManager::get_offline(uint64_t now_ms)
     return offline;
 }
 
-void PeerManager::update_last_seen(NodeId id, uint64_t now_ms)
+void PeerManager::update_last_seen(NodeId id, int64_t now_ms)
 {
     if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
         return;

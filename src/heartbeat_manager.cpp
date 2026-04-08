@@ -31,7 +31,7 @@ void HeartbeatManager::set_interval_ms(uint32_t heartbeat_interval_ms)
     interval_ms_ = heartbeat_interval_ms;
 }
 
-void HeartbeatManager::tick(uint64_t now_ms)
+void HeartbeatManager::tick(int64_t now_ms)
 {
     if (!is_initialized_ || my_type_ == ReservedTypes::HUB || interval_ms_ <= 0) {
         return;
@@ -53,7 +53,7 @@ void HeartbeatManager::handle_request(const DecodedRxPacket& decoded)
 {
     const MessageHeader& header = decoded.header;
 
-    uint64_t now_ms = get_time_ms();
+    int64_t now_ms = get_time_ms();
 
     peer_mgr_.update_last_seen(header.sender_node_id, now_ms);
     ESP_LOGI(TAG, "Heartbeat received from Node ID %d.", (int)header.sender_node_id);
@@ -86,7 +86,7 @@ void HeartbeatManager::send_heartbeat()
         memcpy(tx_packet.dest_mac, BROADCAST_MAC, 6);
     }
 
-    uint64_t now_ms = get_time_ms();
+    int64_t now_ms = get_time_ms();
 
     tx_packet.header.msg_type = MessageType::HEARTBEAT;
     tx_packet.header.sender_node_id = my_id_;
@@ -111,7 +111,7 @@ void HeartbeatManager::send_heartbeat()
 // Private methods
 // ==========================================================================================
 
-uint64_t HeartbeatManager::get_time_ms() const
+int64_t HeartbeatManager::get_time_ms() const
 {
     return hal_timer_.get_time_us() / 1000;
 }

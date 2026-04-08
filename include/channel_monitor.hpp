@@ -24,7 +24,7 @@ public:
     void deinit() override;
 
     /** @copydoc IChannelMonitor::tick */
-    void tick(uint64_t now_ms) override;
+    void tick(int64_t now_ms) override;
 
     /** @copydoc IChannelMonitor::get_wifi_channel */
     uint8_t get_wifi_channel() override { return last_known_channel_.load(); };
@@ -36,7 +36,7 @@ private:
     TaskHandle_t rx_task_handle_ = nullptr;
 
     uint32_t interval_ms_;
-    uint64_t last_check_ms_ = 0;
+    int64_t last_check_ms_ = 0;
     std::atomic<uint8_t> last_known_channel_ = 0;
 
     uint8_t verify_wifi_channel();

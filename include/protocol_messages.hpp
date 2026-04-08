@@ -25,7 +25,7 @@ struct MessageHeader
     bool requires_ack;        /**< If true, the receiver should send an ACK message */
     NodeId dest_node_id;      /**< Unique ID of the destination node (or BROADCAST) */
     AckStatus ack_status;     /**< ACK status for the acknowledged message */
-    uint64_t timestamp_ms;    /**< Millisecond timestamp of when the message was sent */
+    int64_t timestamp_ms;    /**< Millisecond timestamp of when the message was sent */
 };
 
 // ========== TRANSPORT LAYER ==========
@@ -38,7 +38,7 @@ struct PairRequest
     MessageHeader header;           /**< Universal message header */
     uint32_t heartbeat_interval_ms; /**< Requested interval between heartbeats */
     uint8_t firmware_version[3];    /**< Current firmware version of the node (major, minor, patch) */
-    uint64_t uptime_ms;             /**< Current uptime of the node in milliseconds */
+    int64_t uptime_ms;             /**< Current uptime of the node in milliseconds */
     char device_name[16];           /**< Human-readable name of the device */
 };
 
@@ -64,7 +64,7 @@ struct PairResponse
 struct HeartbeatMessage
 {
     MessageHeader header; /**< Universal message header */
-    uint64_t uptime_ms;   /**< Current uptime of the node in milliseconds */
+    int64_t uptime_ms;   /**< Current uptime of the node in milliseconds */
     uint16_t battery_mv;  /**< Current battery voltage in millivolts */
     int8_t rssi;          /**< RSSI of the Hub as seen by the Node (from last reception) */
 };
@@ -75,7 +75,7 @@ struct HeartbeatMessage
 struct HeartbeatResponse
 {
     MessageHeader header;    /**< Universal message header */
-    uint64_t server_time_ms; /**< Current Unix epoch or relative server time in milliseconds */
+    int64_t server_time_ms; /**< Current Unix epoch or relative server time in milliseconds */
 };
 
 // ========== APPLICATION LAYER ==========
