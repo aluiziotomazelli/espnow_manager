@@ -4,13 +4,19 @@
 #include "i_statistics_manager.hpp"
 #include "i_storage_manager.hpp"
 #include "i_hal_freertos.hpp"
-#include "i_hal_timer.hpp"
 
+/**
+ * @class StatisticsManager
+ * @brief Concrete implementation of IStatisticsManager for tracking peer network metrics.
+ *
+ * Maintains Exponential Moving Averages (EMA) for RSSI and RTT, along with packet counters.
+ * It flushes statistics to persistent storage when event-specific thresholds are reached.
+ */
 class StatisticsManager : public IStatisticsManager
 {
 public:
-    StatisticsManager(IStorageManager& storage, IFreeRTOSHAL& hal_freertos, ITimerHAL& hal_timer);
-    ~StatisticsManager();
+    StatisticsManager(IStorageManager& storage, IFreeRTOSHAL& hal_freertos);
+    ~StatisticsManager() override;
 
     esp_err_t init() override;
     esp_err_t deinit() override;
@@ -18,10 +24,10 @@ public:
     void on_peer_added(NodeId node_id, uint32_t heartbeat_interval_ms) override;
     void on_peer_removed(NodeId node_id) override;
 
-    void on_packet_received(NodeId node_id, int8_t rssi) override;
-    void on_ack_received(NodeId node_id, uint64_t sent_at_ms) override;
+    void on_packet_received(NodeId node_id, int8_t rssi, uint64_t received_at_ms) override;
+    void on_ack_received(NodeId node_id, uint32_t rtt_ms) override;
 
-    void on_packet_sent(NodeId node_id) override;
+    void on_packet_sent(NodeId node_id, uint64_t sent_at_ms) override;
     void on_packet_lost(NodeId node_id) override;
     void on_retry(NodeId node_id) override;
 
@@ -55,7 +61,6 @@ private:
 
     IStorageManager& storage_;
     IFreeRTOSHAL& hal_freertos_;
-    ITimerHAL& hal_timer_;
 
     etl::vector<PeerStatisticsEntry, MAX_PEERS> entries_;
     SemaphoreHandle_t mutex_ = nullptr;

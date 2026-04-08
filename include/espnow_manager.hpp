@@ -22,6 +22,7 @@
 #include "i_hal_freertos.hpp"
 #include "i_storage_manager.hpp"
 #include "i_channel_monitor.hpp"
+#include "i_statistics_manager.hpp"
 
 // ========================================
 // ESP-NOW Manager Implementation
@@ -59,6 +60,7 @@ public:
         std::unique_ptr<IHeartbeatManager> heartbeat_manager,
         std::unique_ptr<IPairingManager> pairing_manager,
         std::unique_ptr<IMessageRouter> message_router,
+        std::unique_ptr<IStatisticsManager> stats_mgr,
         std::unique_ptr<INodeStateMachine> node_fsm);
 
     EspNowManager(const EspNowManager&) = delete;
@@ -155,6 +157,7 @@ protected:
     std::unique_ptr<IHeartbeatManager> heartbeat_manager_; ///< Pointer to heartbeat manager
     std::unique_ptr<IPairingManager> pairing_manager_;     ///< Pointer to pairing manager
     std::unique_ptr<IMessageRouter> message_router_;       ///< Pointer to message router
+    std::unique_ptr<IStatisticsManager> stats_mgr_;        ///< Pointer to statistics manager
     std::unique_ptr<INodeStateMachine> node_fsm_;          ///< Pointer to node state machine
 
     bool esp_now_initialized_ = false;

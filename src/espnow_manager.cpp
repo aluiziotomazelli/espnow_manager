@@ -60,8 +60,10 @@ EspNowManager& EspNowManager::instance()
     static auto message_codec = std::make_unique<MessageCodec>();
     static auto channel_monitor = std::make_unique<ChannelMonitor>(*hal_wifi, *hal_freertos);
     static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *hal_espnow, *message_codec, *hal_freertos);
+    static auto stats_mgr = std::make_unique<StatisticsManager>(*storage, *hal_freertos);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
-    static auto tx_manager = std::make_unique<TxManager>(*tx_fsm, *hal_espnow, *hal_freertos, *message_codec, 500);
+    static auto tx_manager =
+        std::make_unique<TxManager>(*tx_fsm, *hal_espnow, *hal_freertos, *message_codec, *stats_mgr, 500);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *hal_timer);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *hal_freertos, *hal_timer);
     static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
@@ -82,6 +84,7 @@ EspNowManager& EspNowManager::instance()
         std::move(heartbeat_mgr),
         std::move(pairing_mgr),
         std::move(message_router),
+        std::move(stats_mgr),
         std::make_unique<NodeStateMachine>());
     return instance;
 }
@@ -103,6 +106,7 @@ EspNowManager::EspNowManager(
     std::unique_ptr<IHeartbeatManager> heartbeat_manager,
     std::unique_ptr<IPairingManager> pairing_manager,
     std::unique_ptr<IMessageRouter> message_router,
+    std::unique_ptr<IStatisticsManager> stats_mgr,
     std::unique_ptr<INodeStateMachine> node_fsm)
     : storage_(std::move(storage))
     , hal_wifi_(std::move(hal_wifi))
@@ -119,6 +123,7 @@ EspNowManager::EspNowManager(
     , heartbeat_manager_(std::move(heartbeat_manager))
     , pairing_manager_(std::move(pairing_manager))
     , message_router_(std::move(message_router))
+    , stats_mgr_(std::move(stats_mgr))
     , node_fsm_(std::move(node_fsm))
 {
 }
@@ -200,6 +205,13 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
         return init_fail(ret, "Channel Monitor");
     }
 
+    if (stats_mgr_ != nullptr) {
+        ret = stats_mgr_->init();
+        if (ret != ESP_OK) {
+            return init_fail(ret, "Stats Manager");
+        }
+    }
+
     // Load peers from storage and add them to ESP-NOW
     peer_manager_->load_peers_from_storage();
     etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
@@ -231,6 +243,10 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
 void EspNowManager::deinit()
 {
     ESP_LOGI(TAG, "Deinitializing EspNowManager...");
+
+    if (stats_mgr_ != nullptr) {
+        stats_mgr_->deinit();
+    }
 
     if (tx_manager_ != nullptr) {
         tx_manager_->deinit();
@@ -392,12 +408,20 @@ esp_err_t EspNowManager::confirm_reception(NodeId sender_id, uint16_t sequence_n
 // Peer management
 esp_err_t EspNowManager::add_peer(NodeId node_id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms)
 {
-    return peer_manager_->add(node_id, mac, type, heartbeat_interval_ms);
+    esp_err_t ret = peer_manager_->add(node_id, mac, type, heartbeat_interval_ms);
+    if (ret == ESP_OK) {
+        stats_mgr_->on_peer_added(node_id, heartbeat_interval_ms);
+    }
+    return ret;
 }
 
 esp_err_t EspNowManager::remove_peer(NodeId node_id)
 {
-    return peer_manager_->remove(node_id);
+    esp_err_t ret = peer_manager_->remove(node_id);
+    if (ret == ESP_OK) {
+        stats_mgr_->on_peer_removed(node_id);
+    }
+    return ret;
 }
 
 etl::vector<NodeId, MAX_PEERS> EspNowManager::get_offline_peers() const
@@ -496,6 +520,10 @@ void EspNowManager::rx_task(void* arg)
                 if (header_opt) {
                     // Any valid packet is proof the link is alive notify tx_manager about it
                     self->tx_manager_->notify_link_alive();
+
+                    // Report packet reception to stats manager
+                    self->stats_mgr_->on_packet_received(
+                        header_opt->sender_node_id, packet.rssi, packet.timestamp_ms);
 
                     decoded = {packet, header_opt.value()};
 

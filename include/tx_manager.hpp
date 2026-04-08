@@ -8,6 +8,7 @@
 #include "i_message_codec.hpp"
 #include "i_tx_manager.hpp"
 #include "i_tx_state_machine.hpp"
+#include "i_statistics_manager.hpp"
 
 class TxManager : public ITxManager
 {
@@ -17,6 +18,7 @@ public:
         IEspNowHAL& hal_espnow,
         IFreeRTOSHAL& freertos_hal,
         IMessageCodec& codec,
+        IStatisticsManager& stats_mgr,
         uint32_t ack_timeout_ms);
 
     ~TxManager() override;
@@ -52,6 +54,7 @@ private:
     IEspNowHAL& hal_espnow_;
     IMessageCodec& codec_;
     IFreeRTOSHAL& freertos_hal_;
+    IStatisticsManager& stats_mgr_;
 
     uint16_t sequence_counter_ = 0;
     uint32_t ack_timeout_ms_;

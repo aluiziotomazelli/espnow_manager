@@ -11,11 +11,13 @@ TxManager::TxManager(
     IEspNowHAL& hal_espnow,
     IFreeRTOSHAL& freertos_hal,
     IMessageCodec& codec,
+    IStatisticsManager& stats_mgr,
     uint32_t ack_timeout_ms)
     : fsm_(fsm)
     , hal_espnow_(hal_espnow)
     , codec_(codec)
     , freertos_hal_(freertos_hal)
+    , stats_mgr_(stats_mgr)
     , sequence_counter_(0)
     , ack_timeout_ms_(ack_timeout_ms)
     , task_done_semaphore_(nullptr)
@@ -174,6 +176,10 @@ void TxManager::handle_ack(const DecodedRxPacket& decoded)
         return;
     }
 
+    // Calculate RTT: current packet timestamp (ms) - pending packet timestamp (ms)
+    uint32_t rtt_ms = static_cast<uint32_t>(decoded.raw.timestamp_ms - pending_ack->timestamp_ms);
+    stats_mgr_.on_ack_received(pending_ack->node_id, rtt_ms);
+
     notify_logical_ack();
 }
 
@@ -238,6 +244,7 @@ void TxManager::tx_task()
 
                 if (send_result == ESP_OK) {
                     TxState next = fsm_.on_packet_sent(raw_packet.requires_ack);
+                    stats_mgr_.on_packet_sent(structured_packet.header.dest_node_id, structured_packet.header.timestamp_ms);
                     if (next == TxState::WAITING_FOR_ACK) {
                         PendingAck pending = {
                             .sequence_number = structured_packet.header.sequence_number,
@@ -296,6 +303,7 @@ void TxManager::tx_task()
                     // Retry sent successfully, go back to WAITING_FOR_ACK and wait for the response again.
                     freertos_hal_.timer_start(ack_timeout_timer_, pdMS_TO_TICKS(10));
                     fsm_.on_packet_sent(true); // Back to WAITING_FOR_ACK
+                    stats_mgr_.on_retry(pending.node_id);
                 }
                 else {
                     handle_esp_now_send_errors(send_result);
@@ -303,6 +311,10 @@ void TxManager::tx_task()
             }
             else {
                 // Retries exhausted, notify FSM to drop the packet and potentially sever the link state.
+                auto pending_opt = fsm_.get_pending_ack();
+                if (pending_opt) {
+                    stats_mgr_.on_packet_lost(pending_opt->node_id);
+                }
                 fsm_.on_max_retries();
             }
             break;
