@@ -152,7 +152,7 @@ public:
     esp_err_t load_stats(etl::ivector<PeerStatisticsPersist>& stats) override;
 
     /** @copydoc IStorageManager::store_stats */
-    esp_err_t store_stats(const PeerStatisticsPersist& stats) override;
+    esp_err_t store_stats(const etl::ivector<PeerStatisticsPersist>& stats) override;
 
     /**
      * @brief Calculates the CRC of the given data.

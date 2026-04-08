@@ -57,7 +57,7 @@ private:
     const PeerStatisticsEntry* find_entry(NodeId node_id) const;
 
     void maybe_flush(PeerStatisticsEntry& entry);
-    void flush(PeerStatisticsEntry& entry);
+    void flush();
 
     IStorageManager& storage_;
     IFreeRTOSHAL& hal_freertos_;

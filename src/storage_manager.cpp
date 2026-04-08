@@ -150,41 +150,40 @@ esp_err_t StorageManager::load_stats(etl::ivector<PeerStatisticsPersist>& stats)
     return ESP_OK;
 }
 
-esp_err_t StorageManager::store_stats(const PeerStatisticsPersist& stats)
+esp_err_t StorageManager::store_stats(const etl::ivector<PeerStatisticsPersist>& stats)
 {
-    PersistentStats stats_data = {};
-    load_raw_stats(stats_data); // Load existing or start with empty
+    PersistentStats data = {};
+    data.magic = PersistentStats::MAGIC;
+    data.version = PersistentStats::VERSION;
+    data.num_stats = std::min(stats.size(), (size_t)MAX_PEERS);
 
-    // Update or Add
-    bool found = false;
-    for (uint8_t i = 0; i < stats_data.num_stats; ++i) {
-        if (stats_data.stats[i].node_id == stats.node_id) {
-            stats_data.stats[i] = stats;
-            found = true;
-            break;
-        }
+    for (size_t i = 0; i < data.num_stats; ++i) {
+        data.stats[i] = stats[i];
     }
 
-    if (!found) {
-        if (stats_data.num_stats >= MAX_PEERS) {
-            return ESP_ERR_NO_MEM;
-        }
-        stats_data.stats[stats_data.num_stats++] = stats;
-    }
+    // Check if data is dirty
+    bool is_dirty = is_data_dirty(data);
 
-    // Check dirty before saving
-    if (!is_data_dirty(stats_data)) {
+    // Calculate CRC to save if data is dirty
+    data.crc = calculate_crc(data);
+
+    // If data is not dirty, return OK
+    if (!is_dirty) {
         return ESP_OK;
     }
 
-    // Prepare for saving
-    stats_data.magic = PersistentStats::MAGIC;
-    stats_data.version = PersistentStats::VERSION;
-    stats_data.crc = calculate_crc(stats_data);
+    // If is dirty, persist data to RTC and NVS
+    rtc_stats_backend_->save(&data, sizeof(data));
+    esp_err_t err = nvs_stats_backend_->save(&data, sizeof(data));
 
-    // Save to RTC and NVS
-    rtc_stats_backend_->save(&stats_data, sizeof(stats_data));
-    return nvs_stats_backend_->save(&stats_data, sizeof(stats_data));
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Saved statistics to Storage");
+    }
+    else {
+        ESP_LOGE(TAG, "Failed to save statistics to NVS: %s", esp_err_to_name(err));
+    }
+
+    return err;
 }
 
 // ================================================================

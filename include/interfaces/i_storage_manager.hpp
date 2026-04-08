@@ -61,10 +61,10 @@ public:
     virtual esp_err_t load_stats(etl::ivector<PeerStatisticsPersist>& stats) = 0;
 
     /**
-     * @brief Stores a single peer's statistics to storage.
-     * @param stats The statistics entry to store.
+     * @brief Stores peer statistics to storage.
+     * @param stats The statistics to store.
      * @return ESP_OK if stored successfully, error otherwise.
      * @internal
      */
-    virtual esp_err_t store_stats(const PeerStatisticsPersist& stats) = 0;
+    virtual esp_err_t store_stats(const etl::ivector<PeerStatisticsPersist>& stats) = 0;
 };

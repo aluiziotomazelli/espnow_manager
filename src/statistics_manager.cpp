@@ -46,9 +46,7 @@ esp_err_t StatisticsManager::deinit()
 {
     if (mutex_ != nullptr) {
         // Final flush of all dirty stats
-        for (auto& entry : entries_) {
-            flush(entry);
-        }
+        flush();
         hal_freertos_.semaphore_delete(mutex_);
         mutex_ = nullptr;
     }
@@ -251,24 +249,30 @@ void StatisticsManager::maybe_flush(PeerStatisticsEntry& entry)
 {
     if (entry.dirty_rx >= FLUSH_THRESHOLD_RX || entry.dirty_tx >= FLUSH_THRESHOLD_TX ||
         entry.dirty_loss >= FLUSH_THRESHOLD_LOSS || entry.dirty_rtt >= FLUSH_THRESHOLD_RTT) {
-        flush(entry);
+        flush();
     }
 }
 
-void StatisticsManager::flush(PeerStatisticsEntry& entry)
+void StatisticsManager::flush()
 {
-    PeerStatisticsPersist p;
-    p.node_id = entry.stats.node_id;
-    p.rssi_avg = entry.stats.rssi_avg;
-    p.packets_rx = entry.stats.packets_rx;
-    p.packets_tx = entry.stats.packets_tx;
-    p.packets_lost = entry.stats.packets_lost;
-    p.rtt_avg_ms = entry.stats.rtt_avg_ms;
+    etl::vector<PeerStatisticsPersist, MAX_PEERS> persisted;
+    for (const auto& entry : entries_) {
+        PeerStatisticsPersist p;
+        p.node_id = entry.stats.node_id;
+        p.rssi_avg = entry.stats.rssi_avg;
+        p.packets_rx = entry.stats.packets_rx;
+        p.packets_tx = entry.stats.packets_tx;
+        p.packets_lost = entry.stats.packets_lost;
+        p.rtt_avg_ms = entry.stats.rtt_avg_ms;
+        persisted.push_back(p);
+    }
 
-    if (storage_.store_stats(p) == ESP_OK) {
-        entry.dirty_rx = 0;
-        entry.dirty_tx = 0;
-        entry.dirty_loss = 0;
-        entry.dirty_rtt = 0;
+    if (storage_.store_stats(persisted) == ESP_OK) {
+        for (auto& entry : entries_) {
+            entry.dirty_rx = 0;
+            entry.dirty_tx = 0;
+            entry.dirty_loss = 0;
+            entry.dirty_rtt = 0;
+        }
     }
 }
