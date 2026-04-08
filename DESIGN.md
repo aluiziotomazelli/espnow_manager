@@ -366,6 +366,57 @@ sequenceDiagram
 
 ---
 
+## 11. Statistics Manager
+
+The `StatisticsManager` tracks per-peer network quality metrics using Exponential Moving Averages (EMA) for RSSI and RTT, along with packet counters. It persists statistics to storage when event-specific dirty thresholds are reached.
+
+### Tracked Metrics (Per-Peer)
+
+| Metric | Description | Update Method |
+|--------|-------------|---------------|
+| `rssi_last` | Last received RSSI (dBm) | Direct from `RxPacket::rssi` |
+| `rssi_avg` | EMA of RSSI | `update_ema_i8()` with adaptive alpha |
+| `packets_rx` | Total packets received | Increment on each valid packet |
+| `packets_tx` | Total packets transmitted | Increment on each queued TX |
+| `packets_lost` | Logical ACK timeouts after retries | `on_packet_lost()` |
+| `retries` | Number of retransmissions | `on_retry()` |
+| `rtt_last_ms` | Last round-trip time | `current_time_ms - sent_timestamp_ms` |
+| `rtt_avg_ms` | EMA of RTT | `update_ema_u32()` |
+
+### Global Metrics (Not Per-Peer)
+
+| Metric | Description | Scope |
+|--------|-------------|-------|
+| `transmission_failures` | MAC-layer delivery failures (`ESP_NOW_SEND_FAIL`) | **Global** (shared across all peers) |
+| `global_tx_failures_` | Internal counter, flushed on threshold | **Global** |
+
+### Limitation: `transmission_failures` is Global
+
+The `transmission_failures` counter is incremented by `TxManager` on every `NOTIFY_DELIVERY_FAILURE` notification (physical MAC-layer failure). Because the failure notification comes from `esp_now_send_cb` → `NOTIFY_DELIVERY_FAILURE` without peer identification at the point of statistics update, the counter is **global** rather than per-peer.
+
+**Impact:**
+- For **NODEs** (single peer = HUB): This is acceptable — all failures are implicitly with the HUB.
+- For **HUBs** (up to 19 peers): All peers share the same counter value, which is semantically incorrect. A future refactoring could track per-peer transmission failures by capturing the destination MAC from the pending ACK at the time of the send error.
+
+**Why not per-peer now?**
+- `esp_now_send_cb` only provides `des_addr` (destination MAC), running in WiFi task context. Keeping this callback minimal is recommended by ESP-IDF.
+- The synchronous error path in `handle_esp_now_send_errors()` occurs before the packet enters the radio queue, but the notification path (`NOTIFY_DELIVERY_FAILURE`) arrives after the TX queue state has moved on.
+- A future version could capture the MAC at queue time and correlate it with the failure notification.
+
+### Flush Thresholds
+
+Statistics are flushed to persistent storage when any dirty counter reaches its threshold:
+
+| Threshold | Value | Triggers Flush |
+|-----------|-------|----------------|
+| `FLUSH_THRESHOLD_RX` | 50 | Packet reception events |
+| `FLUSH_THRESHOLD_TX` | 50 | Packet transmission events |
+| `FLUSH_THRESHOLD_TX_FAILURE` | 10 | MAC-layer transmission failures |
+| `FLUSH_THRESHOLD_LOSS` | 10 | Logical ACK timeouts |
+| `FLUSH_THRESHOLD_RTT` | 30 | RTT measurements |
+
+---
+
 ## 6. HAL Interface Summary
 
 ### IWiFiHAL
