@@ -706,3 +706,41 @@ TEST_F(EspNowManagerTaskTest, DataPacketIncludesRssiInAppMessage)
     EXPECT_EQ(xQueueReceive(app_queue_handle, &msg, pdMS_TO_TICKS(50)), pdTRUE);
     EXPECT_EQ(-42, msg.rssi);
 }
+
+TEST_F(EspNowManagerTaskTest, ValidPacketCallsOnPacketReceived)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    MessageHeader header{};
+    header.msg_type = MessageType::DATA;
+    header.sender_node_id = kNodeId;
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
+
+    EXPECT_CALL(*stats_mgr_, on_packet_received(kNodeId, _, _)).Times(1);
+
+    receive_valid_rx_packet();
+}
+
+TEST_F(EspNowManagerTaskTest, InvalidCrcDoesNotCallOnPacketReceived)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(false));
+
+    EXPECT_CALL(*stats_mgr_, on_packet_received(_, _, _)).Times(0);
+
+    receive_valid_rx_packet();
+}
+
+TEST_F(EspNowManagerTaskTest, FailedHeaderDecodeDoesNotCallOnPacketReceived)
+{
+    init_and_wait();
+
+    ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
+    ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(std::nullopt));
+
+    EXPECT_CALL(*stats_mgr_, on_packet_received(_, _, _)).Times(0);
+
+    receive_valid_rx_packet();
+}

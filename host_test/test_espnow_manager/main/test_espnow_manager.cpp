@@ -441,6 +441,19 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfChannelMonitorInitFails)
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
 
+TEST_F(EspNowManagerTest, InitCallsStatsManagerInit)
+{
+    EXPECT_CALL(*stats_mgr_, init()).WillOnce(Return(ESP_OK));
+    sut_->init(make_valid_config());
+}
+
+TEST_F(EspNowManagerTest, InitReturnsFailIfStatsManagerInitFails)
+{
+    ON_CALL(*stats_mgr_, init()).WillByDefault(Return(ESP_FAIL));
+    EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
+    EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
+}
+
 // ===========================================================================
 // init() — correct argument propagation to submódules
 //
@@ -544,6 +557,13 @@ TEST_F(EspNowManagerTest, DeinitWithPeersCallsDeletePeers)
 
     // esp_now_del_peer is called if peer list is not empty
     EXPECT_CALL(*hal_espnow_, hal_esp_now_del_peer(_)).WillOnce(Return(ESP_OK));
+    sut_->deinit();
+}
+
+TEST_F(EspNowManagerTest, DeinitCallsStatsManagerDeinit)
+{
+    init_sut();
+    EXPECT_CALL(*stats_mgr_, deinit()).WillOnce(Return(ESP_OK));
     sut_->deinit();
 }
 
@@ -737,10 +757,38 @@ TEST_F(EspNowManagerTest, AddPeerCallsPeerManagerAdd)
     EXPECT_EQ(sut_->add_peer(kNodeId, kMac, kNodeType, kHeartbeatIntervalMs), ESP_OK);
 }
 
+TEST_F(EspNowManagerTest, AddPeerCallsOnPeerAdded)
+{
+    ON_CALL(*peer_mgr_, add(_, _, _, _)).WillByDefault(Return(ESP_OK));
+    EXPECT_CALL(*stats_mgr_, on_peer_added(kNodeId, kHeartbeatIntervalMs)).Times(1);
+    sut_->add_peer(kNodeId, kMac, kNodeType, kHeartbeatIntervalMs);
+}
+
+TEST_F(EspNowManagerTest, AddPeerDoesNotCallOnPeerAddedWhenFails)
+{
+    ON_CALL(*peer_mgr_, add(_, _, _, _)).WillByDefault(Return(ESP_FAIL));
+    EXPECT_CALL(*stats_mgr_, on_peer_added(_, _)).Times(0);
+    sut_->add_peer(kNodeId, kMac, kNodeType, kHeartbeatIntervalMs);
+}
+
 TEST_F(EspNowManagerTest, RemovePeerCallsPeerManagerRemove)
 {
     EXPECT_CALL(*peer_mgr_, remove(_)).Times(1).WillOnce(Return(ESP_OK));
     EXPECT_EQ(sut_->remove_peer(kNodeId), ESP_OK);
+}
+
+TEST_F(EspNowManagerTest, RemovePeerCallsOnPeerRemoved)
+{
+    ON_CALL(*peer_mgr_, remove(_)).WillByDefault(Return(ESP_OK));
+    EXPECT_CALL(*stats_mgr_, on_peer_removed(kNodeId)).Times(1);
+    sut_->remove_peer(kNodeId);
+}
+
+TEST_F(EspNowManagerTest, RemovePeerDoesNotCallOnPeerRemovedWhenFails)
+{
+    ON_CALL(*peer_mgr_, remove(_)).WillByDefault(Return(ESP_FAIL));
+    EXPECT_CALL(*stats_mgr_, on_peer_removed(_)).Times(0);
+    sut_->remove_peer(kNodeId);
 }
 
 TEST_F(EspNowManagerTest, AddPeerReturnsPeerManagerFailure)
