@@ -18,6 +18,7 @@ public:
 
     MOCK_METHOD(void, on_packet_sent, (NodeId node_id, uint64_t sent_at_ms), (override));
     MOCK_METHOD(void, on_packet_lost, (NodeId node_id), (override));
+    MOCK_METHOD(void, on_transmission_failure, (), (override));
     MOCK_METHOD(void, on_retry, (NodeId node_id), (override));
 
     MOCK_METHOD(bool, get, (NodeId node_id, PeerStatistics& out), (const, override));

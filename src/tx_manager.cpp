@@ -347,6 +347,7 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
     }
     // Each NOTIFY_DELIVERY_FAILURE is delegated to FSM decide if MAX_FAILURES was reached
     if ((notifications & NOTIFY_DELIVERY_FAILURE) == NOTIFY_DELIVERY_FAILURE) {
+        stats_mgr_.on_transmission_failure();
         // FSM check if MAX_FAILURES was reached and observer should be notified
         bool max_failures = fsm_.on_delivery_failure();
         if (max_failures) {

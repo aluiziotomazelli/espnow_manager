@@ -76,6 +76,7 @@ constexpr uint16_t MAX_SCAN_TIME_MS = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATT
 /** @brief Threshold for statistics flush */
 constexpr uint8_t FLUSH_THRESHOLD_RX = 50;
 constexpr uint8_t FLUSH_THRESHOLD_TX = 50;
+constexpr uint8_t FLUSH_THRESHOLD_TX_FAILURE = 10;
 constexpr uint8_t FLUSH_THRESHOLD_LOSS = 10;
 constexpr uint8_t FLUSH_THRESHOLD_RTT = 30;
 

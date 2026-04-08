@@ -151,6 +151,15 @@ void StatisticsManager::on_packet_lost(NodeId node_id)
     }
 }
 
+void StatisticsManager::on_transmission_failure()
+{
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+        global_tx_failures_++;
+        dirty_tx_failure_++;
+        hal_freertos_.semaphore_give(mutex_);
+    }
+}
+
 void StatisticsManager::on_retry(NodeId node_id)
 {
     if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
@@ -251,6 +260,9 @@ void StatisticsManager::maybe_flush(PeerStatisticsEntry& entry)
         entry.dirty_loss >= flush_threshold_loss_ || entry.dirty_rtt >= flush_threshold_rtt_) {
         flush();
     }
+    else if (dirty_tx_failure_ >= flush_threshold_tx_failure_) {
+        flush();
+    }
 }
 
 void StatisticsManager::flush()
@@ -263,6 +275,7 @@ void StatisticsManager::flush()
         p.packets_rx = entry.stats.packets_rx;
         p.packets_tx = entry.stats.packets_tx;
         p.packets_lost = entry.stats.packets_lost;
+        p.transmission_failures = entry.stats.transmission_failures;
         p.rtt_avg_ms = entry.stats.rtt_avg_ms;
         persisted.push_back(p);
     }
@@ -274,5 +287,6 @@ void StatisticsManager::flush()
             entry.dirty_loss = 0;
             entry.dirty_rtt = 0;
         }
+        dirty_tx_failure_ = 0;
     }
 }

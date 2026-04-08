@@ -31,6 +31,7 @@ public:
     // --- Tx events (called from tx_task) ---
     virtual void on_packet_sent(NodeId node_id, uint64_t sent_at_ms) = 0;
     virtual void on_packet_lost(NodeId node_id) = 0;
+    virtual void on_transmission_failure() = 0;
     virtual void on_retry(NodeId node_id) = 0;
 
     // --- Reads ---

@@ -231,6 +231,7 @@ TEST_F(TxManagerTaskTest, IdleStateNotifyDeliveryFailureCallsFsmOnDeliveryFailur
     init_and_wait();
 
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
+    EXPECT_CALL(stats_mgr, on_transmission_failure()).Times(1);
 
     manager->notify_delivery_failure();
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
