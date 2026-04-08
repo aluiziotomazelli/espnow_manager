@@ -73,6 +73,12 @@ constexpr uint8_t SCAN_CHANNEL_ATTEMPTS = 1;
 /** @brief Total maximum time allowed for a full channel scan */
 constexpr uint16_t MAX_SCAN_TIME_MS = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 13 + 500;
 
+/** @brief Threshold for statistics flush */
+constexpr uint8_t FLUSH_THRESHOLD_RX = 50;
+constexpr uint8_t FLUSH_THRESHOLD_TX = 50;
+constexpr uint8_t FLUSH_THRESHOLD_LOSS = 10;
+constexpr uint8_t FLUSH_THRESHOLD_RTT = 30;
+
 /** @brief Type alias for Node identification (0-255) */
 using NodeId = uint8_t;
 /** @brief Type alias for Node role/category categorization */

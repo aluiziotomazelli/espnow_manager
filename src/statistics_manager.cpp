@@ -14,7 +14,7 @@ StatisticsManager::StatisticsManager(IStorageManager& storage, IFreeRTOSHAL& hal
 
 StatisticsManager::~StatisticsManager()
 {
-    deinit();
+    // deinit();
 }
 
 esp_err_t StatisticsManager::init()
@@ -247,8 +247,8 @@ uint32_t StatisticsManager::update_ema_u32(uint32_t avg, uint32_t sample, uint8_
 
 void StatisticsManager::maybe_flush(PeerStatisticsEntry& entry)
 {
-    if (entry.dirty_rx >= FLUSH_THRESHOLD_RX || entry.dirty_tx >= FLUSH_THRESHOLD_TX ||
-        entry.dirty_loss >= FLUSH_THRESHOLD_LOSS || entry.dirty_rtt >= FLUSH_THRESHOLD_RTT) {
+    if (entry.dirty_rx >= flush_threshold_rx_ || entry.dirty_tx >= flush_threshold_tx_ ||
+        entry.dirty_loss >= flush_threshold_loss_ || entry.dirty_rtt >= flush_threshold_rtt_) {
         flush();
     }
 }

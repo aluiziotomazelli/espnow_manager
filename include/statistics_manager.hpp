@@ -44,10 +44,10 @@ private:
         uint8_t dirty_rtt = 0;
     };
 
-    static constexpr uint8_t FLUSH_THRESHOLD_RX = 100;
-    static constexpr uint8_t FLUSH_THRESHOLD_TX = 100;
-    static constexpr uint8_t FLUSH_THRESHOLD_LOSS = 10;
-    static constexpr uint8_t FLUSH_THRESHOLD_RTT = 50;
+    static constexpr uint8_t flush_threshold_rx_ = FLUSH_THRESHOLD_RX;
+    static constexpr uint8_t flush_threshold_tx_ = FLUSH_THRESHOLD_TX;
+    static constexpr uint8_t flush_threshold_loss_ = FLUSH_THRESHOLD_LOSS;
+    static constexpr uint8_t flush_threshold_rtt_ = FLUSH_THRESHOLD_RTT;
 
     static uint8_t compute_alpha(uint32_t heartbeat_interval_ms);
     static int8_t update_ema_i8(int8_t avg, int8_t sample, uint8_t alpha);
