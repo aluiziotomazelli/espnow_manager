@@ -5,6 +5,7 @@
 #include "mock_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_hal_freertos.hpp"
+#include "mock_statistics_manager.hpp"
 #include "tx_manager.hpp"
 
 using ::testing::_;
@@ -21,6 +22,7 @@ protected:
     NiceMock<MockEspNowHAL> hal;
     NiceMock<MockFreeRTOSHAL> freertos_hal;
     NiceMock<MockMessageCodec> codec;
+    NiceMock<MockStatisticsManager> stats;
     std::unique_ptr<TxManager> manager;
 
     // Fake handles
@@ -51,7 +53,7 @@ protected:
         ON_CALL(freertos_hal, queue_delete(_)).WillByDefault(Return());
         ON_CALL(freertos_hal, timer_delete(_, _)).WillByDefault(Return(pdPASS));
 
-        manager = std::make_unique<TxManager>(fsm, hal, freertos_hal, codec, 10);
+        manager = std::make_unique<TxManager>(fsm, hal, freertos_hal, codec, stats, 10);
     }
 
     void deinit_after_init()
@@ -233,6 +235,55 @@ TEST_F(TxManagerTest, HandleAckWithNonOkStatusCallsDeliveryFailure)
     EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_DELIVERY_FAILURE, _)).Times(1);
     // Should NOT call notify_logical_ack (which would use NOTIFY_LOGICAL_ACK)
     EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_LOGICAL_ACK, _)).Times(0);
+
+    manager->handle_ack(ack_packet);
+    deinit_after_init();
+}
+
+TEST_F(TxManagerTest, HandleAckWithWrongSeqNumDoesNothing)
+{
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
+
+    // Arrange: Pending ACK with sequence number 42
+    PendingAck pending = {};
+    pending.sequence_number = 42;
+    ON_CALL(fsm, get_pending_ack()).WillByDefault(Return(pending));
+
+    // Build ACK with wrong sequence number
+    DecodedRxPacket ack_packet = {};
+    ack_packet.header.msg_type = MessageType::ACK;
+    ack_packet.header.sequence_number = 43;
+    ack_packet.header.ack_status = AckStatus::OK;
+
+    // Assert: No notifications and no stats updates should occur
+    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_LOGICAL_ACK, _)).Times(0);
+    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_DELIVERY_FAILURE, _)).Times(0);
+    EXPECT_CALL(stats, on_ack_received(_, _)).Times(0);
+
+    manager->handle_ack(ack_packet);
+
+    deinit_after_init();
+}
+
+TEST_F(TxManagerTest, HandleAckUpdateStats)
+{
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task));
+
+    // Set up a pending ACK in the FSM
+    PendingAck pending = {};
+    pending.sequence_number = 42;
+    pending.retries_left = 3;
+    ON_CALL(fsm, get_pending_ack()).WillByDefault(Return(pending));
+
+    // Build an ACK packet with OK status
+    DecodedRxPacket ack_packet = {};
+    ack_packet.header.msg_type = MessageType::ACK;
+    ack_packet.header.sequence_number = 42; // Matches pending ACK
+    ack_packet.header.ack_status = AckStatus::OK;
+    ack_packet.raw.timestamp_ms = 100;
+
+    // Stats update expected on success status
+    EXPECT_CALL(stats, on_ack_received(pending.node_id, 100)).Times(1);
 
     manager->handle_ack(ack_packet);
     deinit_after_init();

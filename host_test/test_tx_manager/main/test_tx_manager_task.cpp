@@ -7,6 +7,7 @@
 #include "mock_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_discovery_manager.hpp"
+#include "mock_statistics_manager.hpp"
 #include "hal_real_freertos.hpp"
 #include "tx_manager.hpp"
 
@@ -30,11 +31,13 @@ protected:
     std::unique_ptr<NiceMock<MockTxStateMachine>> fsm_owned;
     std::unique_ptr<NiceMock<MockEspNowHAL>> hal_owned;
     std::unique_ptr<NiceMock<MockMessageCodec>> codec_owned;
+    std::unique_ptr<NiceMock<MockStatisticsManager>> statistics_mgr_owned;
 
     // Raw pointers to use in tests
     NiceMock<MockTxStateMachine>* fsm;
     NiceMock<MockEspNowHAL>* hal;
     NiceMock<MockMessageCodec>* codec;
+    NiceMock<MockStatisticsManager>* statistics_mgr;
 
     RealFreeRTOSHAL freertos_hal;
     std::unique_ptr<TxManager> manager;
@@ -51,10 +54,12 @@ protected:
         fsm_owned = std::make_unique<NiceMock<MockTxStateMachine>>();
         hal_owned = std::make_unique<NiceMock<MockEspNowHAL>>();
         codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
+        statistics_mgr_owned = std::make_unique<NiceMock<MockStatisticsManager>>();
 
         fsm = fsm_owned.get();
         hal = hal_owned.get();
         codec = codec_owned.get();
+        statistics_mgr = statistics_mgr_owned.get();
 
         // FSM tracks state via local variable
         ON_CALL(*fsm, get_state()).WillByDefault(ReturnPointee(&current_state));
@@ -92,7 +97,8 @@ protected:
         // Codec defaults
         ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
 
-        manager = std::make_unique<TxManager>(*fsm_owned, *hal_owned, freertos_hal, *codec_owned, ack_timeout_ms);
+        manager = std::make_unique<TxManager>(
+            *fsm_owned, *hal_owned, freertos_hal, *codec_owned, *statistics_mgr_owned, ack_timeout_ms);
     }
 
     void TearDown() override
@@ -352,21 +358,53 @@ TEST_F(TxManagerTaskTest, RetryingWithEspnowErrorCallsFsmOnDeliveryFailure)
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _))
         .Times(retry_count)
-        .WillRepeatedly(Return(ESP_ERR_ESPNOW_CHAN));             // Send fail
-    EXPECT_CALL(*fsm, on_delivery_failure()).Times(retry_count + 1); // + 1 for the inital fail that trigger the retry loop
+        .WillRepeatedly(Return(ESP_ERR_ESPNOW_CHAN)); // Send fail
+    EXPECT_CALL(*fsm, on_delivery_failure())
+        .Times(retry_count + 1); // + 1 for the inital fail that trigger the retry loop
 
     manager->notify_delivery_failure(); // trigger retry loop
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-TEST_F(TxManagerTaskTest, RetryingWithNoPendingAckCallsOnMaxRetries)
+// =============================================================================
+// Statistics Reporting
+// =============================================================================
+
+TEST_F(TxManagerTaskTest, IdleStateProcessesPacketAndReportsSent)
 {
     init_and_wait();
 
-    pending_ack = std::nullopt;
+    EXPECT_CALL(*statistics_mgr, on_packet_sent(_, _)).Times(1);
+
+    manager->queue_packet(make_packet(false));
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, RetryingResendsPacketAndReportsRetry)
+{
+    init_and_wait();
+    
+    // Setup state: RETRYING
+    pending_ack = make_pending_ack(2);
     current_state = TxState::RETRYING;
 
-    EXPECT_CALL(*fsm, on_max_retries()).Times(1);
+    // Expectation: stats manager is called on retry
+    EXPECT_CALL(*statistics_mgr, on_retry(_)).Times(1);
+
+    manager->notify_delivery_failure();
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, MaxRetriesExhaustedReportsPacketLost)
+{
+    init_and_wait();
+
+    // Setup state: RETRYING
+    pending_ack = make_pending_ack(0); // No retries left
+    current_state = TxState::RETRYING;
+
+    // Expectation: stats manager reports loss
+    EXPECT_CALL(*statistics_mgr, on_packet_lost(_)).Times(1);
 
     manager->notify_delivery_failure();
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
@@ -381,7 +419,7 @@ TEST_F(TxManagerTaskTest, EspnowNoMemoryErrorDoesNotCallDeliveryFailure)
     init_and_wait();
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_ERR_ESPNOW_NO_MEM)); // Send fail
-    EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0); // Pending ack should not be set
+    EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);    // Pending ack should not be set
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
     manager->queue_packet(make_packet(true)); // Call with pending ack == true
@@ -395,7 +433,7 @@ TEST_F(TxManagerTaskTest, EspnowNotInitiErrorDoesNotCallDeliveryFailure)
     init_and_wait();
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_ERR_ESPNOW_NOT_INIT)); // Send fail
-    EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0); // Pending ack should not be set
+    EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);    // Pending ack should not be set
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
     manager->queue_packet(make_packet(true)); // Call with pending ack == true
