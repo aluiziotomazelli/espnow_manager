@@ -137,6 +137,35 @@ TEST_F(StatisticsManagerTest, ReachingThresholdRttTriggersFlush)
     }
 }
 
+TEST_F(StatisticsManagerTest, TransmissionFailureIncrementsCounter)
+{
+    NodeId node_id = 10;
+    sut->on_peer_added(node_id, 1000);
+
+    // on_transmission_failure() should not crash and should increment internal counter
+    sut->on_transmission_failure();
+    sut->on_transmission_failure();
+
+    // Counter is global, so get() won't show it per-peer, but it should be tracked internally
+    PeerStatistics stats;
+    EXPECT_TRUE(sut->get(node_id, stats));
+    // peer stats remain unchanged
+    EXPECT_EQ(stats.packets_rx, 0);
+}
+
+TEST_F(StatisticsManagerTest, ReachingThresholdTxFailureTriggersFlush)
+{
+    NodeId node_id = 10;
+    sut->on_peer_added(node_id, 1000);
+
+    // FLUSH_THRESHOLD_TX_FAILURE = 10, deve flushear uma vez
+    EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
+
+    for (int i = 0; i < FLUSH_THRESHOLD_TX_FAILURE; ++i) {
+        sut->on_transmission_failure();
+    }
+}
+
 TEST_F(StatisticsManagerTest, ChangingHeartbeatUpdatesAlpha)
 {
     NodeId node_id = 10;

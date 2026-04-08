@@ -156,6 +156,9 @@ void StatisticsManager::on_transmission_failure()
     if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
         global_tx_failures_++;
         dirty_tx_failure_++;
+        if (dirty_tx_failure_ >= flush_threshold_tx_failure_) {
+            flush();
+        }
         hal_freertos_.semaphore_give(mutex_);
     }
 }
@@ -258,9 +261,6 @@ void StatisticsManager::maybe_flush(PeerStatisticsEntry& entry)
 {
     if (entry.dirty_rx >= flush_threshold_rx_ || entry.dirty_tx >= flush_threshold_tx_ ||
         entry.dirty_loss >= flush_threshold_loss_ || entry.dirty_rtt >= flush_threshold_rtt_) {
-        flush();
-    }
-    else if (dirty_tx_failure_ >= flush_threshold_tx_failure_) {
         flush();
     }
 }
