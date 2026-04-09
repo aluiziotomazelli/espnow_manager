@@ -27,9 +27,10 @@ public:
     void on_packet_received(NodeId node_id, int8_t rssi, int64_t received_at_ms) override;
     void on_ack_received(NodeId node_id, uint32_t rtt_ms) override;
 
-    void on_packet_sent(NodeId node_id, int64_t sent_at_ms) override;
+    void on_delivery_success(NodeId node_id, int64_t sent_at_ms) override;
+    void on_delivery_failure(NodeId node_id) override;
+    void on_driver_error(NodeId node_id) override;
     void on_packet_lost(NodeId node_id) override;
-    void on_transmission_failure() override;
     void on_retry(NodeId node_id) override;
 
     bool get(NodeId node_id, PeerStatistics& out) const override;
@@ -41,14 +42,17 @@ private:
         PeerStatistics stats;
         uint8_t dirty_rx = 0;
         uint8_t dirty_tx = 0;
-        uint8_t dirty_loss = 0;
+        uint8_t dirty_tx_fail = 0;
+        uint8_t dirty_driver_err = 0;
+        uint8_t dirty_lost = 0;
         uint8_t dirty_rtt = 0;
     };
 
     static constexpr uint8_t flush_threshold_rx_ = FLUSH_THRESHOLD_RX;
     static constexpr uint8_t flush_threshold_tx_ = FLUSH_THRESHOLD_TX;
-    static constexpr uint8_t flush_threshold_tx_failure_ = FLUSH_THRESHOLD_TX_FAILURE;
-    static constexpr uint8_t flush_threshold_loss_ = FLUSH_THRESHOLD_LOSS;
+    static constexpr uint8_t flush_threshold_tx_fail_ = FLUSH_THRESHOLD_TX_FAILURE;
+    static constexpr uint8_t flush_threshold_driver_err_ = FLUSH_THRESHOLD_TX_FAILURE;
+    static constexpr uint8_t flush_threshold_lost_ = FLUSH_THRESHOLD_LOSS;
     static constexpr uint8_t flush_threshold_rtt_ = FLUSH_THRESHOLD_RTT;
 
     static uint8_t compute_alpha(uint32_t heartbeat_interval_ms);
@@ -66,8 +70,4 @@ private:
 
     etl::vector<PeerStatisticsEntry, MAX_PEERS> entries_;
     SemaphoreHandle_t mutex_ = nullptr;
-
-    // Global counters (not per-peer)
-    uint32_t global_tx_failures_ = 0;
-    uint8_t dirty_tx_failure_ = 0;
 };

@@ -177,15 +177,21 @@ struct PeerStatistics
     int8_t rssi_last = 0;               ///< Last received RSSI
     uint8_t rssi_alpha = 20;            ///< Alpha derived from heartbeat interval
     int8_t rssi_avg = 0;                ///< Exponential moving average
+    uint8_t stats_flags = 0;            ///< Bit 0: rssi_avg valid, Bit 1: rtt_avg valid
     uint32_t packets_rx = 0;            ///< Number of packets received
-    uint32_t packets_tx = 0;            ///< Number of packets transmitted
-    uint32_t packets_lost = 0;          ///< Number of packets lost (ACK timeout)
-    uint32_t transmission_failures = 0; ///< Driver/MAC-layer failures
+    uint32_t packets_sent = 0;          ///< Successfully transmitted over the air
+    uint32_t driver_errors = 0;         ///< hal_esp_now_send() returned error (NO_MEM, etc.)
+    uint32_t delivery_failures = 0;     ///< ESP-NOW callback reported ESP_NOW_SEND_FAIL
+    uint32_t packets_lost = 0;          ///< Number of packets lost (ACK timeout after retries)
     uint32_t retries = 0;               ///< Number of retries
     uint32_t rtt_last_ms = 0;           ///< Last round-trip time in milliseconds
     uint32_t rtt_avg_ms = 0;            ///< Average round-trip time in milliseconds
     uint8_t dirty_count = 0;            ///< Flush to storage when threshold reached
 };
+
+/// @brief Bit flags for PeerStatistics::stats_flags
+static constexpr uint8_t PEER_STATS_FLAG_RSSI_VALID = 0x01;
+static constexpr uint8_t PEER_STATS_FLAG_RTT_VALID  = 0x02;
 
 /**
  * @brief Structure for persistent peer statistics.
@@ -195,9 +201,10 @@ struct PeerStatisticsPersist
     NodeId node_id = 0;                 ///< Node ID
     int8_t rssi_avg = 0;                ///< Exponential moving average
     uint32_t packets_rx = 0;            ///< Number of packets received
-    uint32_t packets_tx = 0;            ///< Number of packets transmitted
-    uint32_t packets_lost = 0;          ///< Number of packets lost (ACK timeout)
-    uint32_t transmission_failures = 0; ///< Driver/MAC-layer failures
+    uint32_t packets_sent = 0;          ///< Successfully transmitted over the air
+    uint32_t driver_errors = 0;         ///< hal_esp_now_send() returned error
+    uint32_t delivery_failures = 0;     ///< ESP-NOW callback reported ESP_NOW_SEND_FAIL
+    uint32_t packets_lost = 0;          ///< Number of packets lost (ACK timeout after retries)
     uint32_t rtt_avg_ms = 0;            ///< Average round-trip time in milliseconds
 };
 

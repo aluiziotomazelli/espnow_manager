@@ -12,14 +12,15 @@ TxManager::TxManager(
     IFreeRTOSHAL& freertos_hal,
     IMessageCodec& codec,
     IStatisticsManager& stats_mgr,
-    uint32_t ack_timeout_ms)
+    IPeerManager& peer_mgr)
     : fsm_(fsm)
     , hal_espnow_(hal_espnow)
     , codec_(codec)
     , freertos_hal_(freertos_hal)
     , stats_mgr_(stats_mgr)
+    , peer_mgr_(peer_mgr)
     , sequence_counter_(0)
-    , ack_timeout_ms_(ack_timeout_ms)
+    , ack_timeout_ms_(0)
     , task_done_semaphore_(nullptr)
     , tx_queue_(nullptr)
     , ack_timeout_timer_(nullptr)
@@ -38,16 +39,23 @@ void TxManager::ack_timeout_callback(TimerHandle_t xTimer)
     self->freertos_hal_.task_notify(self->tx_task_handle_, NOTIFY_ACK_TIMEOUT, eSetBits);
 }
 
-esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle)
+esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle, uint32_t ack_timeout_ms)
 {
     if (rx_task_handle == nullptr) {
         ESP_LOGE(TAG, "RX task handle is null");
         return ESP_ERR_INVALID_ARG;
     }
     rx_task_handle_ = rx_task_handle;
+    ack_timeout_ms_ = ack_timeout_ms;
 
     tx_queue_ = freertos_hal_.queue_create(20, sizeof(DecodedTxPacket));
     if (tx_queue_ == nullptr) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    delivery_queue_ = freertos_hal_.queue_create(2, sizeof(DeliveryEvent));
+    if (delivery_queue_ == nullptr) {
+        deinit();
         return ESP_ERR_NO_MEM;
     }
 
@@ -110,6 +118,11 @@ void TxManager::deinit()
         tx_queue_ = nullptr;
     }
 
+    if (delivery_queue_ != nullptr) {
+        freertos_hal_.queue_delete(delivery_queue_);
+        delivery_queue_ = nullptr;
+    }
+
     if (ack_timeout_timer_ != nullptr) {
         freertos_hal_.timer_delete(ack_timeout_timer_, portMAX_DELAY);
         ack_timeout_timer_ = nullptr;
@@ -133,18 +146,20 @@ esp_err_t TxManager::queue_packet(const DecodedTxPacket& packet)
     return ESP_OK;
 }
 
-void TxManager::notify_delivery_failure()
+void TxManager::notify_delivery(esp_now_send_status_t status, const uint8_t* dest_mac)
 {
-    if (tx_task_handle_ != nullptr) {
-        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_DELIVERY_FAILURE, eSetBits);
+    if (tx_task_handle_ == nullptr || delivery_queue_ == nullptr || dest_mac == nullptr) {
+        return;
     }
-}
+    DeliveryEvent event;
+    memcpy(event.dest_mac, dest_mac, 6);
+    event.status = static_cast<uint8_t>(status);
+    BaseType_t higher_prio_woken = pdFALSE;
+    freertos_hal_.queue_send_fromISR(delivery_queue_, &event, &higher_prio_woken);
 
-void TxManager::notify_delivery_success()
-{
-    if (tx_task_handle_ != nullptr) {
-        freertos_hal_.task_notify(tx_task_handle_, NOTIFY_DELIVERY_SUCCESS, eSetBits);
-    }
+    // Set ONLY the relevant notification bit
+    uint32_t notify_bit = (status == ESP_NOW_SEND_FAIL) ? NOTIFY_DELIVERY_FAILURE : NOTIFY_DELIVERY_SUCCESS;
+    freertos_hal_.task_notify(tx_task_handle_, notify_bit, eSetBits);
 }
 
 void TxManager::notify_link_alive()
@@ -172,7 +187,7 @@ void TxManager::handle_ack(const DecodedRxPacket& decoded)
     }
 
     if (decoded.header.ack_status != AckStatus::OK) {
-        notify_delivery_failure();
+        stats_mgr_.on_delivery_failure(pending_ack->node_id);
         return;
     }
 
@@ -244,7 +259,6 @@ void TxManager::tx_task()
 
                 if (send_result == ESP_OK) {
                     TxState next = fsm_.on_packet_sent(raw_packet.requires_ack);
-                    stats_mgr_.on_packet_sent(structured_packet.header.dest_node_id, structured_packet.header.timestamp_ms);
                     if (next == TxState::WAITING_FOR_ACK) {
                         PendingAck pending = {
                             .sequence_number = structured_packet.header.sequence_number,
@@ -345,18 +359,36 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
     if ((notifications & NOTIFY_LINK_ALIVE) == NOTIFY_LINK_ALIVE) {
         fsm_.on_link_alive();
     }
-    // Each NOTIFY_DELIVERY_FAILURE is delegated to FSM decide if MAX_FAILURES was reached
+
     if ((notifications & NOTIFY_DELIVERY_FAILURE) == NOTIFY_DELIVERY_FAILURE) {
-        stats_mgr_.on_transmission_failure();
+        DeliveryEvent event{};
+        while (freertos_hal_.queue_receive(delivery_queue_, &event, 0) == pdTRUE) {
+            NodeId node_id = 0;
+            peer_mgr_.find_node_id_by_mac(event.dest_mac, node_id);
+            if (node_id == 0) {
+                ESP_LOGW(TAG, "Delivery event for unknown MAC");
+                continue;
+            }
+            stats_mgr_.on_delivery_failure(node_id);
+        }
         // FSM check if MAX_FAILURES was reached and observer should be notified
         bool max_failures = fsm_.on_delivery_failure();
         if (max_failures) {
-            // Notify RX task that max failures were reached
             ESP_LOGW(TAG, "Max failures reached, notifying RX task");
             freertos_hal_.task_notify(rx_task_handle_, NOTIFY_MAX_FAILURES, eSetBits);
         }
     }
     if ((notifications & NOTIFY_DELIVERY_SUCCESS) == NOTIFY_DELIVERY_SUCCESS) {
+        DeliveryEvent event{};
+        while (freertos_hal_.queue_receive(delivery_queue_, &event, 0) == pdTRUE) {
+            NodeId node_id = 0;
+            peer_mgr_.find_node_id_by_mac(event.dest_mac, node_id);
+            if (node_id == 0) {
+                ESP_LOGW(TAG, "Delivery event for unknown MAC");
+                continue;
+            }
+            stats_mgr_.on_delivery_success(node_id, 0);
+        }
         fsm_.on_delivery_success();
     }
     if ((notifications & NOTIFY_LOGICAL_ACK) == NOTIFY_LOGICAL_ACK) {
@@ -373,6 +405,9 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
 
 void TxManager::handle_esp_now_send_errors(esp_err_t error)
 {
+    auto pending_opt = fsm_.get_pending_ack();
+    NodeId node_id = pending_opt ? pending_opt->node_id : 0;
+
     if (error == ESP_ERR_ESPNOW_NO_MEM) {
         // Transient: do not penalize the FSM, ACK timeout will handle retry
         ESP_LOGW(TAG, "hal_esp_now_send: out of memory, will retry via timeout");
@@ -383,6 +418,7 @@ void TxManager::handle_esp_now_send_errors(esp_err_t error)
     }
     else {
         // ESP_ERR_ESPNOW_NOT_FOUND, CHAN, IF, INTERNAL — link-level failures
+        stats_mgr_.on_driver_error(node_id);
         ESP_LOGW(TAG, "hal_esp_now_send failed: %s", esp_err_to_name(error));
         fsm_.on_delivery_failure();
     }

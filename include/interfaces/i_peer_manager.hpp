@@ -124,6 +124,14 @@ public:
     }
 
     /**
+     * @brief Looks up node ID by MAC address.
+     * @param mac 6-byte MAC address to search for.
+     * @param out_id Output parameter for the found node ID.
+     * @return true if found, false otherwise.
+     */
+    virtual bool find_node_id_by_mac(const uint8_t* mac, NodeId& out_id) = 0;
+
+    /**
      * @brief Loads peer list from persistent storage into PeerManager list.
      * @return ESP_OK on success.
      * @return ESP_ERR_INVALID_VERSION Mismatch PersistentData::VERSION.

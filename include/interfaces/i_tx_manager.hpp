@@ -10,6 +10,15 @@
 #include "espnow_types.hpp"
 
 /**
+ * @brief Delivery event data passed from ISR callback to TX task.
+ */
+struct DeliveryEvent
+{
+    uint8_t dest_mac[6];
+    uint8_t status; // esp_now_send_status_t
+};
+
+/**
  * @interface ITxManager
  * @brief Manager for transmission queue and background sending task.
  *
@@ -34,13 +43,14 @@ public:
      * @param stack_size Stack size for the background TX task (in words).
      * @param priority Priority for the background TX task.
      * @param rx_task_handle Handle of the RX task (used for synchronization/notifications).
+     * @param ack_timeout_ms Timeout for logical acknowledgments in milliseconds.
      * @return ESP_OK: Initialization successful, background task started.
      * @return ESP_ERR_NO_MEM: Failed to allocate task stack or queue memory.
      * @return ESP_FAIL: Failed to create background task.
      * @return ESP_ERR_INVALID_STATE: Already initialized.
      * @internal
      */
-    virtual esp_err_t init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle) = 0;
+    virtual esp_err_t init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle, uint32_t ack_timeout_ms) = 0;
 
     /**
      * @brief Stops the background task and cleans up all allocated resources.
@@ -76,39 +86,21 @@ public:
     virtual esp_err_t queue_packet(const DecodedTxPacket& packet) = 0;
 
     /**
-     * @brief Notifies the manager about a physical layer transmission failure.
+     * @brief Notifies the manager about a physical layer delivery result.
      *
-     * This method is called from the ESP-NOW send callback (esp_now_send_cb_t) when
-     * the transmission status is ESP_NOW_SEND_FAIL. It triggers the TxStateMachine
-     * to handle retransmission logic or mark the peer for channel scanning.
+     * This method is called from the ESP-NOW send callback (esp_now_send_cb_t) with
+     * the transmission status (ESP_NOW_SEND_SUCCESS or ESP_NOW_SEND_FAIL) and the
+     * destination MAC address. It routes the event to the TX task via a queue and
+     * notification for processing.
      *
-     * @note This method may be called from interrupt context (ESP-NOW callback).
-     *       Implementation must be ISR-safe.
-     * @note This handles physical layer failures only. Protocol-level failures
-     *       (missing logical ACK) are handled by other mechanisms.
-     * @see notify_delivery_success()
-     * @see notify_logical_ack()
-     * @internal
-     */
-    virtual void notify_delivery_failure() = 0;
-
-    /**
-     * @brief Notifies the manager about a successful physical layer transmission.
-     *
-     * This method is called from the ESP-NOW send callback (esp_now_send_cb_t) when
-     * the transmission status is ESP_NOW_SEND_SUCCESS. It triggers the TxStateMachine
-     * to mark the current packet as successfully delivered and proceed to process
-     * the next queued packet.
+     * @param status The ESP-NOW send status (ESP_NOW_SEND_SUCCESS or ESP_NOW_SEND_FAIL).
+     * @param dest_mac The 6-byte destination MAC address from the callback.
      *
      * @note This method may be called from interrupt context (ESP-NOW callback).
      *       Implementation must be ISR-safe.
-     * @note This indicates physical layer success only. Protocol-level acknowledgment
-     *       (logical ACK) is handled separately via notify_logical_ack().
-     * @see notify_delivery_failure()
-     * @see notify_logical_ack()
      * @internal
      */
-    virtual void notify_delivery_success() = 0;
+    virtual void notify_delivery(esp_now_send_status_t status, const uint8_t* dest_mac) = 0;
 
     /**
      * @brief Notifies the manager that a peer is still alive and reachable.

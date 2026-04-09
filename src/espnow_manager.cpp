@@ -69,7 +69,7 @@ EspNowManager& EspNowManager::instance()
     static auto stats_mgr = std::make_unique<StatisticsManager>(*storage, *hal_freertos);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
     static auto tx_manager =
-        std::make_unique<TxManager>(*tx_fsm, *hal_espnow, *hal_freertos, *message_codec, *stats_mgr, 500);
+        std::make_unique<TxManager>(*tx_fsm, *hal_espnow, *hal_freertos, *message_codec, *stats_mgr, *peer_manager);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *hal_timer);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *hal_freertos, *hal_timer);
     static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
@@ -478,15 +478,10 @@ void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t* info, const uint8
 void EspNowManager::esp_now_send_cb(const esp_now_send_info_t* info, esp_now_send_status_t status)
 {
     EspNowManager* self = s_active_instance_;
-    if (self == nullptr) {
+    if (self == nullptr || info == nullptr || info->des_addr == nullptr) {
         return;
     }
-    if (status == ESP_NOW_SEND_FAIL) {
-        self->tx_manager_->notify_delivery_failure();
-    }
-    else if (status == ESP_NOW_SEND_SUCCESS) {
-        self->tx_manager_->notify_delivery_success();
-    }
+    self->tx_manager_->notify_delivery(status, info->des_addr);
 }
 // LCOV_EXCL_STOP
 
@@ -831,7 +826,7 @@ esp_err_t EspNowManager::init_tx_manager()
     if (tx_manager_ == nullptr) {
         return ESP_FAIL;
     }
-    return tx_manager_->init(config_.stack_size_tx_task, config_.priority_tx_task, rx_task_handle_);
+    return tx_manager_->init(config_.stack_size_tx_task, config_.priority_tx_task, rx_task_handle_, config_.ack_timeout_ms);
 }
 
 esp_err_t EspNowManager::init_discovery_manager()

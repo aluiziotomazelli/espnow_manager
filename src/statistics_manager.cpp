@@ -32,7 +32,7 @@ esp_err_t StatisticsManager::init()
             entry.stats.node_id = p.node_id;
             entry.stats.rssi_avg = p.rssi_avg;
             entry.stats.packets_rx = p.packets_rx;
-            entry.stats.packets_tx = p.packets_tx;
+            entry.stats.packets_sent = p.packets_sent;
             entry.stats.packets_lost = p.packets_lost;
             entry.stats.rtt_avg_ms = p.rtt_avg_ms;
             entries_.push_back(entry);
@@ -124,14 +124,40 @@ void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_ms)
     }
 }
 
-void StatisticsManager::on_packet_sent(NodeId node_id, int64_t sent_at_ms)
+void StatisticsManager::on_delivery_success(NodeId node_id, int64_t sent_at_ms)
 {
     (void)sent_at_ms;
-    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
-            entry->stats.packets_tx++;
+            entry->stats.packets_sent++;
             entry->dirty_tx++;
+            maybe_flush(*entry);
+        }
+        hal_freertos_.semaphore_give(mutex_);
+    }
+}
+
+void StatisticsManager::on_delivery_failure(NodeId node_id)
+{
+    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
+        auto entry = find_entry(node_id);
+        if (entry != nullptr) {
+            entry->stats.delivery_failures++;
+            entry->dirty_tx_fail++;
+            maybe_flush(*entry);
+        }
+        hal_freertos_.semaphore_give(mutex_);
+    }
+}
+
+void StatisticsManager::on_driver_error(NodeId node_id)
+{
+    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
+        auto entry = find_entry(node_id);
+        if (entry != nullptr) {
+            entry->stats.driver_errors++;
+            entry->dirty_driver_err++;
             maybe_flush(*entry);
         }
         hal_freertos_.semaphore_give(mutex_);
@@ -140,24 +166,12 @@ void StatisticsManager::on_packet_sent(NodeId node_id, int64_t sent_at_ms)
 
 void StatisticsManager::on_packet_lost(NodeId node_id)
 {
-    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.packets_lost++;
-            entry->dirty_loss++;
+            entry->dirty_lost++;
             maybe_flush(*entry);
-        }
-        hal_freertos_.semaphore_give(mutex_);
-    }
-}
-
-void StatisticsManager::on_transmission_failure()
-{
-    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
-        global_tx_failures_++;
-        dirty_tx_failure_++;
-        if (dirty_tx_failure_ >= flush_threshold_tx_failure_) {
-            flush();
         }
         hal_freertos_.semaphore_give(mutex_);
     }
@@ -260,7 +274,8 @@ uint32_t StatisticsManager::update_ema_u32(uint32_t avg, uint32_t sample, uint8_
 void StatisticsManager::maybe_flush(PeerStatisticsEntry& entry)
 {
     if (entry.dirty_rx >= flush_threshold_rx_ || entry.dirty_tx >= flush_threshold_tx_ ||
-        entry.dirty_loss >= flush_threshold_loss_ || entry.dirty_rtt >= flush_threshold_rtt_) {
+        entry.dirty_tx_fail >= flush_threshold_tx_fail_ || entry.dirty_driver_err >= flush_threshold_driver_err_ ||
+        entry.dirty_lost >= flush_threshold_lost_ || entry.dirty_rtt >= flush_threshold_rtt_) {
         flush();
     }
 }
@@ -273,9 +288,10 @@ void StatisticsManager::flush()
         p.node_id = entry.stats.node_id;
         p.rssi_avg = entry.stats.rssi_avg;
         p.packets_rx = entry.stats.packets_rx;
-        p.packets_tx = entry.stats.packets_tx;
+        p.packets_sent = entry.stats.packets_sent;
+        p.driver_errors = entry.stats.driver_errors;
+        p.delivery_failures = entry.stats.delivery_failures;
         p.packets_lost = entry.stats.packets_lost;
-        p.transmission_failures = entry.stats.transmission_failures;
         p.rtt_avg_ms = entry.stats.rtt_avg_ms;
         persisted.push_back(p);
     }
@@ -284,9 +300,11 @@ void StatisticsManager::flush()
         for (auto& entry : entries_) {
             entry.dirty_rx = 0;
             entry.dirty_tx = 0;
-            entry.dirty_loss = 0;
+            entry.dirty_tx_fail = 0;
+            entry.dirty_driver_err = 0;
+            entry.dirty_lost = 0;
             entry.dirty_rtt = 0;
         }
-        dirty_tx_failure_ = 0;
+
     }
 }

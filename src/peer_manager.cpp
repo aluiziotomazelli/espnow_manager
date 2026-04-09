@@ -165,6 +165,23 @@ void PeerManager::update_last_seen(NodeId id, int64_t now_ms)
     hal_freertos_.semaphore_give(mutex_);
 }
 
+bool PeerManager::find_node_id_by_mac(const uint8_t* mac, NodeId& out_id)
+{
+    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) != pdTRUE) {
+        return false;
+    }
+    bool found = false;
+    for (const auto& p : peers_) {
+        if (memcmp(p.mac, mac, 6) == 0) {
+            out_id = p.node_id;
+            found = true;
+            break;
+        }
+    }
+    hal_freertos_.semaphore_give(mutex_);
+    return found;
+}
+
 esp_err_t PeerManager::load_peers_from_storage()
 {
     etl::vector<PersistentPeer, MAX_PEERS> stored_peers;

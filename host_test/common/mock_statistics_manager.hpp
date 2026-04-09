@@ -16,9 +16,10 @@ public:
     MOCK_METHOD(void, on_packet_received, (NodeId node_id, int8_t rssi, int64_t received_at_ms), (override));
     MOCK_METHOD(void, on_ack_received, (NodeId node_id, uint32_t rtt_ms), (override));
 
-    MOCK_METHOD(void, on_packet_sent, (NodeId node_id, int64_t sent_at_ms), (override));
+    MOCK_METHOD(void, on_delivery_success, (NodeId node_id, int64_t sent_at_ms), (override));
+    MOCK_METHOD(void, on_delivery_failure, (NodeId node_id), (override));
+    MOCK_METHOD(void, on_driver_error, (NodeId node_id), (override));
     MOCK_METHOD(void, on_packet_lost, (NodeId node_id), (override));
-    MOCK_METHOD(void, on_transmission_failure, (), (override));
     MOCK_METHOD(void, on_retry, (NodeId node_id), (override));
 
     MOCK_METHOD(bool, get, (NodeId node_id, PeerStatistics& out), (const, override));
