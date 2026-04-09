@@ -568,3 +568,34 @@ TEST_F(PeerManagerTest, GetOfflineDontTakeMutexReturnsEmptyVector)
     auto offline = manager->get_offline(0);
     EXPECT_EQ(0, offline.size());
 }
+
+// ===========================================================================
+// PeerManager::find_node_id_by_mac
+// ===========================================================================
+
+TEST_F(PeerManagerTest, FindNodeIdByMacReturnsIdWhenFound)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 1000);
+
+    NodeId out_id = 0;
+    EXPECT_TRUE(manager->find_node_id_by_mac(mac, out_id));
+    EXPECT_EQ(ID_2, out_id);
+}
+
+TEST_F(PeerManagerTest, FindNodeIdByMacReturnsFalseWhenNotFound)
+{
+    uint8_t unknown_mac[6] = {0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA};
+    NodeId out_id = 0;
+    EXPECT_FALSE(manager->find_node_id_by_mac(unknown_mac, out_id));
+    EXPECT_EQ(0, out_id); // out_id should remain unchanged
+}
+
+TEST_F(PeerManagerTest, FindNodeIdByMacDontTakeMutexReturnsFalse)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE));
+    uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    NodeId out_id = 0;
+    EXPECT_FALSE(manager->find_node_id_by_mac(mac, out_id));
+}
