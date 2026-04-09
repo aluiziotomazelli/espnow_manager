@@ -99,28 +99,55 @@ TEST_F(StatisticsManagerTest, ReachingThresholdRxTriggersFlush)
     }
 }
 
-TEST_F(StatisticsManagerTest, ReachingThresholdTxTriggersFlush)
+// Delivery success/failure/driver_error do NOT have dirty counters — they update
+// stats directly. Flush is triggered by the next on_packet_received or
+// on_ack_received call, or by deinit().
+TEST_F(StatisticsManagerTest, DeliverySuccessUpdatesPacketsSent)
 {
     NodeId node_id = 10;
     sut->on_peer_added(node_id, 1000);
 
-    // FLUSH_THRESHOLD_RX = 100, deve flushear uma vez
-    EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
+    sut->on_delivery_success(node_id, 100);
 
-    for (int i = 0; i < FLUSH_THRESHOLD_TX; ++i) {
-        sut->on_packet_sent(node_id, 100);
-    }
+    PeerStatistics stats;
+    EXPECT_TRUE(sut->get(node_id, stats));
+    EXPECT_EQ(stats.packets_sent, 1);
 }
-TEST_F(StatisticsManagerTest, ReachingThresholdLossTriggersFlush)
+
+TEST_F(StatisticsManagerTest, DeliveryFailureUpdatesDeliveryFailures)
 {
     NodeId node_id = 10;
     sut->on_peer_added(node_id, 1000);
 
-    // FLUSH_THRESHOLD_LOSS = 10, deve flushear uma vez
+    sut->on_delivery_failure(node_id);
+
+    PeerStatistics stats;
+    EXPECT_TRUE(sut->get(node_id, stats));
+    EXPECT_EQ(stats.delivery_failures, 1);
+}
+
+TEST_F(StatisticsManagerTest, DriverErrorIncrementsPerPeerCounter)
+{
+    NodeId node_id = 10;
+    sut->on_peer_added(node_id, 1000);
+
+    sut->on_driver_error(node_id);
+    sut->on_driver_error(node_id);
+
+    PeerStatistics stats;
+    EXPECT_TRUE(sut->get(node_id, stats));
+    EXPECT_EQ(stats.driver_errors, 2);
+}
+
+TEST_F(StatisticsManagerTest, ReachingThresholdDriverErrorTriggersFlush)
+{
+    NodeId node_id = 10;
+    sut->on_peer_added(node_id, 1000);
+
     EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
 
-    for (int i = 0; i < FLUSH_THRESHOLD_LOSS; ++i) {
-        sut->on_packet_lost(node_id);
+    for (int i = 0; i < FLUSH_THRESHOLD_TX_FAILURE; ++i) {
+        sut->on_driver_error(node_id);
     }
 }
 
@@ -137,33 +164,29 @@ TEST_F(StatisticsManagerTest, ReachingThresholdRttTriggersFlush)
     }
 }
 
-TEST_F(StatisticsManagerTest, TransmissionFailureIncrementsCounter)
+TEST_F(StatisticsManagerTest, ReachingThresholdLostTriggersFlush)
 {
     NodeId node_id = 10;
     sut->on_peer_added(node_id, 1000);
 
-    // on_transmission_failure() should not crash and should increment internal counter
-    sut->on_transmission_failure();
-    sut->on_transmission_failure();
-
-    // Counter is global, so get() won't show it per-peer, but it should be tracked internally
-    PeerStatistics stats;
-    EXPECT_TRUE(sut->get(node_id, stats));
-    // peer stats remain unchanged
-    EXPECT_EQ(stats.packets_rx, 0);
-}
-
-TEST_F(StatisticsManagerTest, ReachingThresholdTxFailureTriggersFlush)
-{
-    NodeId node_id = 10;
-    sut->on_peer_added(node_id, 1000);
-
-    // FLUSH_THRESHOLD_TX_FAILURE = 10, deve flushear uma vez
     EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
 
-    for (int i = 0; i < FLUSH_THRESHOLD_TX_FAILURE; ++i) {
-        sut->on_transmission_failure();
+    for (int i = 0; i < FLUSH_THRESHOLD_LOSS; ++i) {
+        sut->on_packet_lost(node_id);
     }
+}
+
+TEST_F(StatisticsManagerTest, DeliveryFailureIncrementsPerPeerCounter)
+{
+    NodeId node_id = 10;
+    sut->on_peer_added(node_id, 1000);
+
+    sut->on_delivery_failure(node_id);
+    sut->on_delivery_failure(node_id);
+
+    PeerStatistics stats;
+    EXPECT_TRUE(sut->get(node_id, stats));
+    EXPECT_EQ(stats.delivery_failures, 2);
 }
 
 TEST_F(StatisticsManagerTest, ChangingHeartbeatUpdatesAlpha)
@@ -226,7 +249,7 @@ TEST_F(StatisticsManagerTest, UnregisteredPeerOperationsDoNotCrash)
 
     sut->on_packet_received(unknown_node, -60, 100);
     sut->on_ack_received(unknown_node, 20);
-    sut->on_packet_lost(unknown_node);
+    sut->on_delivery_failure(unknown_node);
 }
 
 TEST_F(StatisticsManagerTest, MultiplePeersMaintainIndependentStats)
@@ -249,7 +272,7 @@ TEST_F(StatisticsManagerTest, MultiplePeersMaintainIndependentStats)
 
     // Independent validations
     EXPECT_EQ(stats1.packets_rx, 1);
-    EXPECT_EQ(stats1.packets_tx, 0);
+    EXPECT_EQ(stats1.packets_sent, 0);
     EXPECT_EQ(stats1.rtt_avg_ms, 0);
 
     EXPECT_EQ(stats2.packets_rx, 0);
@@ -264,7 +287,7 @@ TEST_F(StatisticsManagerTest, InitLoadsPersistedStats)
     persisted.node_id = node_id;
     persisted.rssi_avg = -55;
     persisted.packets_rx = 50;
-    persisted.packets_tx = 40;
+    persisted.packets_sent = 40;
     persisted.packets_lost = 2;
     persisted.rtt_avg_ms = 15;
 

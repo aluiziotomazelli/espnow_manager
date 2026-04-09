@@ -101,7 +101,7 @@ static etl::vector<PeerStatisticsPersist, MAX_PEERS * 2> create_test_stats(int c
         s.node_id = (uint8_t)(i + 10);
         s.rssi_avg = -60 - i;
         s.packets_rx = 100 + i;
-        s.packets_tx = 90 + i;
+        s.packets_sent = 90 + i;
         s.packets_lost = 5 + i;
         s.rtt_avg_ms = 10 + i;
         stats.push_back(s);

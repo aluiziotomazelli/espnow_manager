@@ -8,6 +8,7 @@
 #include "mock_message_codec.hpp"
 #include "mock_discovery_manager.hpp"
 #include "mock_statistics_manager.hpp"
+#include "mock_peer_manager.hpp"
 #include "hal_real_freertos.hpp"
 #include "tx_manager.hpp"
 
@@ -32,12 +33,14 @@ protected:
     std::unique_ptr<NiceMock<MockEspNowHAL>> hal_owned;
     std::unique_ptr<NiceMock<MockMessageCodec>> codec_owned;
     std::unique_ptr<NiceMock<MockStatisticsManager>> statistics_mgr_owned;
+    std::unique_ptr<NiceMock<MockPeerManager>> peer_mgr_owned;
 
     // Raw pointers to use in tests
     NiceMock<MockTxStateMachine>* fsm;
     NiceMock<MockEspNowHAL>* hal;
     NiceMock<MockMessageCodec>* codec;
     NiceMock<MockStatisticsManager>* statistics_mgr;
+    NiceMock<MockPeerManager>* peer_mgr;
 
     RealFreeRTOSHAL freertos_hal;
     std::unique_ptr<TxManager> manager;
@@ -48,6 +51,7 @@ protected:
 
     uint32_t ack_timeout_ms = 50;
     uint32_t delay_ms = 20;
+    static constexpr uint8_t test_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
     void SetUp() override
     {
@@ -55,11 +59,13 @@ protected:
         hal_owned = std::make_unique<NiceMock<MockEspNowHAL>>();
         codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
         statistics_mgr_owned = std::make_unique<NiceMock<MockStatisticsManager>>();
+        peer_mgr_owned = std::make_unique<NiceMock<MockPeerManager>>();
 
         fsm = fsm_owned.get();
         hal = hal_owned.get();
         codec = codec_owned.get();
         statistics_mgr = statistics_mgr_owned.get();
+        peer_mgr = peer_mgr_owned.get();
 
         // FSM tracks state via local variable
         ON_CALL(*fsm, get_state()).WillByDefault(ReturnPointee(&current_state));
@@ -97,8 +103,19 @@ protected:
         // Codec defaults
         ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
 
+        // PeerManager: resolve test_mac to a known node_id (kNodeId = 2 is defined in test constants)
+        ON_CALL(*peer_mgr, find_node_id_by_mac(_, _))
+            .WillByDefault(Invoke([](const uint8_t* mac, NodeId& out_id) {
+                static constexpr uint8_t expected_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+                if (memcmp(mac, expected_mac, 6) == 0) {
+                    out_id = 2;
+                    return true;
+                }
+                return false;
+            }));
+
         manager = std::make_unique<TxManager>(
-            *fsm_owned, *hal_owned, freertos_hal, *codec_owned, *statistics_mgr_owned, ack_timeout_ms);
+            *fsm_owned, *hal_owned, freertos_hal, *codec_owned, *statistics_mgr_owned, *peer_mgr_owned);
     }
 
     void TearDown() override
@@ -115,7 +132,7 @@ protected:
     // Helper: init and give task time to start and block
     void init_and_wait()
     {
-        ASSERT_EQ(ESP_OK, manager->init(4096, 5, fake_rx_task));
+        ASSERT_EQ(ESP_OK, manager->init(4096, 5, fake_rx_task, 50));
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
@@ -231,9 +248,9 @@ TEST_F(TxManagerTaskTest, IdleStateNotifyDeliveryFailureCallsFsmOnDeliveryFailur
     init_and_wait();
 
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
-    EXPECT_CALL(*statistics_mgr, on_transmission_failure()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_failure(2)).Times(1);
 
-    manager->notify_delivery_failure();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
@@ -243,14 +260,14 @@ TEST_F(TxManagerTaskTest, OnDeliveryFailureReturningTrueCallsNotifyMaxFailuresOn
     make_real_rx_task();
 
     // Init with the real task handle
-    ASSERT_EQ(ESP_OK, manager->init(4096, 5, real_rx_task_handle));
+    ASSERT_EQ(ESP_OK, manager->init(4096, 5, real_rx_task_handle, 50));
     vTaskDelay(pdMS_TO_TICKS(20));
 
     // On delivery failure returns true if the number of failures is greater than max_failures
     EXPECT_CALL(*fsm, on_delivery_failure()).WillOnce(Return(true));
 
     // Trigger the notification
-    manager->notify_delivery_failure();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     // Real rx task will be notifyed and turns the flag true
@@ -326,7 +343,7 @@ TEST_F(TxManagerTaskTest, WaitingForAckNotifyDeliveryFailureCallsOnDeliveryFailu
 
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
 
-    manager->notify_delivery_failure();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
@@ -345,7 +362,7 @@ TEST_F(TxManagerTaskTest, RetryingWithPendingAckResendsPacket)
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).Times(1);
 
     // Trigger loop iteration via notify
-    manager->notify_delivery_failure();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
@@ -363,7 +380,7 @@ TEST_F(TxManagerTaskTest, RetryingWithEspnowErrorCallsFsmOnDeliveryFailure)
     EXPECT_CALL(*fsm, on_delivery_failure())
         .Times(retry_count + 1); // + 1 for the inital fail that trigger the retry loop
 
-    manager->notify_delivery_failure(); // trigger retry loop
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac); // trigger retry loop
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
@@ -371,15 +388,9 @@ TEST_F(TxManagerTaskTest, RetryingWithEspnowErrorCallsFsmOnDeliveryFailure)
 // Statistics Reporting
 // =============================================================================
 
-TEST_F(TxManagerTaskTest, IdleStateProcessesPacketAndReportsSent)
-{
-    init_and_wait();
-
-    EXPECT_CALL(*statistics_mgr, on_packet_sent(_, _)).Times(1);
-
-    manager->queue_packet(make_packet(false));
-    vTaskDelay(pdMS_TO_TICKS(delay_ms));
-}
+// Delivery success is now reported via callback, not in tx_task loop.
+// The on_delivery_success() stats call happens when ESP-NOW callback fires.
+// TEST REMOVED: IdleStateProcessesPacketAndReportsSent (no longer applicable)
 
 TEST_F(TxManagerTaskTest, RetryingResendsPacketAndReportsRetry)
 {
@@ -392,11 +403,11 @@ TEST_F(TxManagerTaskTest, RetryingResendsPacketAndReportsRetry)
     // Expectation: stats manager is called on retry
     EXPECT_CALL(*statistics_mgr, on_retry(_)).Times(1);
 
-    manager->notify_delivery_failure();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-TEST_F(TxManagerTaskTest, MaxRetriesExhaustedReportsPacketLost)
+TEST_F(TxManagerTaskTest, MaxRetriesExhaustedReportsDeliveryFailure)
 {
     init_and_wait();
 
@@ -404,10 +415,10 @@ TEST_F(TxManagerTaskTest, MaxRetriesExhaustedReportsPacketLost)
     pending_ack = make_pending_ack(0); // No retries left
     current_state = TxState::RETRYING;
 
-    // Expectation: stats manager reports loss
-    EXPECT_CALL(*statistics_mgr, on_packet_lost(_)).Times(1);
+    // Expectation: stats manager reports delivery failure
+    EXPECT_CALL(*statistics_mgr, on_delivery_failure(_)).Times(1);
 
-    manager->notify_delivery_failure();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
