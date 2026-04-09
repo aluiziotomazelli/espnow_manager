@@ -109,7 +109,7 @@ struct PersistentStats
             return false;
         for (uint8_t i = 0; i < num_stats; ++i) {
             if (stats[i].node_id != other.stats[i].node_id || stats[i].rssi_avg != other.stats[i].rssi_avg ||
-                stats[i].packets_rx != other.stats[i].packets_rx || stats[i].packets_tx != other.stats[i].packets_tx ||
+                stats[i].packets_rx != other.stats[i].packets_rx || stats[i].packets_sent != other.stats[i].packets_sent ||
                 stats[i].packets_lost != other.stats[i].packets_lost ||
                 stats[i].rtt_avg_ms != other.stats[i].rtt_avg_ms) {
                 return false;
