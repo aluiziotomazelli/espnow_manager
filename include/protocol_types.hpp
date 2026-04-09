@@ -54,10 +54,6 @@ constexpr uint8_t HEARTBEAT_OFFLINE_MULTIPLIER = 3;
 static constexpr uint32_t PAIRING_TIMEOUT_MS = 60000;
 static constexpr uint32_t PAIRING_PERIODIC_INTERVAL_MS = 5000;
 
-// Constants for retry logic
-/** @brief Timeout for logical acknowledgments in milliseconds */
-constexpr uint32_t LOGICAL_ACK_TIMEOUT_MS = 500;
-
 /** @brief Maximum number of physical transmission failures before giving up or scanning */
 constexpr uint8_t MAX_FAILURES = 3;
 
