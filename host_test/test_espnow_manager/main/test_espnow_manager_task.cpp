@@ -719,7 +719,7 @@ TEST_F(EspNowManagerTaskTest, ValidPacketCallsOnPacketReceived)
     header.sender_node_id = kNodeId;
     ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(header));
 
-    EXPECT_CALL(*stats_mgr_, on_packet_received(kNodeId, _, _)).Times(1);
+    EXPECT_CALL(*stats_mgr_, on_packet_received(kNodeId, _)).Times(1);
 
     receive_valid_rx_packet();
 }
@@ -730,7 +730,7 @@ TEST_F(EspNowManagerTaskTest, InvalidCrcDoesNotCallOnPacketReceived)
 
     ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(false));
 
-    EXPECT_CALL(*stats_mgr_, on_packet_received(_, _, _)).Times(0);
+    EXPECT_CALL(*stats_mgr_, on_packet_received(_, _)).Times(0);
 
     receive_valid_rx_packet();
 }
@@ -742,7 +742,7 @@ TEST_F(EspNowManagerTaskTest, FailedHeaderDecodeDoesNotCallOnPacketReceived)
     ON_CALL(*codec_, validate_crc(_, _)).WillByDefault(Return(true));
     ON_CALL(*codec_, decode_header(_, _)).WillByDefault(Return(std::nullopt));
 
-    EXPECT_CALL(*stats_mgr_, on_packet_received(_, _, _)).Times(0);
+    EXPECT_CALL(*stats_mgr_, on_packet_received(_, _)).Times(0);
 
     receive_valid_rx_packet();
 }

@@ -259,7 +259,7 @@ TEST_F(TxManagerTaskTest, IdleStateNotifyDeliverySuccessCallsFsmOnDeliverySucces
     init_and_wait();
 
     EXPECT_CALL(*fsm, on_delivery_success()).Times(1);
-    EXPECT_CALL(*statistics_mgr, on_delivery_success(2, 0)).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_success(2)).Times(1);
 
     manager->notify_delivery(ESP_NOW_SEND_SUCCESS, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));

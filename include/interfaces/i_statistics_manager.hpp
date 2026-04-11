@@ -25,11 +25,11 @@ public:
     virtual void on_peer_removed(NodeId node_id) = 0;
 
     // --- Rx events (called from rx_task) ---
-    virtual void on_packet_received(NodeId node_id, int8_t rssi, int64_t received_at_ms) = 0;
+    virtual void on_packet_received(NodeId node_id, int8_t rssi) = 0;
     virtual void on_ack_received(NodeId node_id, uint32_t rtt_ms) = 0;
 
     // --- Tx delivery events (called from tx_task via callback) ---
-    virtual void on_delivery_success(NodeId node_id, int64_t sent_at_ms) = 0;
+    virtual void on_delivery_success(NodeId node_id) = 0;
     virtual void on_delivery_failure(NodeId node_id) = 0;
     virtual void on_driver_error(NodeId node_id) = 0;
     virtual void on_packet_lost(NodeId node_id) = 0;

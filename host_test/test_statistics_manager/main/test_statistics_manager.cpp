@@ -57,8 +57,8 @@ TEST_F(StatisticsManagerTest, PacketReceivedUpdatesRssiAvg)
     sut->on_peer_added(node_id, 1000); // interval 1s -> alpha 26 (10%)
 
     // Act
-    sut->on_packet_received(node_id, initial_rssi, 100);
-    sut->on_packet_received(node_id, second_rssi, 200);
+    sut->on_packet_received(node_id, initial_rssi);
+    sut->on_packet_received(node_id, second_rssi);
 
     // Assert
     auto all_stats = sut->get_all();
@@ -95,7 +95,7 @@ TEST_F(StatisticsManagerTest, ReachingThresholdRxTriggersFlush)
     EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
 
     for (int i = 0; i < FLUSH_THRESHOLD_RX; ++i) {
-        sut->on_packet_received(node_id, -60, 100);
+        sut->on_packet_received(node_id, -60);
     }
 }
 
@@ -107,7 +107,7 @@ TEST_F(StatisticsManagerTest, DeliverySuccessUpdatesPacketsSent)
     NodeId node_id = 10;
     sut->on_peer_added(node_id, 1000);
 
-    sut->on_delivery_success(node_id, 100);
+    sut->on_delivery_success(node_id);
 
     PeerStatistics stats;
     EXPECT_TRUE(sut->get(node_id, stats));
@@ -212,7 +212,7 @@ TEST_F(StatisticsManagerTest, DeinitTriggersFinalFlush)
 {
     NodeId node_id = 10;
     sut->on_peer_added(node_id, 1000);
-    sut->on_packet_received(node_id, -60, 100); // dirty_rx = 1
+    sut->on_packet_received(node_id, -60); // dirty_rx = 1
 
     EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
     sut->deinit();
@@ -247,7 +247,7 @@ TEST_F(StatisticsManagerTest, UnregisteredPeerOperationsDoNotCrash)
     // Should not crash or call storage
     EXPECT_CALL(storage_manager, store_stats(_)).Times(0);
 
-    sut->on_packet_received(unknown_node, -60, 100);
+    sut->on_packet_received(unknown_node, -60);
     sut->on_ack_received(unknown_node, 20);
     sut->on_delivery_failure(unknown_node);
 }
@@ -261,7 +261,7 @@ TEST_F(StatisticsManagerTest, MultiplePeersMaintainIndependentStats)
     sut->on_peer_added(node2, 1000);
 
     // Node 1: Receives packets
-    sut->on_packet_received(node1, -60, 100);
+    sut->on_packet_received(node1, -60);
 
     // Node 2: Receives ACKs
     sut->on_ack_received(node2, 30);

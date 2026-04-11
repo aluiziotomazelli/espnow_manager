@@ -45,12 +45,16 @@ esp_err_t StatisticsManager::init()
 esp_err_t StatisticsManager::deinit()
 {
     if (mutex_ != nullptr) {
-        // Final flush of all dirty stats
-        flush();
+        // Acquire mutex to prevent concurrent stats updates during shutdown.
+        // flush() assumes the mutex is already held.
+        if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+            flush();
+            entries_.clear();
+            hal_freertos_.semaphore_give(mutex_);
+        }
         hal_freertos_.semaphore_delete(mutex_);
         mutex_ = nullptr;
     }
-    entries_.clear();
     return ESP_OK;
 }
 
@@ -83,9 +87,9 @@ void StatisticsManager::on_peer_removed(NodeId node_id)
     }
 }
 
-void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi, int64_t received_at_ms)
+void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi)
 {
-    (void)received_at_ms; // Not used for now, could be used for jitter calculation
+    
     if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
@@ -124,9 +128,9 @@ void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_ms)
     }
 }
 
-void StatisticsManager::on_delivery_success(NodeId node_id, int64_t sent_at_ms)
+void StatisticsManager::on_delivery_success(NodeId node_id)
 {
-    (void)sent_at_ms;
+    
     if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {

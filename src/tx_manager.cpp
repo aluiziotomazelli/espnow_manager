@@ -387,7 +387,7 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
                 ESP_LOGW(TAG, "Delivery event for unknown MAC");
                 continue;
             }
-            stats_mgr_.on_delivery_success(node_id, 0);
+            stats_mgr_.on_delivery_success(node_id);
         }
         fsm_.on_delivery_success();
     }

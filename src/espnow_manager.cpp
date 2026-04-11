@@ -523,7 +523,7 @@ void EspNowManager::rx_task(void* arg)
                     self->tx_manager_->notify_link_alive();
 
                     // Report packet reception to stats manager
-                    self->stats_mgr_->on_packet_received(header_opt->sender_node_id, packet.rssi, packet.timestamp_ms);
+                    self->stats_mgr_->on_packet_received(header_opt->sender_node_id, packet.rssi);
 
                     decoded = {packet, header_opt.value()};
 
