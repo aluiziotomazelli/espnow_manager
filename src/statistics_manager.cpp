@@ -89,8 +89,7 @@ void StatisticsManager::on_peer_removed(NodeId node_id)
 
 void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi)
 {
-    
-    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.rssi_last = rssi;
@@ -110,7 +109,7 @@ void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi)
 
 void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_ms)
 {
-    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.rtt_last_ms = rtt_ms;
@@ -130,7 +129,6 @@ void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_ms)
 
 void StatisticsManager::on_delivery_success(NodeId node_id)
 {
-    
     if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
@@ -183,7 +181,7 @@ void StatisticsManager::on_packet_lost(NodeId node_id)
 
 void StatisticsManager::on_retry(NodeId node_id)
 {
-    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.retries++;
