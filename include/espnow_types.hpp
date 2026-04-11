@@ -61,7 +61,7 @@ struct RxPacket
     uint8_t data[ESP_NOW_MAX_DATA_LEN]; /**< Raw payload data */
     size_t len;                         /**< Length of the payload in bytes */
     int8_t rssi;                        /**< Received Signal Strength Indicator (dBm) */
-    int64_t timestamp_ms;              /**< Millisecond timestamp (esp_timer_get_time / 1000) */
+    int64_t timestamp_ms;               /**< Millisecond timestamp (esp_timer_get_time / 1000) */
 };
 
 /**
@@ -81,7 +81,7 @@ struct PeerInfo
     uint8_t mac[6];                 /**< 6-byte MAC address of the peer */
     NodeType type;                  /**< Categorization of the node (e.g., HUB or peripheral) */
     NodeId node_id;                 /**< Unique logical ID assigned to the node */
-    int64_t last_seen_ms;          /**< Timestamp of the last message received (ms) */
+    int64_t last_seen_ms;           /**< Timestamp of the last message received (ms) */
     bool paired;                    /**< If true, the node has completed the pairing process */
     uint32_t heartbeat_interval_ms; /**< Expected frequency of heartbeat messages */
 };
@@ -162,7 +162,7 @@ enum class NodeState
 struct PendingAck
 {
     uint16_t sequence_number; /**< Sequence number of the message being tracked */
-    int64_t timestamp_ms;    /**< Timestamp of the last attempt (ms) */
+    int64_t timestamp_ms;     /**< Timestamp of the last attempt (ms) */
     uint8_t retries_left;     /**< Remaining retransmission attempts */
     TxPacket packet;          /**< Copy of the packet to allow retransmission */
     NodeId node_id;           /**< Target Node ID for tracking and timeout logic */
@@ -173,39 +173,34 @@ struct PendingAck
  */
 struct PeerStatistics
 {
-    NodeId node_id = 0;                 ///< Node ID
-    int8_t rssi_last = 0;               ///< Last received RSSI
-    uint8_t rssi_alpha = 20;            ///< Alpha derived from heartbeat interval
-    int8_t rssi_avg = 0;                ///< Exponential moving average
-    uint8_t stats_flags = 0;            ///< Bit 0: rssi_avg valid, Bit 1: rtt_avg valid
-    uint32_t packets_rx = 0;            ///< Number of packets received
-    uint32_t packets_sent = 0;          ///< Successfully transmitted over the air
-    uint32_t driver_errors = 0;         ///< hal_esp_now_send() returned error (NO_MEM, etc.)
-    uint32_t delivery_failures = 0;     ///< ESP-NOW callback reported ESP_NOW_SEND_FAIL
-    uint32_t packets_lost = 0;          ///< Number of packets lost (ACK timeout after retries)
-    uint32_t retries = 0;               ///< Number of retries
-    uint32_t rtt_last_ms = 0;           ///< Last round-trip time in milliseconds
-    uint32_t rtt_avg_ms = 0;            ///< Average round-trip time in milliseconds
-    uint8_t dirty_count = 0;            ///< Flush to storage when threshold reached
+    NodeId node_id = 0;             ///< Node ID
+    int8_t rssi_last = 0;           ///< Last received RSSI
+    uint8_t rssi_alpha = 20;        ///< Alpha derived from heartbeat interval (default = 20)
+    int8_t rssi_avg = -127;         ///< Exponential moving average (-127 = unknown)
+    uint32_t packets_rx = 0;        ///< Number of packets received
+    uint32_t packets_sent = 0;      ///< Successfully transmitted over the air
+    uint32_t driver_errors = 0;     ///< hal_esp_now_send() returned error (NO_MEM, etc.)
+    uint32_t delivery_failures = 0; ///< ESP-NOW callback reported ESP_NOW_SEND_FAIL
+    uint32_t packets_lost = 0;      ///< Number of packets lost (ACK timeout after retries)
+    uint32_t retries = 0;           ///< Number of retries
+    uint32_t rtt_last_ms = 0;       ///< Last round-trip time in milliseconds
+    uint32_t rtt_avg_ms = 0;        ///< Average round-trip time in milliseconds (0 = unknown)
 };
-
-/// @brief Bit flags for PeerStatistics::stats_flags
-static constexpr uint8_t PEER_STATS_FLAG_RSSI_VALID = 0x01;
-static constexpr uint8_t PEER_STATS_FLAG_RTT_VALID  = 0x02;
 
 /**
  * @brief Structure for persistent peer statistics.
  */
 struct PeerStatisticsPersist
 {
-    NodeId node_id = 0;                 ///< Node ID
-    int8_t rssi_avg = 0;                ///< Exponential moving average
-    uint32_t packets_rx = 0;            ///< Number of packets received
-    uint32_t packets_sent = 0;          ///< Successfully transmitted over the air
-    uint32_t driver_errors = 0;         ///< hal_esp_now_send() returned error
-    uint32_t delivery_failures = 0;     ///< ESP-NOW callback reported ESP_NOW_SEND_FAIL
-    uint32_t packets_lost = 0;          ///< Number of packets lost (ACK timeout after retries)
-    uint32_t rtt_avg_ms = 0;            ///< Average round-trip time in milliseconds
+    NodeId node_id = 0;             ///< Node ID
+    int8_t rssi_avg = -127;         ///< Exponential moving average
+    uint32_t packets_rx = 0;        ///< Number of packets received
+    uint32_t packets_sent = 0;      ///< Successfully transmitted over the air
+    uint32_t driver_errors = 0;     ///< hal_esp_now_send() returned error
+    uint32_t delivery_failures = 0; ///< ESP-NOW callback reported ESP_NOW_SEND_FAIL
+    uint32_t packets_lost = 0;      ///< Number of packets lost (ACK timeout after retries)
+    uint32_t retries = 0;           ///< Number of retries
+    uint32_t rtt_avg_ms = 0;        ///< Average round-trip time in milliseconds
 };
 
 /**

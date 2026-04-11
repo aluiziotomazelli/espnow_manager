@@ -2,9 +2,13 @@
 #include <cstring>
 
 #include "esp_log.h"
+#include "espnow_types.hpp"
 #include "statistics_manager.hpp"
 
 // static const char* TAG = "StatsMgr";
+
+/** @brief Fixed EMA alpha for RTT (32/256 = 12.5% = 1/8). Smoother than RSSI alpha to filter out transient spikes. */
+static constexpr uint8_t RTT_EMA_ALPHA = 32;
 
 StatisticsManager::StatisticsManager(IStorageManager& storage, IFreeRTOSHAL& hal_freertos)
     : storage_(storage)
@@ -34,6 +38,7 @@ esp_err_t StatisticsManager::init()
             entry.stats.packets_rx = p.packets_rx;
             entry.stats.packets_sent = p.packets_sent;
             entry.stats.packets_lost = p.packets_lost;
+            entry.stats.retries = p.retries;
             entry.stats.rtt_avg_ms = p.rtt_avg_ms;
             entries_.push_back(entry);
         }
@@ -93,7 +98,7 @@ void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi)
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.rssi_last = rssi;
-            if (entry->stats.rssi_avg == 0) {
+            if (entry->stats.rssi_avg == RSSI_UNKNOWN) {
                 entry->stats.rssi_avg = rssi;
             }
             else {
@@ -117,8 +122,7 @@ void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_ms)
                 entry->stats.rtt_avg_ms = rtt_ms;
             }
             else {
-                // RTT uses the same alpha as RSSI for now, or a fixed one (e.g. 1/8)
-                entry->stats.rtt_avg_ms = update_ema_u32(entry->stats.rtt_avg_ms, rtt_ms, entry->stats.rssi_alpha);
+                entry->stats.rtt_avg_ms = update_ema_u32(entry->stats.rtt_avg_ms, rtt_ms, RTT_EMA_ALPHA);
             }
             entry->dirty_rtt++;
             maybe_flush(*entry);
@@ -294,6 +298,7 @@ void StatisticsManager::flush()
         p.driver_errors = entry.stats.driver_errors;
         p.delivery_failures = entry.stats.delivery_failures;
         p.packets_lost = entry.stats.packets_lost;
+        p.retries = entry.stats.retries;
         p.rtt_avg_ms = entry.stats.rtt_avg_ms;
         persisted.push_back(p);
     }
