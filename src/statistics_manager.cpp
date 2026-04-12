@@ -2,7 +2,6 @@
 #include <cstring>
 
 #include "esp_log.h"
-#include "espnow_types.hpp"
 #include "statistics_manager.hpp"
 
 // static const char* TAG = "StatsMgr";
@@ -38,8 +37,8 @@ esp_err_t StatisticsManager::init()
             entry.stats.packets_rx = p.packets_rx;
             entry.stats.packets_sent = p.packets_sent;
             entry.stats.packets_lost = p.packets_lost;
-            entry.stats.retries = p.retries;
             entry.stats.rtt_avg_ms = p.rtt_avg_ms;
+            entry.stats.retries = p.retries;
             entries_.push_back(entry);
         }
     }
@@ -98,7 +97,7 @@ void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi)
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.rssi_last = rssi;
-            if (entry->stats.rssi_avg == RSSI_UNKNOWN) {
+            if (entry->stats.rssi_avg == -127) {
                 entry->stats.rssi_avg = rssi;
             }
             else {
@@ -298,7 +297,6 @@ void StatisticsManager::flush()
         p.driver_errors = entry.stats.driver_errors;
         p.delivery_failures = entry.stats.delivery_failures;
         p.packets_lost = entry.stats.packets_lost;
-        p.retries = entry.stats.retries;
         p.rtt_avg_ms = entry.stats.rtt_avg_ms;
         persisted.push_back(p);
     }
@@ -312,6 +310,5 @@ void StatisticsManager::flush()
             entry.dirty_lost = 0;
             entry.dirty_rtt = 0;
         }
-
     }
 }

@@ -34,6 +34,7 @@
 
 using ::testing::_;
 using ::testing::AtLeast;
+using ::testing::Invoke;
 using ::testing::NiceMock;
 using ::testing::Return;
 
@@ -65,6 +66,7 @@ public:
     using EspNowManager::rx_task_handle_;
     using EspNowManager::scan_retry_;
     using EspNowManager::tick_scan_retry;
+    IStatisticsManager* get_stats_mgr() const { return stats_mgr_.get(); }
 };
 
 // ---------------------------------------------------------------------------
@@ -707,6 +709,47 @@ TEST_F(EspNowManagerTaskTest, DataPacketIncludesRssiInAppMessage)
     AppMessage msg{};
     EXPECT_EQ(xQueueReceive(app_queue_handle, &msg, pdMS_TO_TICKS(50)), pdTRUE);
     EXPECT_EQ(-42, msg.rssi);
+}
+
+TEST_F(EspNowManagerTaskTest, GetPeerStatsReturnsDataAfterPacketReception)
+{
+    init_and_wait();
+
+    // Mock stats manager to return valid data for kNodeId
+    PeerStatistics mock_stats{};
+    mock_stats.node_id = kNodeId;
+    mock_stats.rssi_avg = -65;
+    mock_stats.packets_rx = 1;
+
+    EXPECT_CALL(*stats_mgr_, get(kNodeId, _)).WillOnce(Invoke([&mock_stats](NodeId, PeerStatistics& out) {
+        out = mock_stats;
+        return true;
+    }));
+
+    PeerStatistics stats{};
+    bool found = sut_->get_peer_stats(kNodeId, stats);
+
+    EXPECT_TRUE(found);
+    EXPECT_EQ(-65, stats.rssi_avg);
+    EXPECT_EQ(1, stats.packets_rx);
+}
+
+TEST_F(EspNowManagerTaskTest, GetAllPeerStatsReturnsNonEmptyAfterReception)
+{
+    init_and_wait();
+
+    etl::vector<PeerStatistics, MAX_PEERS> mock_stats;
+    PeerStatistics s{};
+    s.node_id = kNodeId;
+    s.rssi_avg = -70;
+    mock_stats.push_back(s);
+
+    EXPECT_CALL(*stats_mgr_, get_all()).WillOnce(Return(mock_stats));
+
+    auto all_stats = sut_->get_all_peer_stats();
+    EXPECT_FALSE(all_stats.empty());
+    EXPECT_EQ(1, all_stats.size());
+    EXPECT_EQ(kNodeId, all_stats[0].node_id);
 }
 
 TEST_F(EspNowManagerTaskTest, ValidPacketCallsOnPacketReceived)
