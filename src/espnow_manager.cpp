@@ -222,9 +222,8 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
     peer_manager_->load_peers_from_storage();
     etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
 
-    // Ensure statistics entries exist for all loaded peers.
-    // This covers the case where peer storage survived but stats storage
-    // was corrupted or never flushed.
+    // Ensure statistics entries exist for all loaded peers. This covers the case where
+    // peer storage survived but stats storage was corrupted or never flushed.
     for (const auto& peer : peers) {
         stats_mgr_->on_peer_added(peer.node_id, peer.heartbeat_interval_ms);
     }
@@ -304,10 +303,6 @@ void EspNowManager::deinit()
     // Call EspNowDriver to deinit ESP-NOW
     if (espnow_driver_ != nullptr) {
         espnow_driver_->deinit();
-    }
-
-    if (scanner_ != nullptr) {
-        scanner_->deinit();
     }
 
     // Reset state
@@ -833,7 +828,8 @@ esp_err_t EspNowManager::init_tx_manager()
     if (tx_manager_ == nullptr) {
         return ESP_FAIL;
     }
-    return tx_manager_->init(config_.stack_size_tx_task, config_.priority_tx_task, rx_task_handle_, config_.ack_timeout_ms);
+    return tx_manager_->init(
+        config_.stack_size_tx_task, config_.priority_tx_task, rx_task_handle_, config_.ack_timeout_ms);
 }
 
 esp_err_t EspNowManager::init_discovery_manager()
