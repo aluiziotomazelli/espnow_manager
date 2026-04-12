@@ -275,6 +275,28 @@ public:
      */
     virtual etl::vector<PeerInfo, MAX_PEERS> get_peers() = 0;
 
+    // ========================================
+    // Statistics
+    // ========================================
+
+    /**
+     * @brief Get statistics for a specific peer.
+     *
+     * @param node_id The logical ID of the peer.
+     * @param out Output parameter filled with current statistics.
+     * @return true if the peer was found and out was populated.
+     * @return false if the peer is not tracked or stats not yet available.
+     */
+    virtual bool get_peer_stats(NodeId node_id, PeerStatistics& out) const = 0;
+
+    /**
+     * @brief Get statistics for all tracked peers.
+     *
+     * @return Vector of PeerStatistics. Empty if no peers are tracked.
+     * @note This method does not return errors.
+     */
+    virtual etl::vector<PeerStatistics, MAX_PEERS> get_all_peer_stats() const = 0;
+
     /**
      * @brief Get a list of IDs for peers considered offline
      *

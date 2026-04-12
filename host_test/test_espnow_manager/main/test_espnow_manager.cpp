@@ -804,6 +804,41 @@ TEST_F(EspNowManagerTest, RemovePeerReturnsPeerManagerFailure)
 }
 
 // ===========================================================================
+// get_peer_stats / get_all_peer_stats
+// ===========================================================================
+
+TEST_F(EspNowManagerTest, GetPeerStatsCallsStatsManagerGet)
+{
+    init_sut();
+
+    PeerStatistics out{};
+    ON_CALL(*stats_mgr_, get(kNodeId, _)).WillByDefault(Return(true));
+
+    EXPECT_TRUE(sut_->get_peer_stats(kNodeId, out));
+}
+
+TEST_F(EspNowManagerTest, GetPeerStatsReturnsFalseWhenNotFound)
+{
+    init_sut();
+
+    ON_CALL(*stats_mgr_, get(kNodeId, _)).WillByDefault(Return(false));
+
+    PeerStatistics out{};
+    EXPECT_FALSE(sut_->get_peer_stats(kNodeId, out));
+}
+
+TEST_F(EspNowManagerTest, GetAllPeerStatsCallsStatsManagerGetAll)
+{
+    init_sut();
+
+    etl::vector<PeerStatistics, MAX_PEERS> empty_stats;
+    ON_CALL(*stats_mgr_, get_all()).WillByDefault(Return(empty_stats));
+
+    auto result = sut_->get_all_peer_stats();
+    EXPECT_EQ(0, result.size());
+}
+
+// ===========================================================================
 // start_pairing
 // ===========================================================================
 

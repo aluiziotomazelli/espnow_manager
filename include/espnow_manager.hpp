@@ -137,6 +137,16 @@ public:
     /** @copydoc IEspNowManager::reconnect */
     esp_err_t reconnect() override;
 
+    // ========================================
+    // Statistics
+    // ========================================
+
+    /** @copydoc IEspNowManager::get_peer_stats */
+    bool get_peer_stats(NodeId node_id, PeerStatistics& out) const override;
+
+    /** @copydoc IEspNowManager::get_all_peer_stats */
+    etl::vector<PeerStatistics, MAX_PEERS> get_all_peer_stats() const override;
+
 protected:
     // --- Private Members ---
     EspNowConfig config_{};

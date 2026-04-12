@@ -457,6 +457,22 @@ etl::vector<PeerInfo, MAX_PEERS> EspNowManager::get_peers()
     return peer_manager_->get_all();
 }
 
+bool EspNowManager::get_peer_stats(NodeId node_id, PeerStatistics& out) const
+{
+    if (stats_mgr_ == nullptr) {
+        return false;
+    }
+    return stats_mgr_->get(node_id, out);
+}
+
+etl::vector<PeerStatistics, MAX_PEERS> EspNowManager::get_all_peer_stats() const
+{
+    if (stats_mgr_ == nullptr) {
+        return {};
+    }
+    return stats_mgr_->get_all();
+}
+
 // =========================================================================================
 // ESP-NOW callbacks - called by ESP-NOW driver in ISR context --- LCOV_EXCL_START
 // =========================================================================================
