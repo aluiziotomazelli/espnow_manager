@@ -222,6 +222,13 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
     peer_manager_->load_peers_from_storage();
     etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
 
+    // Ensure statistics entries exist for all loaded peers.
+    // This covers the case where peer storage survived but stats storage
+    // was corrupted or never flushed.
+    for (const auto& peer : peers) {
+        stats_mgr_->on_peer_added(peer.node_id, peer.heartbeat_interval_ms);
+    }
+
     // NodeStateMachine decides the initial state
     NodeState old_state = node_fsm_->get_state();
 
