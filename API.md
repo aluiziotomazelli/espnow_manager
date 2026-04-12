@@ -24,6 +24,8 @@ Complete API documentation for the ESP-NOW Manager component. This reference cov
   - [`remove_peer()`](#remove_peer)
   - [`get_peers()`](#get_peers)
   - [`get_offline_peers()`](#get_offline_peers)
+  - [`get_peer_stats()`](#get_peer_stats)
+  - [`get_all_peer_stats()`](#get_all_peer_stats)
 - [Pairing](#pairing)
   - [`start_pairing()`](#start_pairing)
 - [Status](#status)
@@ -716,6 +718,130 @@ if (!offline.empty()) {
     ESP_LOGW(TAG, "%d peers offline", offline.size());
 }
 ```
+
+---
+
+## Statistics
+
+### `get_peer_stats()`
+
+Gets statistics for a specific peer.
+
+```cpp
+bool get_peer_stats(NodeId node_id, PeerStatistics& out) const
+```
+
+**Description:**
+Retrieves current link quality metrics for a specific peer identified by `node_id`. Statistics include RSSI, RTT, packet counters, delivery failures, driver errors, and packet loss.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `node_id` | `NodeId` | Logical ID of the peer |
+| `out` | `PeerStatistics&` | Output parameter filled with current statistics |
+
+**Returns:**
+- `true` if the peer was found and `out` was populated
+- `false` if the peer is not tracked or statistics are not yet available
+
+**Example:**
+```cpp
+PeerStatistics stats;
+if (manager.get_peer_stats(ReservedIds::HUB, stats)) {
+    ESP_LOGI(TAG, "HUB RSSI: %d dBm (avg), RTT: %lu ms",
+             stats.rssi_avg, (unsigned long)stats.rtt_avg_ms);
+    ESP_LOGI(TAG, "Packets: rx=%lu, tx=%lu, lost=%lu",
+             (unsigned long)stats.packets_rx,
+             (unsigned long)stats.packets_sent,
+             (unsigned long)stats.packets_lost);
+} else {
+    ESP_LOGW(TAG, "No statistics available for HUB");
+}
+```
+
+---
+
+### `get_all_peer_stats()`
+
+Gets statistics for all tracked peers.
+
+```cpp
+etl::vector<PeerStatistics, MAX_PEERS> get_all_peer_stats() const
+```
+
+**Description:**
+Returns a vector containing link quality statistics for all peers currently tracked by the statistics manager. Useful for dashboards or periodic health reports.
+
+**Returns:**
+- Vector of `PeerStatistics` for all tracked peers
+- Empty vector if no peers are tracked
+
+**Notes:**
+- This method does not return errors
+- Thread-safe: uses `portMAX_DELAY` mutex timeout for app thread callers
+
+**Example:**
+```cpp
+auto all_stats = manager.get_all_peer_stats();
+
+ESP_LOGI(TAG, "Tracking %d peers:", all_stats.size());
+for (const auto& stats : all_stats) {
+    ESP_LOGI(TAG, "  Node %d: RSSI=%d dBm, RTT=%lu ms, "
+             "tx=%lu, rx=%lu, lost=%lu",
+             stats.node_id,
+             stats.rssi_avg,
+             (unsigned long)stats.rtt_avg_ms,
+             (unsigned long)stats.packets_sent,
+             (unsigned long)stats.packets_rx,
+             (unsigned long)stats.packets_lost);
+}
+```
+
+---
+
+### `PeerStatistics` Structure
+
+Detailed link quality metrics for a single peer.
+
+```cpp
+struct PeerStatistics
+{
+    NodeId node_id;                   ///< Logical node ID
+    int8_t rssi_last;                 ///< Last received RSSI (dBm)
+    int8_t rssi_avg;                  ///< Exponential moving average of RSSI (-127 = unknown)
+    uint8_t rssi_alpha;               ///< EMA alpha weight (derived from heartbeat interval)
+    uint32_t packets_rx;              ///< Total packets received
+    uint32_t packets_sent;            ///< Successful transmissions (callback ESP_NOW_SEND_SUCCESS)
+    uint32_t delivery_failures;       ///< MAC/PHY failures (callback ESP_NOW_SEND_FAIL)
+    uint32_t driver_errors;           ///< hal_esp_now_send() returned error
+    uint32_t packets_lost;            ///< ACK timeouts after retries exhausted
+    uint32_t retries;                 ///< Number of retransmissions
+    uint32_t rtt_last_ms;             ///< Last round-trip time (ms)
+    uint32_t rtt_avg_ms;              ///< Exponential moving average of RTT (0 = unknown)
+};
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `node_id` | `NodeId` | Logical identifier of the peer |
+| `rssi_last` | `int8_t` | Most recent RSSI value in dBm |
+| `rssi_avg` | `int8_t` | EMA-smoothed RSSI average. `-127` (`RSSI_UNKNOWN`) means no data yet |
+| `rssi_alpha` | `uint8_t` | Fixed-point EMA alpha (0-256, where 256 = 100% new sample) |
+| `packets_rx` | `uint32_t` | Total valid packets received from this peer |
+| `packets_sent` | `uint32_t` | Successful over-the-air transmissions |
+| `delivery_failures` | `uint32_t` | MAC/PHY layer delivery failures |
+| `driver_errors` | `uint32_t` | ESP-NOW driver send errors (NO_MEM, CHAN, etc.) |
+| `packets_lost` | `uint32_t` | Packets lost due to ACK timeout after all retries |
+| `retries` | `uint32_t` | Total retransmission attempts |
+| `rtt_last_ms` | `uint32_t` | Most recent round-trip time in milliseconds |
+| `rtt_avg_ms` | `uint32_t` | EMA-smoothed RTT average. `0` means no data yet |
+
+**EMA Details:**
+- RSSI alpha is derived from heartbeat interval: shorter intervals → smoother (less reactive)
+- RTT uses a fixed alpha of 32/256 (12.5%) for stability
+- EMA formula: `avg = (sample * alpha + avg * (256 - alpha)) >> 8`
 
 ---
 
