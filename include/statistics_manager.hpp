@@ -9,31 +9,77 @@
  * @class StatisticsManager
  * @brief Concrete implementation of IStatisticsManager for tracking peer network metrics.
  *
- * Maintains Exponential Moving Averages (EMA) for RSSI and RTT, along with packet counters.
- * It flushes statistics to persistent storage when event-specific thresholds are reached.
+ * Maintains Exponential Moving Averages (EMA) for RSSI and RTT, along with
+ * per-peer packet counters (sent, received, retries, losses, errors).
+ *
+ * Key design characteristics:
+ * - **EMA smoothing**: RSSI uses an alpha value derived from the peer's heartbeat
+ *   interval (faster peers get more responsive averages). RTT uses a fixed 12.5%
+ *   (1/8) alpha.
+ * - **Sentinel values**: An RSSI of @c -127 (@c RSSI_UNKNOWN) indicates "no data
+ *   yet". An RTT of @c 0 indicates "no data yet".
+ * - **Thread safety**: All public methods acquire a FreeRTOS mutex. The lock timeout
+ *   is 5 ms when called from @c rx_task or @c tx_task, and @c portMAX_DELAY when
+ *   called from the application thread.
+ * - **Persistent storage**: Statistics are flushed to NVS (via IStorageManager) when
+ *   per-event dirty counters reach their configured thresholds. This reduces NVS
+ *   write frequency while ensuring data survives resets.
+ *
+ * @note This class is owned by EspNowManager and is not intended for direct
+ *       use by application code. Access statistics via the EspNowManager public API.
+ *
+ * @see IStatisticsManager
+ * @see IStorageManager
  */
 class StatisticsManager : public IStatisticsManager
 {
 public:
+    /**
+     * @brief Constructs a StatisticsManager.
+     *
+     * @param storage Reference to the storage manager for NVS persistence.
+     * @param hal_freertos Reference to the FreeRTOS HAL for mutex and task context detection.
+     */
     StatisticsManager(IStorageManager& storage, IFreeRTOSHAL& hal_freertos);
     ~StatisticsManager() override;
 
+    /** @copydoc IStatisticsManager::init */
     esp_err_t init() override;
+
+    /** @copydoc IStatisticsManager::deinit */
     esp_err_t deinit() override;
 
+    /** @copydoc IStatisticsManager::on_peer_added */
     void on_peer_added(NodeId node_id, uint32_t heartbeat_interval_ms) override;
+
+    /** @copydoc IStatisticsManager::on_peer_removed */
     void on_peer_removed(NodeId node_id) override;
 
+    /** @copydoc IStatisticsManager::on_packet_received */
     void on_packet_received(NodeId node_id, int8_t rssi) override;
+
+    /** @copydoc IStatisticsManager::on_ack_received */
     void on_ack_received(NodeId node_id, uint32_t rtt_ms) override;
 
+    /** @copydoc IStatisticsManager::on_delivery_success */
     void on_delivery_success(NodeId node_id) override;
+
+    /** @copydoc IStatisticsManager::on_delivery_failure */
     void on_delivery_failure(NodeId node_id) override;
+
+    /** @copydoc IStatisticsManager::on_driver_error */
     void on_driver_error(NodeId node_id) override;
+
+    /** @copydoc IStatisticsManager::on_packet_lost */
     void on_packet_lost(NodeId node_id) override;
+
+    /** @copydoc IStatisticsManager::on_retry */
     void on_retry(NodeId node_id) override;
 
+    /** @copydoc IStatisticsManager::get */
     bool get(NodeId node_id, PeerStatistics& out) const override;
+
+    /** @copydoc IStatisticsManager::get_all */
     etl::vector<PeerStatistics, MAX_PEERS> get_all() const override;
 
 private:
