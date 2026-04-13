@@ -41,6 +41,7 @@
 #include "peer_manager.hpp"
 #include "persistence_backend.hpp"
 #include "storage_manager.hpp"
+#include "statistics_manager.hpp"
 #include "tx_manager.hpp"
 #include "tx_state_machine.hpp"
 
@@ -75,6 +76,7 @@ static constexpr PayloadType kTestPayloadType = 0x01;
 // ---------------------------------------------------------------------------
 static RTC_DATA_ATTR PersistentPeers g_rtc_peers;
 static RTC_DATA_ATTR PersistentChannel g_rtc_channel;
+static RTC_DATA_ATTR PersistentStats g_rtc_stats;
 
 // ---------------------------------------------------------------------------
 // Temporary RTC storage for deep sleep tests — must have global lifetime (placed in RTC slow memory)
@@ -87,6 +89,7 @@ static void clear_rtc_storage()
 {
     g_rtc_peers = {};
     g_rtc_channel = {};
+    g_rtc_stats = {};
 }
 
 // Helper function to trigger deep sleep
@@ -107,13 +110,17 @@ static std::unique_ptr<EspNowManager> make_espnow_manager()
 
     auto rtc_peers_backend = std::make_unique<RtcBackend>(&g_rtc_peers, sizeof(g_rtc_peers));
     auto rtc_channel_backend = std::make_unique<RtcBackend>(&g_rtc_channel, sizeof(g_rtc_channel));
+    auto rtc_stats_backend = std::make_unique<RtcBackend>(&g_rtc_stats, sizeof(g_rtc_stats));
     auto nvs_peers_backend = std::make_unique<NvsBackend>(nvs_hal, "peers_data");
     auto nvs_channel_backend = std::make_unique<NvsBackend>(nvs_hal, "channel_data");
+    auto nvs_stats_backend = std::make_unique<NvsBackend>(nvs_hal, "stats_data");
     auto storage = std::make_unique<StorageManager>(
         std::move(rtc_peers_backend),
         std::move(rtc_channel_backend),
+        std::move(rtc_stats_backend),
         std::move(nvs_peers_backend),
-        std::move(nvs_channel_backend));
+        std::move(nvs_channel_backend),
+        std::move(nvs_stats_backend));
 
     auto hal_wifi = std::make_unique<WiFiHAL>();
     auto hal_espnow = std::make_unique<EspNowHAL>();
@@ -136,16 +143,18 @@ static std::unique_ptr<EspNowManager> make_espnow_manager()
     auto channel_monitor = std::make_unique<ChannelMonitor>(wifi_ref, freertos_ref);
     auto scanner = std::make_unique<DiscoveryManager>(wifi_ref, espnow_ref, codec_ref, freertos_ref);
     auto tx_fsm = std::make_unique<TxStateMachine>();
+    auto stats_mgr = std::make_unique<StatisticsManager>(storage_ref, freertos_ref);
 
     ITxStateMachine& tx_fsm_ref = *tx_fsm;
+    IStatisticsManager& stats_ref = *stats_mgr;
 
-    auto tx_manager = std::make_unique<TxManager>(tx_fsm_ref, espnow_ref, freertos_ref, codec_ref, kAckRetryTimeoutMs);
+    auto tx_manager = std::make_unique<TxManager>(tx_fsm_ref, espnow_ref, freertos_ref, codec_ref, stats_ref, peer_ref);
 
     ITxManager& tx_ref = *tx_manager;
     ITimerHAL& timer_ref = *hal_timer;
 
     auto heartbeat_mgr = std::make_unique<HeartbeatManager>(tx_ref, peer_ref, timer_ref);
-    auto pairing_mgr = std::make_unique<PairingManager>(tx_ref, peer_ref, freertos_ref);
+    auto pairing_mgr = std::make_unique<PairingManager>(tx_ref, peer_ref, freertos_ref, timer_ref);
 
     IDiscoveryManager& scanner_ref = *scanner;
     IHeartbeatManager& hb_ref = *heartbeat_mgr;
@@ -169,6 +178,7 @@ static std::unique_ptr<EspNowManager> make_espnow_manager()
         std::move(heartbeat_mgr),
         std::move(pairing_mgr),
         std::move(message_router),
+        std::move(stats_mgr),
         std::make_unique<NodeStateMachine>());
 }
 
@@ -394,7 +404,7 @@ static void hub_receive_and_ack()
     TEST_ASSERT_TRUE(msg.requires_ack);
 
     // ACK the message so NODE's TxManager can complete the transaction.
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->confirm_reception(AckStatus::OK));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK));
 
     unity_send_signal("hub acked");
 
@@ -464,7 +474,7 @@ static void hub_delayed_ack()
     // TxManager.  Staying below 3x avoids triggering MAX_FAILURES (=3).
     vTaskDelay(pdMS_TO_TICKS(kAckRetryTimeoutMs * 2));
 
-    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->confirm_reception(AckStatus::OK));
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK));
 
     unity_send_signal("hub acked after delay");
 
@@ -1459,7 +1469,7 @@ static void hub_stress_receive_with_ack()
 
             // Always send ACK (even for duplicates — TxManager may retry)
             if (msg.requires_ack) {
-                g_mgr->confirm_reception(AckStatus::OK);
+                g_mgr->confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK);
             }
         }
     }
@@ -1533,3 +1543,87 @@ TEST_CASE_MULTIPLE_DEVICES(
     "[espnow][stress][ack]",
     hub_stress_receive_with_ack,
     node_stress_send_with_ack);
+
+// ===========================================================================
+// 19. TEST: EdgeCaseMalformedPacketsIgnored
+//
+// NODE sends a raw ESP-NOW packet with intentionally corrupted CRC, bypassing
+// TxManager encoding. HUB's rx_task should validate CRC, drop the packet,
+// and not deliver anything to the app queue. NODE then sends a valid packet
+// to prove the HUB is still operational.
+// ===========================================================================
+
+static void hub_ignores_malformed()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue, /*channel=*/1)));
+
+    unity_wait_for_signal("node ready for malformed");
+
+    // Wait for NODE to send the malformed packet — we should NOT receive it
+    // in the app queue because CRC validation should drop it.
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    AppMessage msg{};
+    BaseType_t got = xQueueReceive(g_app_queue, &msg, pdMS_TO_TICKS(200));
+    TEST_ASSERT_EQUAL(pdFALSE, got); // No malformed packet should reach app queue
+    TEST_ASSERT_EQUAL(1, g_mgr->get_peers().size());
+    TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+
+    unity_send_signal("hub received nothing from malformed");
+
+    // Now wait for the valid packet — HUB should still be operational
+    got = xQueueReceive(g_app_queue, &msg, pdMS_TO_TICKS(5000));
+    TEST_ASSERT_EQUAL(pdTRUE, got);
+    TEST_ASSERT_EQUAL(kNodeId, msg.sender_id);
+    TEST_ASSERT_EQUAL(kTestPayloadType, msg.payload_type);
+
+    unity_send_signal("hub received valid after malformed");
+    test_cleanup();
+}
+
+static void node_send_malformed()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(
+        ESP_OK, g_mgr->init(make_node_config(g_app_queue, kNodeId, /*channel=*/1, /*heartbeat_interval_ms=*/0)));
+
+    // Wait for auto-pairing
+    vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
+    TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+
+    // Get the HUB's MAC from the peer list
+    auto peers = g_mgr->get_peers();
+    TEST_ASSERT_EQUAL(1, peers.size());
+
+    unity_send_signal("node ready for malformed");
+
+    // Send a raw ESP-NOW packet with intentionally bad CRC — this bypasses
+    // TxManager encoding. The HUB's rx_task should validate CRC and drop it.
+    uint8_t bad_payload[32] = {0xDE, 0xAD, 0xBE, 0xEF};
+    esp_err_t ret = esp_now_send(peers[0].mac, bad_payload, sizeof(bad_payload));
+    TEST_ASSERT_EQUAL(ESP_OK, ret); // ESP-NOW driver accepts it (no CRC check on send)
+
+    unity_wait_for_signal("hub received nothing from malformed");
+
+    // Now send a valid packet via the proper TxManager path
+    const uint8_t good_payload[] = {0xCA, 0xFE};
+    ret = g_mgr->send_data(ReservedIds::HUB, kTestPayloadType, good_payload, sizeof(good_payload), false);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    unity_send_signal("node sent valid after malformed");
+    unity_wait_for_signal("hub received valid after malformed");
+    test_cleanup();
+}
+
+TEST_CASE_MULTIPLE_DEVICES(
+    "19. Integration: EdgeCaseMalformedPacketsIgnored",
+    "[espnow][edge]",
+    hub_ignores_malformed,
+    node_send_malformed);

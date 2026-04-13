@@ -309,7 +309,7 @@ This document lists the behavior tests that should be implemented to fully cover
 |-------|-----------|------------|--------|
 | `EdgeCaseHubGoesOfflineNodesRecover` | HUB offline → NODEs recover | High | *Implicitly covered by HeartbeatTimeoutMarksPeerOffline* |
 | `EdgeCasePeerRemovedDuringTransmission` | Peer removed during transmission | Medium | |
-| `EdgeCaseMalformedPacketsIgnored` | Malformed packets → ignored | High | |
+| `EdgeCaseMalformedPacketsIgnored` | Malformed packets → ignored | High | **OK** |
 | `EdgeCaseDuplicateSequenceNumbersHandled` | Duplicate sequence numbers | Medium | |
 | `EdgeCaseRssiBasedLinkQualityMonitoring` | RSSI for link quality | Low | |
 
@@ -322,9 +322,9 @@ This document lists the behavior tests that should be implemented to fully cover
 - **Section 2** (`test_espnow_manager_task.cpp`): **37 tests** — all implemented + scan retry, statistics
 
 ### On-Device Tests (Section 3): Partially Verified on Hardware
-- **Verified OK**: 15 tests confirmed on real hardware
+- **Verified OK**: 16 tests confirmed on real hardware
 - **Covered by other tests**: 8 tests implicitly covered
-- **Not yet tested**: 5 edge cases (peer removal, malformed packets, duplicate seq, RSSI monitoring)
+- **Not yet tested**: 4 edge cases (peer removal, duplicate seq, RSSI monitoring)
 - **Not useful**: 1 test (full channel scan 1-13)
 - **See `test_apps/`** for on-device integration test scaffolding
 
