@@ -151,6 +151,20 @@ This document lists the behavior tests that should be implemented to fully cover
 |-------|-----------|--------|
 | `BuildAppMessageWithDataPayloadCreatesAppMessage` | App message construction | ✅ Done |
 
+### 1.11 Additional Host Tests (from BEHAVIORAL_TESTS_TODO.md)
+
+| Test | Description | Status |
+|-------|-----------|--------|
+| `MaxRetriesExhaustedReportsDeliveryFailure` | ACK timeout after all retries → delivery failure | ✅ Done (test_tx_manager) |
+| `QueueFullDropsExtraPackets` | App queue full → packets dropped gracefully | ✅ Done |
+| `ReinitAfterDeinitSucceeds` | Full resource cleanup and re-init | ✅ Done |
+| `InitWithNoPeersTransitionsToPairingScan` | Non-HUB without peers → PAIRING_SCAN | ✅ Done |
+| `StartPairingWithoutPeersTransitionsToPairingScan` | Non-HUB pairing flow | ✅ Done |
+| `HeartbeatTimeoutMarksPeerOffline` | Peer not sending heartbeats → marked offline | ⏳ Requires real hardware (see Section 3.4) |
+| `ConcurrentSendAndReceive` | Thread safety under concurrent load | ⏳ Covered by task-based tests |
+| `LruEvictionWhenMaxPeersReached` | 19 peers → LRU eviction | ⏳ Covered by PeerManager tests |
+| `StorageSyncsRtcToNvs` | RTC → NVS sync on pairing | ⏳ Covered by StorageManager tests |
+
 ---
 
 ## 2. Host-Based Tests (with real tasks) - `test_espnow_manager_task.cpp`
