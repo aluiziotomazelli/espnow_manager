@@ -59,7 +59,6 @@ private:
     void reassign_mac_to_new_id(PeerInfo* peer, NodeId new_id, NodeType type, uint32_t heartbeat_interval_ms);
     esp_err_t add_new_peer_to_empty_slot(NodeId id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms);
 
-    esp_err_t save_peers_to_storage();
     PersistentPeer info_to_persistent(const PeerInfo& info);
     PeerInfo persistent_to_info(const PersistentPeer& persistent);
     esp_now_peer_info_t make_espnow_peer_info(const uint8_t* mac);

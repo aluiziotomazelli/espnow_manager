@@ -64,12 +64,17 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t* mac, NodeType type, uint32_
         ret = add_new_peer_to_empty_slot(id, mac, type, heartbeat_interval_ms);
     }
 
-    // Save to storage if successful
+    // Snapshot under mutex, then release before NVS write.
+    etl::vector<PersistentPeer, MAX_PEERS> snapshot;
     if (ret == ESP_OK) {
-        ret = save_peers_to_storage();
+        for (const auto& p : peers_)
+            snapshot.push_back(info_to_persistent(p));
     }
-
     hal_freertos_.semaphore_give(mutex_);
+
+    if (ret == ESP_OK)
+        ret = storage_.store_peers(snapshot, true);
+
     return ret;
 }
 
@@ -88,12 +93,18 @@ esp_err_t PeerManager::remove(NodeId id)
 
     esp_err_t ret = hal_espnow_.hal_esp_now_del_peer(it->mac);
 
+    etl::vector<PersistentPeer, MAX_PEERS> snapshot;
     if (ret == ESP_OK) {               // If peer is removed successfully from driver
         peers_.erase(it);              // Remove from peer list
-        ret = save_peers_to_storage(); // Save to storage
+        for (const auto& p : peers_)
+            snapshot.push_back(info_to_persistent(p));
     }
 
     hal_freertos_.semaphore_give(mutex_);
+
+    if (ret == ESP_OK)
+        ret = storage_.store_peers(snapshot, true);
+
     return ret;
 }
 
@@ -210,15 +221,6 @@ esp_err_t PeerManager::load_peers_from_storage()
 // =====================================================================================
 // Private methods
 // =====================================================================================
-
-esp_err_t PeerManager::save_peers_to_storage()
-{
-    etl::vector<PersistentPeer, MAX_PEERS> peers_to_save;
-    for (const auto& p : peers_) {
-        peers_to_save.push_back(info_to_persistent(p));
-    }
-    return storage_.store_peers(peers_to_save, true);
-}
 
 PersistentPeer PeerManager::info_to_persistent(const PeerInfo& info)
 {

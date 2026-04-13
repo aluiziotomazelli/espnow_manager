@@ -48,13 +48,18 @@ esp_err_t StatisticsManager::init()
 esp_err_t StatisticsManager::deinit()
 {
     if (mutex_ != nullptr) {
-        // Acquire mutex to prevent concurrent stats updates during shutdown.
-        // flush() assumes the mutex is already held.
+        std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>> snapshot;
+
         if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
-            flush();
+            snapshot = build_persist_snapshot();  // capture before clearing
             entries_.clear();
             hal_freertos_.semaphore_give(mutex_);
         }
+
+        if (snapshot.has_value()) {
+            storage_.store_stats(snapshot.value());
+        }
+
         hal_freertos_.semaphore_delete(mutex_);
         mutex_ = nullptr;
     }
@@ -92,6 +97,8 @@ void StatisticsManager::on_peer_removed(NodeId node_id)
 
 void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi)
 {
+    std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>> snapshot;
+
     if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
@@ -104,14 +111,25 @@ void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi)
             }
             entry->stats.packets_rx++;
             entry->dirty_rx++;
-            maybe_flush(*entry);
+            snapshot = maybe_build_flush_snapshot(*entry);
         }
         hal_freertos_.semaphore_give(mutex_);
+    }
+
+    if (snapshot.has_value()) {
+        if (storage_.store_stats(snapshot.value()) == ESP_OK) {
+            if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+                reset_dirty_counters();
+                hal_freertos_.semaphore_give(mutex_);
+            }
+        }
     }
 }
 
 void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_ms)
 {
+    std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>> snapshot;
+
     if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
@@ -123,75 +141,139 @@ void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_ms)
                 entry->stats.rtt_avg_ms = update_ema_u32(entry->stats.rtt_avg_ms, rtt_ms, RTT_EMA_ALPHA);
             }
             entry->dirty_rtt++;
-            maybe_flush(*entry);
+            snapshot = maybe_build_flush_snapshot(*entry);
         }
         hal_freertos_.semaphore_give(mutex_);
+    }
+
+    if (snapshot.has_value()) {
+        if (storage_.store_stats(snapshot.value()) == ESP_OK) {
+            if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+                reset_dirty_counters();
+                hal_freertos_.semaphore_give(mutex_);
+            }
+        }
     }
 }
 
 void StatisticsManager::on_delivery_success(NodeId node_id)
 {
+    std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>> snapshot;
+
     if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.packets_sent++;
             entry->dirty_tx++;
-            maybe_flush(*entry);
+            snapshot = maybe_build_flush_snapshot(*entry);
         }
         hal_freertos_.semaphore_give(mutex_);
+    }
+
+    if (snapshot.has_value()) {
+        if (storage_.store_stats(snapshot.value()) == ESP_OK) {
+            if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+                reset_dirty_counters();
+                hal_freertos_.semaphore_give(mutex_);
+            }
+        }
     }
 }
 
 void StatisticsManager::on_delivery_failure(NodeId node_id)
 {
+    std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>> snapshot;
+
     if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.delivery_failures++;
             entry->dirty_tx_fail++;
-            maybe_flush(*entry);
+            snapshot = maybe_build_flush_snapshot(*entry);
         }
         hal_freertos_.semaphore_give(mutex_);
+    }
+
+    if (snapshot.has_value()) {
+        if (storage_.store_stats(snapshot.value()) == ESP_OK) {
+            if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+                reset_dirty_counters();
+                hal_freertos_.semaphore_give(mutex_);
+            }
+        }
     }
 }
 
 void StatisticsManager::on_driver_error(NodeId node_id)
 {
+    std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>> snapshot;
+
     if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.driver_errors++;
             entry->dirty_driver_err++;
-            maybe_flush(*entry);
+            snapshot = maybe_build_flush_snapshot(*entry);
         }
         hal_freertos_.semaphore_give(mutex_);
+    }
+
+    if (snapshot.has_value()) {
+        if (storage_.store_stats(snapshot.value()) == ESP_OK) {
+            if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+                reset_dirty_counters();
+                hal_freertos_.semaphore_give(mutex_);
+            }
+        }
     }
 }
 
 void StatisticsManager::on_packet_lost(NodeId node_id)
 {
+    std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>> snapshot;
+
     if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.packets_lost++;
             entry->dirty_lost++;
-            maybe_flush(*entry);
+            snapshot = maybe_build_flush_snapshot(*entry);
         }
         hal_freertos_.semaphore_give(mutex_);
+    }
+
+    if (snapshot.has_value()) {
+        if (storage_.store_stats(snapshot.value()) == ESP_OK) {
+            if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+                reset_dirty_counters();
+                hal_freertos_.semaphore_give(mutex_);
+            }
+        }
     }
 }
 
 void StatisticsManager::on_retry(NodeId node_id)
 {
+    std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>> snapshot;
+
     if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
             entry->stats.retries++;
             // Retries are considered "soft" dirty, no separate flush threshold
             entry->dirty_tx++;
-            maybe_flush(*entry);
+            snapshot = maybe_build_flush_snapshot(*entry);
         }
         hal_freertos_.semaphore_give(mutex_);
+    }
+
+    if (snapshot.has_value()) {
+        if (storage_.store_stats(snapshot.value()) == ESP_OK) {
+            if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+                reset_dirty_counters();
+                hal_freertos_.semaphore_give(mutex_);
+            }
+        }
     }
 }
 
@@ -275,18 +357,16 @@ uint32_t StatisticsManager::update_ema_u32(uint32_t avg, uint32_t sample, uint8_
     return (sample * a + avg * (256 - a)) >> 8;
 }
 
-void StatisticsManager::maybe_flush(PeerStatisticsEntry& entry)
+bool StatisticsManager::has_crossed_flush_threshold(const PeerStatisticsEntry& entry) const
 {
-    if (entry.dirty_rx >= flush_threshold_rx_ || entry.dirty_tx >= flush_threshold_tx_ ||
-        entry.dirty_tx_fail >= flush_threshold_tx_fail_ || entry.dirty_driver_err >= flush_threshold_driver_err_ ||
-        entry.dirty_lost >= flush_threshold_lost_ || entry.dirty_rtt >= flush_threshold_rtt_) {
-        flush();
-    }
+    return entry.dirty_rx >= flush_threshold_rx_ || entry.dirty_tx >= flush_threshold_tx_ ||
+           entry.dirty_tx_fail >= flush_threshold_tx_fail_ || entry.dirty_driver_err >= flush_threshold_driver_err_ ||
+           entry.dirty_lost >= flush_threshold_lost_ || entry.dirty_rtt >= flush_threshold_rtt_;
 }
 
-void StatisticsManager::flush()
+etl::vector<PeerStatisticsPersist, MAX_PEERS> StatisticsManager::build_persist_snapshot()
 {
-    etl::vector<PeerStatisticsPersist, MAX_PEERS> persisted;
+    etl::vector<PeerStatisticsPersist, MAX_PEERS> snapshot;
     for (const auto& entry : entries_) {
         PeerStatisticsPersist p;
         p.node_id = entry.stats.node_id;
@@ -297,17 +377,29 @@ void StatisticsManager::flush()
         p.delivery_failures = entry.stats.delivery_failures;
         p.packets_lost = entry.stats.packets_lost;
         p.rtt_avg_ms = entry.stats.rtt_avg_ms;
-        persisted.push_back(p);
+        p.retries = entry.stats.retries;
+        snapshot.push_back(p);
     }
+    return snapshot;
+}
 
-    if (storage_.store_stats(persisted) == ESP_OK) {
-        for (auto& entry : entries_) {
-            entry.dirty_rx = 0;
-            entry.dirty_tx = 0;
-            entry.dirty_tx_fail = 0;
-            entry.dirty_driver_err = 0;
-            entry.dirty_lost = 0;
-            entry.dirty_rtt = 0;
-        }
+void StatisticsManager::reset_dirty_counters()
+{
+    for (auto& entry : entries_) {
+        entry.dirty_rx = 0;
+        entry.dirty_tx = 0;
+        entry.dirty_tx_fail = 0;
+        entry.dirty_driver_err = 0;
+        entry.dirty_lost = 0;
+        entry.dirty_rtt = 0;
     }
+}
+
+std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>>
+StatisticsManager::maybe_build_flush_snapshot(const PeerStatisticsEntry& entry)
+{
+    if (has_crossed_flush_threshold(entry)) {
+        return build_persist_snapshot();
+    }
+    return std::nullopt;
 }

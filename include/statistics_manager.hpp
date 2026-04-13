@@ -1,6 +1,8 @@
 // include/statistics_manager.hpp
 #pragma once
 
+#include <optional>
+
 #include "i_statistics_manager.hpp"
 #include "i_storage_manager.hpp"
 #include "i_hal_freertos.hpp"
@@ -108,8 +110,11 @@ private:
     PeerStatisticsEntry* find_entry(NodeId node_id);
     const PeerStatisticsEntry* find_entry(NodeId node_id) const;
 
-    void maybe_flush(PeerStatisticsEntry& entry);
-    void flush();
+    bool has_crossed_flush_threshold(const PeerStatisticsEntry& entry) const;
+    etl::vector<PeerStatisticsPersist, MAX_PEERS> build_persist_snapshot();
+    void reset_dirty_counters();
+    std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>>
+    maybe_build_flush_snapshot(const PeerStatisticsEntry& entry);
 
     IStorageManager& storage_;
     IFreeRTOSHAL& hal_freertos_;
