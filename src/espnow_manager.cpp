@@ -499,6 +499,15 @@ void EspNowManager::esp_now_send_cb(const esp_now_send_info_t* info, esp_now_sen
     if (self == nullptr || info == nullptr || info->des_addr == nullptr) {
         return;
     }
+
+    // Broadcast sends have no logical peer counterpart. Delivery tracking is meaningless
+    // for them. Driver-level errors are already handled synchronously via
+    // handle_esp_now_send_errors() right after hal_esp_now_send() returns.
+    // This covers: pairing requests/responses, channel scan probes/responses.
+    if (memcmp(info->des_addr, BROADCAST_MAC, 6) == 0) {
+        return;
+    }
+
     self->tx_manager_->notify_delivery(status, info->des_addr);
 }
 // LCOV_EXCL_STOP

@@ -38,7 +38,7 @@ public:
     void update_last_seen(NodeId id, int64_t now_ms) override;
 
     /** @copydoc IPeerManager::find_node_id_by_mac */
-    bool find_node_id_by_mac(const uint8_t* mac, NodeId& out_id) override;
+    esp_err_t find_node_id_by_mac(const uint8_t* mac, NodeId& out_id) override;
 
     // Helper for initialization (loading from storage)
     /** @copydoc IPeerManager::load_peers_from_storage */

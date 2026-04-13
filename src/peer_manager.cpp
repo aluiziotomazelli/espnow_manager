@@ -165,22 +165,22 @@ void PeerManager::update_last_seen(NodeId id, int64_t now_ms)
     hal_freertos_.semaphore_give(mutex_);
 }
 
-// TODO: Verify about how is failing on calling fron RxManager
-bool PeerManager::find_node_id_by_mac(const uint8_t* mac, NodeId& out_id)
+esp_err_t PeerManager::find_node_id_by_mac(const uint8_t* mac, NodeId& out_id)
 {
-    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(10)) != pdTRUE) {
-        return false;
-    }
-    bool found = false;
+    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(10)) != pdTRUE)
+        return ESP_ERR_TIMEOUT;
+
+    esp_err_t ret = ESP_ERR_NOT_FOUND;
     for (const auto& p : peers_) {
         if (memcmp(p.mac, mac, 6) == 0) {
             out_id = p.node_id;
-            found = true;
+            ret = ESP_OK;
             break;
         }
     }
+
     hal_freertos_.semaphore_give(mutex_);
-    return found;
+    return ret;
 }
 
 esp_err_t PeerManager::load_peers_from_storage()

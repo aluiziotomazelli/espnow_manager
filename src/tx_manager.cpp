@@ -365,9 +365,13 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
         DeliveryEvent event{};
         while (freertos_hal_.queue_receive(delivery_queue_, &event, 0) == pdTRUE) {
             NodeId node_id = 0;
-            peer_mgr_.find_node_id_by_mac(event.dest_mac, node_id);
-            if (node_id == 0) {
-                ESP_LOGW(TAG, "Delivery event for unknown MAC");
+            esp_err_t err = peer_mgr_.find_node_id_by_mac(event.dest_mac, node_id);
+            if (err == ESP_ERR_TIMEOUT) {
+                ESP_LOGW(TAG, "Delivery event: mutex timeout resolving MAC");
+                continue;
+            }
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, "Delivery event for unregistered MAC — unexpected after protocol fix");
                 continue;
             }
             stats_mgr_.on_delivery_failure(node_id);
@@ -383,9 +387,13 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
         DeliveryEvent event{};
         while (freertos_hal_.queue_receive(delivery_queue_, &event, 0) == pdTRUE) {
             NodeId node_id = 0;
-            peer_mgr_.find_node_id_by_mac(event.dest_mac, node_id);
-            if (node_id == 0) {
-                ESP_LOGW(TAG, "Delivery event for unknown MAC"); // TODO: Verify wy is falling ans loggin this warning
+            esp_err_t err = peer_mgr_.find_node_id_by_mac(event.dest_mac, node_id);
+            if (err == ESP_ERR_TIMEOUT) {
+                ESP_LOGW(TAG, "Delivery event: mutex timeout resolving MAC");
+                continue;
+            }
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, "Delivery event for unregistered MAC — unexpected after protocol fix");
                 continue;
             }
             stats_mgr_.on_delivery_success(node_id);

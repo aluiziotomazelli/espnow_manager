@@ -101,7 +101,7 @@ void PairingManager::handle_request(const DecodedRxPacket& decoded)
     ESP_LOGI(TAG, "Pair request from Node ID %d", (int)header.sender_node_id);
 
     DecodedTxPacket tx_packet{};
-    memcpy(tx_packet.dest_mac, decoded.raw.src_mac, 6);
+    memcpy(tx_packet.dest_mac, BROADCAST_MAC, 6);
 
     uint64_t now_ms = get_time_ms();
 
@@ -140,6 +140,13 @@ void PairingManager::handle_response(const DecodedRxPacket& decoded)
     }
     // Only non-HUB nodes expect pair responses from the HUB
     if (my_type_ == ReservedTypes::HUB) {
+        return;
+    }
+
+    // Broadcast responses must be explicitly addressed to this node.
+    // Without this check, two nodes pairing simultaneously would both
+    // accept the first ACCEPTED response on air.
+    if (decoded.header.dest_node_id != my_id_) {
         return;
     }
 

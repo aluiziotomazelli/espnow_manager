@@ -126,10 +126,12 @@ public:
     /**
      * @brief Looks up node ID by MAC address.
      * @param mac 6-byte MAC address to search for.
-     * @param out_id Output parameter for the found node ID.
-     * @return true if found, false otherwise.
+     * @param out_id Output parameter for the found node ID. Unchanged on failure.
+     * @return ESP_OK              MAC found; out_id is populated.
+     * @return ESP_ERR_NOT_FOUND  MAC is not in the peer list (unexpected — indicates a bug).
+     * @return ESP_ERR_TIMEOUT    Could not acquire the mutex within the deadline.
      */
-    virtual bool find_node_id_by_mac(const uint8_t* mac, NodeId& out_id) = 0;
+    virtual esp_err_t find_node_id_by_mac(const uint8_t* mac, NodeId& out_id) = 0;
 
     /**
      * @brief Loads peer list from persistent storage into PeerManager list.
