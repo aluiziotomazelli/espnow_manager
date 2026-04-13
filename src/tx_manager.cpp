@@ -39,7 +39,8 @@ void TxManager::ack_timeout_callback(TimerHandle_t xTimer)
     self->freertos_hal_.task_notify(self->tx_task_handle_, NOTIFY_ACK_TIMEOUT, eSetBits);
 }
 
-esp_err_t TxManager::init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle, uint32_t ack_timeout_ms)
+esp_err_t
+TxManager::init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle, uint32_t ack_timeout_ms)
 {
     if (rx_task_handle == nullptr) {
         ESP_LOGE(TAG, "RX task handle is null");
@@ -384,7 +385,7 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
             NodeId node_id = 0;
             peer_mgr_.find_node_id_by_mac(event.dest_mac, node_id);
             if (node_id == 0) {
-                ESP_LOGW(TAG, "Delivery event for unknown MAC");
+                ESP_LOGW(TAG, "Delivery event for unknown MAC"); // TODO: Verify wy is falling ans loggin this warning
                 continue;
             }
             stats_mgr_.on_delivery_success(node_id);

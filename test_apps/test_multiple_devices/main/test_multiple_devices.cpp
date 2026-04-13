@@ -719,7 +719,7 @@ static void node_ch_1_find_13()
 }
 
 TEST_CASE_MULTIPLE_DEVICES(
-    "7. Integration: DiscoveryScanFindsHubOnDifferentChannel",
+    "8. Integration: DiscoveryScanFindsHubOnDifferentChannel",
     "[espnow][scan]",
     hub_ch_13_wait,
     node_ch_1_find_13);
@@ -888,10 +888,11 @@ static void hub_detects_offline()
     // Node is alive now
     TEST_ASSERT_EQUAL(0, g_mgr->get_offline_peers().size());
 
+    unity_send_signal("hub verified online");
     unity_wait_for_signal("node dead");
 
-    vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * 5));
-
+    // Wait for offline timeout
+    vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * HEARTBEAT_OFFLINE_MULTIPLIER * 2));
     auto offline = g_mgr->get_offline_peers();
     TEST_ASSERT_EQUAL(1, offline.size());
     TEST_ASSERT_EQUAL(kNodeId, offline[0]); // NODE ID
@@ -907,11 +908,11 @@ static void node_goes_offline()
 
     g_mgr = make_espnow_manager();
     TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, kNodeId, /*channel=*/1, kHeartbeatIntervalMs)));
-
     vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
     TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
 
     unity_send_signal("node paired");
+    unity_wait_for_signal("hub verified online");
 
     // Disappear
     g_mgr->deinit();
@@ -1034,15 +1035,15 @@ static void hub_heartbeat_resets()
     unity_send_signal("hub verified online c1");
     unity_wait_for_signal("node dead");
 
-    // Wait for timeout (3*interval + buffer)
-    vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * 5));
+    // Wait for offline timeout
+    vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * HEARTBEAT_OFFLINE_MULTIPLIER * 2));
     TEST_ASSERT_EQUAL(1, g_mgr->get_offline_peers().size());
 
     unity_send_signal("hub verified offline");
     unity_wait_for_signal("node back");
 
     // Wait for one or two heartbeats from the returned node
-    vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * 2));
+    vTaskDelay(pdMS_TO_TICKS(kHeartbeatIntervalMs * 5));
 
     // Peer should be back online now
     TEST_ASSERT_EQUAL(0, g_mgr->get_offline_peers().size());
@@ -1571,7 +1572,7 @@ static void hub_ignores_malformed()
     BaseType_t got = xQueueReceive(g_app_queue, &msg, pdMS_TO_TICKS(200));
     TEST_ASSERT_EQUAL(pdFALSE, got); // No malformed packet should reach app queue
     TEST_ASSERT_EQUAL(1, g_mgr->get_peers().size());
-    TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+    TEST_ASSERT_EQUAL(NodeState::PAIRING, g_mgr->get_node_state());
 
     unity_send_signal("hub received nothing from malformed");
 

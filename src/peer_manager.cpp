@@ -165,9 +165,10 @@ void PeerManager::update_last_seen(NodeId id, int64_t now_ms)
     hal_freertos_.semaphore_give(mutex_);
 }
 
+// TODO: Verify about how is failing on calling fron RxManager
 bool PeerManager::find_node_id_by_mac(const uint8_t* mac, NodeId& out_id)
 {
-    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) != pdTRUE) {
+    if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(10)) != pdTRUE) {
         return false;
     }
     bool found = false;

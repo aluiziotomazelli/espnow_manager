@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <cstring>
 
-#include "esp_log.h"
 #include "statistics_manager.hpp"
 
 // static const char* TAG = "StatsMgr";
