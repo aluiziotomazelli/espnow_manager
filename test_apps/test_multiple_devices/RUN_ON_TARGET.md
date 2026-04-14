@@ -74,7 +74,7 @@ To close the monitor and **free the serial port** for other applications (or for
 After flashing, each device boots into the **Unity test menu**. You'll see something like:
 
 ```
-Here's the test menu, type your choice[1-19]:
+Press ENTER to see the list of tests.
 ```
 
 **This is the key rule:**

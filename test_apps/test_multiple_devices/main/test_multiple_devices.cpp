@@ -1365,7 +1365,7 @@ static void hub_stress_receive()
             // Verify packet index matches sequence
             uint32_t idx = 0;
             memcpy(&idx, msg.payload, sizeof(idx));
-            TEST_ASSERT_EQUAL(received, idx); // verifica ordem e completude
+            TEST_ASSERT_EQUAL(received, idx); // verify order and completeness
             received++;
         }
     }
@@ -1628,3 +1628,104 @@ TEST_CASE_MULTIPLE_DEVICES(
     "[espnow][edge]",
     hub_ignores_malformed,
     node_send_malformed);
+
+// ===========================================================================
+// 20. TEST: IntegrationRssiStatisticsAreValidAndUpdated
+//
+// NODE sends 10 packets to HUB. HUB receives each packet and checks that
+// RSSI statistics are being updated correctly:
+// - rssi_last is within valid RF range (-90 to -10 dBm)
+// - rssi_avg converges from initial -127 to a valid value
+// - packets_rx increments with each received packet
+// ===========================================================================
+
+static constexpr uint32_t kRssiPacketCount = 10;
+static constexpr uint32_t kRssiSendIntervalMs = 100;
+
+static void hub_rssi_statistics()
+{
+    g_app_queue = xQueueCreate(kRssiPacketCount + 10, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_hub_config(g_app_queue)));
+
+    unity_wait_for_signal("node sending rssi");
+
+    PeerStatistics stats{};
+    uint32_t received = 0;
+
+    const uint32_t timeout_ms = kRssiPacketCount * kRssiSendIntervalMs * 3;
+    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+
+    while (received < kRssiPacketCount && xTaskGetTickCount() < deadline) {
+        AppMessage msg{};
+        if (xQueueReceive(g_app_queue, &msg, pdMS_TO_TICKS(kRssiSendIntervalMs * 2)) == pdTRUE) {
+            received++;
+        }
+    }
+
+    TEST_ASSERT_EQUAL(kRssiPacketCount, received);
+
+    // Get peer stats after all packets
+    TEST_ASSERT_TRUE(g_mgr->get_peer_stats(kNodeId, stats));
+
+    // Check packets rx (can be higher than received due to pairing/retransmissions)
+    TEST_ASSERT_TRUE(stats.packets_rx >= received);
+
+    // After several packets, rssi_avg must have converged from initial -127
+    TEST_ASSERT_TRUE(stats.rssi_avg >= -90);
+    TEST_ASSERT_TRUE(stats.rssi_avg <= -10);
+
+    // rssi_last should be in valid RF range
+    TEST_ASSERT_TRUE(stats.rssi_last >= -90);
+    TEST_ASSERT_TRUE(stats.rssi_last <= -10);
+
+    printf(
+        "HUB Stats: last rssi=%d dBm, avg rssi=%d dBm, rx=%lu\n",
+        (int)stats.rssi_last,
+        (int)stats.rssi_avg,
+        (unsigned long)stats.packets_rx);
+
+    unity_send_signal("hub rssi ok");
+    test_cleanup();
+}
+
+static void node_send_rssi()
+{
+    g_app_queue = xQueueCreate(kAppQueueLength, sizeof(AppMessage));
+    TEST_ASSERT_NOT_NULL(g_app_queue);
+
+    g_mgr = make_espnow_manager();
+    TEST_ASSERT_EQUAL(ESP_OK, g_mgr->init(make_node_config(g_app_queue, kNodeId, /*channel=*/1)));
+
+    // Wait for auto-pairing
+    vTaskDelay(pdMS_TO_TICKS(kWaitAfterPairingMs));
+    TEST_ASSERT_EQUAL(NodeState::OPERATIONAL, g_mgr->get_node_state());
+
+    unity_send_signal("node sending rssi");
+
+    for (uint32_t i = 0; i < kRssiPacketCount; ++i) {
+        const uint8_t payload[] = {0xAA, static_cast<uint8_t>(i)};
+        esp_err_t ret =
+            g_mgr->send_data(ReservedIds::HUB, kTestPayloadType, payload, sizeof(payload), /*require_ack=*/false);
+        TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+        vTaskDelay(pdMS_TO_TICKS(kRssiSendIntervalMs));
+    }
+
+    PeerStatistics stats{};
+    TEST_ASSERT_TRUE(g_mgr->get_peer_stats(ReservedIds::HUB, stats));
+    TEST_ASSERT_TRUE(stats.packets_sent >= kRssiPacketCount);
+
+    printf("NODE stats: sent=%lu\n", (unsigned long)stats.packets_sent);
+
+    unity_wait_for_signal("hub rssi ok");
+    test_cleanup();
+}
+
+TEST_CASE_MULTIPLE_DEVICES(
+    "20. Integration: RssiStatisticsAreValidAndUpdated",
+    "[espnow][statistics][rssi]",
+    hub_rssi_statistics,
+    node_send_rssi);
