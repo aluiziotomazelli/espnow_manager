@@ -109,9 +109,9 @@ protected:
                 static constexpr uint8_t expected_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
                 if (memcmp(mac, expected_mac, 6) == 0) {
                     out_id = 2;
-                    return true;
+                    return ESP_OK;
                 }
-                return false;
+                return ESP_ERR_NOT_FOUND;
             }));
 
         manager = std::make_unique<TxManager>(
@@ -355,6 +355,54 @@ TEST_F(TxManagerTaskTest, WaitingForAckNotifyDeliveryFailureCallsOnDeliveryFailu
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
 
     manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, DeliveryFailureWithTimeoutSkipsStats)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*peer_mgr, find_node_id_by_mac(_, _)).WillOnce(Return(ESP_ERR_TIMEOUT));
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_failure(_)).Times(0);
+
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, DeliveryFailureWithNotFoundSkipsStats)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*peer_mgr, find_node_id_by_mac(_, _)).WillOnce(Return(ESP_ERR_NOT_FOUND));
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_failure(_)).Times(0);
+
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, DeliverySuccessWithTimeoutSkipsStats)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*peer_mgr, find_node_id_by_mac(_, _)).WillOnce(Return(ESP_ERR_TIMEOUT));
+    EXPECT_CALL(*fsm, on_delivery_success()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_success(_)).Times(0);
+
+    manager->notify_delivery(ESP_NOW_SEND_SUCCESS, test_mac);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, DeliverySuccessWithNotFoundSkipsStats)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*peer_mgr, find_node_id_by_mac(_, _)).WillOnce(Return(ESP_ERR_NOT_FOUND));
+    EXPECT_CALL(*fsm, on_delivery_success()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_success(_)).Times(0);
+
+    manager->notify_delivery(ESP_NOW_SEND_SUCCESS, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 

@@ -7,6 +7,7 @@
 #include "mock_storage_manager.hpp"
 
 using ::testing::_;
+using ::testing::Invoke;
 using ::testing::NiceMock;
 using ::testing::Return;
 
@@ -266,6 +267,29 @@ TEST_F(PeerManagerTest, RemovePeerCallsDel)
     EXPECT_CALL(espnow_hal, hal_esp_now_del_peer(_)).Times(1); // Must call del
     EXPECT_EQ(ESP_OK, manager->remove(ID_2));
     EXPECT_EQ(0, manager->get_all().size()); // Must be no peers
+}
+
+TEST_F(PeerManagerTest, RemovePeerStoresRemainingPeersInSnapshot)
+{
+    // Add two peers so that after removal, snapshot.push_back is exercised
+    uint8_t mac2[6], mac3[6];
+    make_mac(mac2, ID_2);
+    make_mac(mac3, ID_3);
+
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac2, PEER, 10));
+    EXPECT_EQ(ESP_OK, manager->add(ID_3, mac3, PEER, 10));
+    EXPECT_EQ(2, manager->get_all().size());
+
+    EXPECT_CALL(espnow_hal, hal_esp_now_del_peer(_)).Times(1);
+    EXPECT_CALL(storage, store_peers(_, true))
+        .WillOnce(Invoke([this](const etl::ivector<PersistentPeer>& peers, bool /*force_nvs_commit*/) {
+            EXPECT_EQ(1, peers.size());  // Only remaining peer should be in snapshot
+            EXPECT_EQ(ID_2, peers[0].node_id);
+            return ESP_OK;
+        }));
+
+    EXPECT_EQ(ESP_OK, manager->remove(ID_3));
+    EXPECT_EQ(1, manager->get_all().size());
 }
 
 TEST_F(PeerManagerTest, RemoveNonExistentPeerDoesNotCallDel)
@@ -580,22 +604,22 @@ TEST_F(PeerManagerTest, FindNodeIdByMacReturnsIdWhenFound)
     manager->add(ID_2, mac, PEER, 1000);
 
     NodeId out_id = 0;
-    EXPECT_TRUE(manager->find_node_id_by_mac(mac, out_id));
+    EXPECT_EQ(ESP_OK, manager->find_node_id_by_mac(mac, out_id));
     EXPECT_EQ(ID_2, out_id);
 }
 
-TEST_F(PeerManagerTest, FindNodeIdByMacReturnsFalseWhenNotFound)
+TEST_F(PeerManagerTest, FindNodeIdByMacReturnsNotFoundWhenNotFound)
 {
     uint8_t unknown_mac[6] = {0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA};
     NodeId out_id = 0;
-    EXPECT_FALSE(manager->find_node_id_by_mac(unknown_mac, out_id));
+    EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->find_node_id_by_mac(unknown_mac, out_id));
     EXPECT_EQ(0, out_id); // out_id should remain unchanged
 }
 
-TEST_F(PeerManagerTest, FindNodeIdByMacDontTakeMutexReturnsFalse)
+TEST_F(PeerManagerTest, FindNodeIdByMacReturnsTimeoutOnMutexFailure)
 {
     EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE));
     uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     NodeId out_id = 0;
-    EXPECT_FALSE(manager->find_node_id_by_mac(mac, out_id));
+    EXPECT_EQ(ESP_ERR_TIMEOUT, manager->find_node_id_by_mac(mac, out_id));
 }

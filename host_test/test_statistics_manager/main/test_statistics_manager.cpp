@@ -91,7 +91,7 @@ TEST_F(StatisticsManagerTest, ReachingThresholdRxTriggersFlush)
     NodeId node_id = 10;
     sut->on_peer_added(node_id, 1000);
 
-    // FLUSH_THRESHOLD_RX = 100, deve flushear uma vez
+    // FLUSH_THRESHOLD_RX = 50, deve flushear uma vez
     EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
 
     for (int i = 0; i < FLUSH_THRESHOLD_RX; ++i) {
@@ -112,6 +112,19 @@ TEST_F(StatisticsManagerTest, DeliverySuccessUpdatesPacketsSent)
     PeerStatistics stats;
     EXPECT_TRUE(sut->get(node_id, stats));
     EXPECT_EQ(stats.packets_sent, 1);
+}
+
+TEST_F(StatisticsManagerTest, ReachingThresholdDeliverySuccessTriggersFlush)
+{
+    NodeId node_id = 10;
+    sut->on_peer_added(node_id, 1000);
+
+    // FLUSH_THRESHOLD_TX = 50
+    EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
+
+    for (int i = 0; i < FLUSH_THRESHOLD_TX; ++i) {
+        sut->on_delivery_success(node_id);
+    }
 }
 
 TEST_F(StatisticsManagerTest, DeliveryFailureUpdatesDeliveryFailures)
@@ -156,11 +169,37 @@ TEST_F(StatisticsManagerTest, ReachingThresholdRttTriggersFlush)
     NodeId node_id = 10;
     sut->on_peer_added(node_id, 1000);
 
-    // FLUSH_THRESHOLD_RTT = 50, deve flushear uma vez
+    // FLUSH_THRESHOLD_RTT = 30, deve flushear uma vez
     EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
 
     for (int i = 0; i < FLUSH_THRESHOLD_RTT; ++i) {
         sut->on_ack_received(node_id, 20);
+    }
+}
+
+TEST_F(StatisticsManagerTest, ReachingThresholdDeliveryFailureTriggersFlush)
+{
+    NodeId node_id = 10;
+    sut->on_peer_added(node_id, 1000);
+
+    // FLUSH_THRESHOLD_TX_FAILURE = 10
+    EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
+
+    for (int i = 0; i < FLUSH_THRESHOLD_TX_FAILURE; ++i) {
+        sut->on_delivery_failure(node_id);
+    }
+}
+
+TEST_F(StatisticsManagerTest, ReachingThresholdRetryTriggersFlush)
+{
+    NodeId node_id = 10;
+    sut->on_peer_added(node_id, 1000);
+
+    // on_retry increments dirty_tx (soft), threshold is FLUSH_THRESHOLD_TX = 50
+    EXPECT_CALL(storage_manager, store_stats(_)).Times(1);
+
+    for (int i = 0; i < FLUSH_THRESHOLD_TX; ++i) {
+        sut->on_retry(node_id);
     }
 }
 
