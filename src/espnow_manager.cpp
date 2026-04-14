@@ -568,14 +568,23 @@ void EspNowManager::rx_task(void* arg)
                         // Protocol-internal packets — handle immediately via router
                         self->message_router_->handle_packet(decoded);
 
-                        // A NODE ends its pairing time (!is_active) immediately when it receives a PAIR_RESPONSE
-                        // when SCANNING is sucessfull. The peer is add to the peer manager so we check if node
-                        // has peer and call on_pairing_timeout.
-                        // TODO: remove this after full refactor, pairing done is notified to rx_task
-                        // if (!self->pairing_manager_->is_active()) {
-                        //     bool has_peers = !self->peer_manager_->get_all().empty();
-                        //     self->node_fsm_->on_pairing_timeout(has_peers);
-                        // }
+                        // PairingManager calls peer_mgr_.add() directly (bypassing
+                        // EspNowManager::add_peer), so stats entries are not created
+                        // during pairing. Sync them here, immediately after routing,
+                        // while the peer is already in peer_manager_ but before any
+                        // data packets from that peer arrive.
+                        // on_peer_added() is idempotent: a no-op if the entry exists.
+                        // get_all() cost is acceptable: this path only executes on
+                        // protocol packets (pairing), which are rare.
+                        if (self->stats_mgr_ != nullptr) {
+                            const NodeId sender = header_opt->sender_node_id;
+                            for (const auto& p : self->peer_manager_->get_all()) {
+                                if (p.node_id == sender) {
+                                    self->stats_mgr_->on_peer_added(p.node_id, p.heartbeat_interval_ms);
+                                    break;
+                                }
+                            }
+                        }
                     }
                     // After processing (Routing or App delivery), update peer last_seen.
                     // If it was a new pairing, the peer is now in the list.
