@@ -358,8 +358,8 @@ TEST_F(PairingManagerTest, HandleResponseAcceptedNotifiesRxTask)
 {
     sut_->start(PAIRING_TIMEOUT_MS, kT0);
 
-    // When pairing succeeds, notify_rx_task_pairing_done() should be called
-    // which calls hal_freertos_.task_notify(rx_task_handle_, NOTIFY_PAIRING_DONE, _)
+    // When pairing succeeds, notify_rx_task_peer_add() and notify_rx_task_pairing_done() are called
+    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PEER_ADDED, _)).Times(1).WillOnce(Return(pdPASS));
     EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PAIRING_DONE, _)).Times(1).WillOnce(Return(pdPASS));
 
     auto decoded = make_decoded_pair_response(PairStatus::ACCEPTED);
@@ -448,4 +448,68 @@ TEST_F(PairingManagerTest, HandleRequestIgnoredByNonHub)
 
     auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
     sut_->handle_request(decoded);
+}
+
+// ===========================================================================
+// handle_request() — NOTIFY_PEER_ADDED notification
+// ===========================================================================
+
+TEST_F(PairingManagerHubTest, HandleRequestSendsPeerAddedNotification)
+{
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
+
+    // Must add peer and notify rx_task about it
+    EXPECT_CALL(peer_mgr_, add(kNodeId, _, kNodeType, _)).Times(1);
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PEER_ADDED, _))
+        .Times(1)
+        .WillOnce(Return(pdPASS));
+
+    auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
+    sut_->handle_request(decoded);
+}
+
+// ===========================================================================
+// handle_response() — NOTIFY_PEER_ADDED notification
+// ===========================================================================
+
+TEST_F(PairingManagerTest, HandleResponseSendsPeerAddedNotification)
+{
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
+
+    // Must add peer and notify rx_task about it
+    EXPECT_CALL(peer_mgr_, add(kHubId, _, kHubType, _)).Times(1);
+    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PEER_ADDED, _))
+        .Times(1)
+        .WillOnce(Return(pdPASS));
+    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PAIRING_DONE, _))
+        .Times(1)
+        .WillOnce(Return(pdPASS));
+
+    auto decoded = make_decoded_pair_response(PairStatus::ACCEPTED);
+    sut_->handle_response(decoded);
+}
+
+TEST_F(PairingManagerTest, HandleResponseWithWrongDestNodeIdDoesNotNotify)
+{
+    sut_->start(PAIRING_TIMEOUT_MS, kT0);
+
+    // Response destined for a different node (0x03) must be ignored entirely
+    DecodedRxPacket decoded{};
+    auto* resp = reinterpret_cast<PairResponse*>(decoded.raw.data);
+    resp->header.msg_type = MessageType::PAIR_RESPONSE;
+    resp->header.sender_node_id = kHubId;
+    resp->header.sender_type = kHubType;
+    resp->header.dest_node_id = 0x03; // different node
+    resp->header.sequence_number = 0;
+    resp->status = PairStatus::ACCEPTED;
+    decoded.raw.len = sizeof(PairResponse);
+    decoded.header = resp->header;
+
+    // No peer add, no notifications should fire
+    EXPECT_CALL(peer_mgr_, add(_, _, _, _)).Times(0);
+    EXPECT_CALL(hal_freertos_, task_notify(_, NOTIFY_PEER_ADDED, _)).Times(0);
+    EXPECT_CALL(hal_freertos_, task_notify(_, NOTIFY_PAIRING_DONE, _)).Times(0);
+
+    sut_->handle_response(decoded);
 }

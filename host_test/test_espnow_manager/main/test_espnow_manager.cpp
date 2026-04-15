@@ -91,6 +91,7 @@ public:
     using EspNowManager::build_app_message;
     using EspNowManager::handle_notifications;
     using EspNowManager::node_fsm_;
+    using EspNowManager::tick_scan_retry;
 
     void set_node_state_operational()
     {
@@ -1018,6 +1019,23 @@ TEST_F(EspNowManagerTest, NotifyScanFailedCheckForPeers)
     sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
 }
 
+TEST_F(EspNowManagerTest, ScanRetrySchedulesAndTriggersStartScan)
+{
+    // Schedule a retry via NOTIFY_SCAN_FAILED, then verify tick_scan_retry
+    // triggers start_scan() once the delay has elapsed.
+    init_sut();
+    add_peer_to_storage();
+    node_fsm_->set_state(NodeState::RECOVERY_SCAN);
+
+    // First call: schedules the retry (scan_retry_.active = true, count = 1)
+    sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
+
+    // Advance time past the backoff delay (SCAN_BACKOFF_BASE_MS << 0 = 2000 ms)
+    int64_t after_delay_ms = 2500;
+    EXPECT_CALL(*scanner_, start_scan()).Times(1);
+    sut_->tick_scan_retry(after_delay_ms);
+}
+
 TEST_F(EspNowManagerTest, NotifyChannelChangedChecksCurrentChannel)
 {
     // NOTIFY_CHANNEL_CHANGED → ChannelMonitor: get_wifi_channel() to get new channel
@@ -1042,6 +1060,23 @@ TEST_F(EspNowManagerTest, NotifyStopTurnsShouldStopTrue)
 
     sut_->handle_notifications(NOTIFY_TASK_TO_STOP, should_stop);
     ASSERT_TRUE(should_stop);
+}
+
+TEST_F(EspNowManagerTest, NotifyPeerAddedSyncsStatsEntries)
+{
+    // NOTIFY_PEER_ADDED → StatisticsManager: on_peer_added() for every peer
+    init_sut();
+    add_peer_to_storage();
+
+    etl::vector<PeerInfo, MAX_PEERS> peers;
+    PeerInfo p{};
+    p.node_id = 42;
+    p.heartbeat_interval_ms = 60000;
+    peers.push_back(p);
+    EXPECT_CALL(*peer_mgr_, get_all()).WillOnce(Return(peers));
+    EXPECT_CALL(*stats_mgr_, on_peer_added(42, 60000)).Times(1);
+
+    sut_->handle_notifications(NOTIFY_PEER_ADDED, should_stop);
 }
 
 // ===========================================================================
