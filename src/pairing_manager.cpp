@@ -118,6 +118,7 @@ void PairingManager::handle_request(const DecodedRxPacket& decoded)
     else {
         peer_mgr_.add(header.sender_node_id, decoded.raw.src_mac, header.sender_type, req->heartbeat_interval_ms);
         status = PairStatus::ACCEPTED;
+        notify_rx_task_peer_add();
     }
 
     PairResponse resp{};
@@ -154,6 +155,7 @@ void PairingManager::handle_response(const DecodedRxPacket& decoded)
     if (resp->status == PairStatus::ACCEPTED) {
         ESP_LOGI(TAG, "Pairing accepted by Hub");
         peer_mgr_.add(decoded.header.sender_node_id, decoded.raw.src_mac, decoded.header.sender_type);
+        notify_rx_task_peer_add();
         is_active_ = false;
         notify_rx_task_pairing_done();
     }
@@ -186,6 +188,13 @@ void PairingManager::notify_rx_task_pairing_done()
 {
     if (rx_task_handle_ != nullptr) {
         hal_freertos_.task_notify(rx_task_handle_, NOTIFY_PAIRING_DONE, eSetBits);
+    }
+}
+
+void PairingManager::notify_rx_task_peer_add()
+{
+    if (rx_task_handle_ != nullptr) {
+        hal_freertos_.task_notify(rx_task_handle_, NOTIFY_PEER_ADDED, eSetBits);
     }
 }
 

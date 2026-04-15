@@ -59,5 +59,6 @@ private:
     static constexpr uint32_t periodic_interval_ms_ = PAIRING_PERIODIC_INTERVAL_MS;
 
     void notify_rx_task_pairing_done();
+    void notify_rx_task_peer_add();
     int64_t get_time_ms() const;
 };

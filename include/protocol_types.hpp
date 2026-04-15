@@ -14,21 +14,22 @@
 /**
  * @brief Notification Bits for tasks notification
  */
-static constexpr uint32_t NOTIFY_LOGICAL_ACK = 0x01;
-static constexpr uint32_t NOTIFY_DELIVERY_FAILURE = 0x02;
-static constexpr uint32_t NOTIFY_MAX_FAILURES = 0x04;
-static constexpr uint32_t NOTIFY_DELIVERY_SUCCESS = 0x08;
-static constexpr uint32_t NOTIFY_DATA = 0x10;
-static constexpr uint32_t NOTIFY_ACK_TIMEOUT = 0x20;
-static constexpr uint32_t NOTIFY_TASK_TO_STOP = 0x40;
-static constexpr uint32_t NOTIFY_LINK_ALIVE = 0x80;
-static constexpr uint32_t NOTIFY_START_SCAN = 0x100;
-static constexpr uint32_t NOTIFY_STOP_SCAN = 0x200;
-static constexpr uint32_t NOTIFY_SCAN_RESPONSE = 0x400;
-static constexpr uint32_t NOTIFY_CHANNEL_FOUND = 0x800;
-static constexpr uint32_t NOTIFY_SCAN_FAILED = 0x1000;
-static constexpr uint32_t NOTIFY_CHANNEL_CHANGED = 0x2000;
-static constexpr uint32_t NOTIFY_PAIRING_DONE = 0x4000;
+static constexpr uint32_t NOTIFY_LOGICAL_ACK = 0x01;      ///< Sent by TxManager when a valid ACK packet arrives
+static constexpr uint32_t NOTIFY_DELIVERY_FAILURE = 0x02; ///< Sent by TxManager after esp_now_send_cb reports FAIL
+static constexpr uint32_t NOTIFY_MAX_FAILURES = 0x04;     ///< Sent by TxManager when retries exhausted
+static constexpr uint32_t NOTIFY_DELIVERY_SUCCESS = 0x08; ///< Sent by TxManager after esp_now_send_cb reports SUCCESS
+static constexpr uint32_t NOTIFY_DATA = 0x10;             ///< Sent by TxManager to wake tx_task when a packet is queued
+static constexpr uint32_t NOTIFY_ACK_TIMEOUT = 0x20;      ///< Set by TxManager's ack timer callback
+static constexpr uint32_t NOTIFY_TASK_TO_STOP = 0x40;     ///< Sent to signal_task_to_stop()
+static constexpr uint32_t NOTIFY_LINK_ALIVE = 0x80;       ///< Sent on any valid packet reception
+static constexpr uint32_t NOTIFY_START_SCAN = 0x100;      ///< Sent by DiscoveryManager::start_scan()
+static constexpr uint32_t NOTIFY_STOP_SCAN = 0x200;       ///< Sent by DiscoveryManager::stop_scan()
+static constexpr uint32_t NOTIFY_SCAN_RESPONSE = 0x400;   ///< Sent when a scan response packet arrives
+static constexpr uint32_t NOTIFY_CHANNEL_FOUND = 0x800;   ///< Sent by discovery_task() when hub is found
+static constexpr uint32_t NOTIFY_SCAN_FAILED = 0x1000;    ///< Sent by discovery_task() when all channels exhausted
+static constexpr uint32_t NOTIFY_CHANNEL_CHANGED = 0x2000; ///< Sent when WiFi channel drift is detected
+static constexpr uint32_t NOTIFY_PAIRING_DONE = 0x4000;    ///< Sent by PairingManager when pairing timeout or success
+static constexpr uint32_t NOTIFY_PEER_ADDED = 0x10000; ///< Sent by PairingManager after peer_mgr_.add() during pairing
 static constexpr uint32_t NOTIFY_ALL = 0xFFFFFFFF;
 
 static constexpr uint8_t BROADCAST_MAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};

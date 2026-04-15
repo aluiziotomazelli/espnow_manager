@@ -567,24 +567,6 @@ void EspNowManager::rx_task(void* arg)
                     else {
                         // Protocol-internal packets — handle immediately via router
                         self->message_router_->handle_packet(decoded);
-
-                        // PairingManager calls peer_mgr_.add() directly (bypassing
-                        // EspNowManager::add_peer), so stats entries are not created
-                        // during pairing. Sync them here, immediately after routing,
-                        // while the peer is already in peer_manager_ but before any
-                        // data packets from that peer arrive.
-                        // on_peer_added() is idempotent: a no-op if the entry exists.
-                        // get_all() cost is acceptable: this path only executes on
-                        // protocol packets (pairing), which are rare.
-                        if (self->stats_mgr_ != nullptr) {
-                            const NodeId sender = header_opt->sender_node_id;
-                            for (const auto& p : self->peer_manager_->get_all()) {
-                                if (p.node_id == sender) {
-                                    self->stats_mgr_->on_peer_added(p.node_id, p.heartbeat_interval_ms);
-                                    break;
-                                }
-                            }
-                        }
                     }
                     // After processing (Routing or App delivery), update peer last_seen.
                     // If it was a new pairing, the peer is now in the list.
@@ -705,6 +687,13 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
         NodeState old_state = node_fsm_->get_state();
         node_fsm_->on_channel_found();
         handle_state_transition(old_state, node_fsm_->get_state());
+    }
+
+    // NOTIFY_PEER_ADDED is set by PairingManager::notify_rx_task_peer_add()
+    if ((notifications & NOTIFY_PEER_ADDED) == NOTIFY_PEER_ADDED) {
+        for (const auto& p : peer_manager_->get_all()) {
+            stats_mgr_->on_peer_added(p.node_id, p.heartbeat_interval_ms);
+        }
     }
 
     // NOTIFY_PAIRING_DONE is set by PairingManager::notify_rx_task_pairing_done()
