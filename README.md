@@ -1,5 +1,9 @@
 # ESP-NOW Manager
 
+[![ESP-IDF Build](https://github.com/aluiziotomazelli/espnow_manager/actions/workflows/build.yml/badge.svg)](https://github.com/aluiziotomazelli/espnow_manager/actions/workflows/build.yml)
+[![Host Tests](https://github.com/aluiziotomazelli/espnow_manager/actions/workflows/host_test.yml/badge.svg)](https://github.com/aluiziotomazelli/espnow_manager/actions/workflows/host_test.yml)
+[![Coverage](https://img.shields.io/badge/coverage-95%25-orange)](https://aluiziotomazelli.github.io/espnow_manager/index.html)
+
 A high-level C++ component for ESP32 devices that provides reliable, structured communication built on top of ESP-NOW (Espressif's low-power, peer-to-peer wireless protocol).
 
 ## Overview
@@ -59,12 +63,18 @@ ESP-NOW Manager uses a **Facade pattern** with specialized managers for each pro
 |-----------|---------------|
 | `EspNowManager` | Public API, singleton orchestrator, owns RX task |
 | `TxManager` | Centralized encoding, transmission queue, retry logic |
+| `TxStateMachine` | Transmission state machine (IDLE / WAITING_FOR_ACK / RETRYING) |
 | `DiscoveryManager` | Multi-channel probing and channel discovery |
 | `PairingManager` | Node registration and channel synchronization |
 | `HeartbeatManager` | Link monitoring and keep-alive generation |
 | `ChannelMonitor` | WiFi channel change detection |
 | `PeerManager` | Peer database with LRU eviction (max 19 peers) |
-| `StorageManager` | Persistence using RTC + NVS |
+| `StorageManager` | Persistence using RTC + NVS dual storage |
+| `StatisticsManager` | Per-peer network quality metrics (RSSI, RTT, packet counts) |
+| `MessageCodec` | Protocol serialization/deserialization with CRC validation |
+| `MessageRouter` | Dispatches protocol packets to specific managers |
+| `EspNowDriver` | ESP-NOW initialization and HAL abstraction |
+| `NodeStateMachine` | Governs high-level node state transitions |
 
 ### Hardware Abstraction
 
@@ -81,7 +91,7 @@ The `NodeStateMachine` governs the high-level state of the ESP-NOW node:
 | State | Description |
 |-------|-------------|
 | `UNINITIALIZED` | Initial state before `init()` is called |
-| `IDLE` | Initialized, no peers, waiting for pairing |
+| `IDLE` | Initialized, no peers — pairing timed out or scan failed. Call `start_pairing()` to retry |
 | `PAIRING_SCAN` | Scanning for HUB to initiate pairing |
 | `PAIRING` | Actively exchanging pairing messages |
 | `OPERATIONAL` | Has peers, normal communication |
@@ -90,15 +100,20 @@ The `NodeStateMachine` governs the high-level state of the ESP-NOW node:
 ### Basic State Flow
 
 ```
-UNINITIALIZED ──init()──> IDLE ──start_pairing()──> PAIRING_SCAN
-                              │                          │
-                              │ has peers                │ channel found
-                              ▼                          ▼
-                        OPERATIONAL <────────────── PAIRING
-                              │                          │
-                              │ link lost                │ pairing timeout
-                              ▼                          ▼
-                        RECOVERY_SCAN ───────────> IDLE / OPERATIONAL
+UNINITIALIZED ──init()──> IDLE          (no peers, hub)
+              │           └───────────> PAIRING_SCAN  (no peers, node)
+              │           └───────────> OPERATIONAL   (has peers)
+              │
+              │ has peers
+              ├───────────────────────> PAIRING
+              │                          │
+              │ channel found            │ pairing timeout
+              ▼                          ▼
+        OPERATIONAL <────────────── PAIRING
+              │                          │
+              │ link lost                │ pairing timeout
+              ▼                          ▼
+        RECOVERY_SCAN ───────────> IDLE / OPERATIONAL
 ```
 
 ## Requirements
@@ -169,7 +184,7 @@ err = manager.start_pairing(30000);
 SensorReport report = {.temperature = 25.5, .humidity = 60};
 err = manager.send_data(
     ReservedIds::HUB,              // Destination: HUB
-    PayloadType::SENSOR_REPORT,    // Application-defined type
+    0x01,                          // Application-defined payload type
     &report,                       // Payload pointer
     sizeof(report),                // Payload size
     true                           // Require ACK
@@ -188,11 +203,11 @@ if (err == ESP_OK) {
 // Send command to node (e.g., change reporting interval)
 CommandPayload cmd = {.interval_ms = 5000};
 err = manager.send_command(
-    node_id,                       // Target node ID
-    CommandType::SET_REPORT_INTERVAL,
+    node_id,                              // Target node ID
+    static_cast<PayloadType>(CommandType::SET_REPORT_INTERVAL),
     &cmd,
     sizeof(cmd),
-    true                           // Require ACK
+    true                                  // Require ACK
 );
 ```
 
@@ -213,7 +228,7 @@ void app_task(void* pvParameters)
             
             // Send logical ACK if required
             if (msg.requires_ack) {
-                manager.confirm_reception(AckStatus::OK);
+                manager.confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK);
             }
         }
     }
@@ -291,7 +306,7 @@ void hub_task(void* pvParameters)
                 
                 // Send ACK
                 if (msg.requires_ack) {
-                    manager.confirm_reception(AckStatus::OK);
+                    manager.confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK);
                 }
             }
         }
@@ -440,7 +455,7 @@ Test applications are located in the `test_apps/` directory.
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `MAX_PEERS` | 19 | ESP-NOW hardware limit (20 - 1 broadcast) |
-| `MAX_PAYLOAD_SIZE` | 230 bytes | Maximum application payload |
+| `MAX_PAYLOAD_SIZE` | 232 bytes | Maximum application payload |
 | `DEFAULT_ACK_TIMEOUT_MS` | 500 | Logical ACK timeout |
 | `DEFAULT_HEARTBEAT_INTERVAL_MS` | 60000 | Default heartbeat interval (1 minute) |
 | `MAX_FAILURES` | 3 | Retries before channel scanning |
@@ -501,7 +516,42 @@ When a HUB changes WiFi channels, connected nodes automatically:
 3. Scan all channels (1-13) to find the HUB
 4. Resume normal operation once channel is found
 
+If the recovery scan fails, the node retries with exponential backoff:
+- **`SCAN_MAX_RETRIES = 7`** maximum retries
+- **Exponential backoff**: 2s, 4s, 8s, 16s, 32s, 64s, 128s (~4m14s total)
+- After all retries are exhausted, the node transitions to `IDLE`
+
+This retry mechanism allows the node to recover from transient issues (temporary interference, HUB temporarily offline) without requiring manual intervention. The backoff duration doubles with each attempt to avoid overwhelming the wireless medium.
+
 > **Note on Peer Channel Configuration:** All peers are registered with ESP-NOW using **channel 0 (automatic)**. This means peers automatically use whatever channel the WiFi is currently set to. This design choice simplifies channel management — when the HUB changes channels, nodes detect the change via failed transmissions and automatically scan to rediscover the HUB on the new channel. Using fixed channels per peer would require updating all registered peers when the channel changes, adding complexity without benefit since ESP-NOW does not automatically sync peer channels with WiFi channel changes.
+
+### Peer Statistics
+
+The component tracks per-peer network quality metrics automatically:
+- **RSSI**: Last received signal strength + exponential moving average
+- **RTT**: Round-trip time for logical ACKs (last + EMA)
+- **Packet counts**: Received, sent, retries, lost, delivery failures, driver errors
+
+Access statistics via the public API:
+```cpp
+// Get statistics for a specific peer
+PeerStatistics stats;
+if (manager.get_peer_stats(node_id, stats)) {
+    ESP_LOGI(TAG, "RSSI avg: %d dBm, RTT avg: %lu ms, Packets rx: %lu",
+             stats.rssi_avg, (unsigned long)stats.rtt_avg_ms,
+             (unsigned long)stats.packets_rx);
+}
+
+// Get statistics for all peers
+auto all_stats = manager.get_all_peer_stats();
+for (const auto& s : all_stats) {
+    ESP_LOGI(TAG, "Peer %d: delivery_failures=%lu, retries=%lu",
+             s.node_id, (unsigned long)s.delivery_failures,
+             (unsigned long)s.retries);
+}
+```
+
+Statistics are persisted to NVS using dirty counters — data is flushed to storage when thresholds are reached (configurable via `FLUSH_THRESHOLD_*` constants), ensuring metrics survive unexpected resets.
 
 ### Deep Sleep Support
 
