@@ -12,13 +12,17 @@
 class RtcBackend : public IPersistenceBackend
 {
 public:
-    explicit RtcBackend(PersistentData &storage);
+    RtcBackend(void *storage, size_t size);
 
+    /** @copydoc IPersistenceBackend::load */
     esp_err_t load(void *data, size_t size) override;
+
+    /** @copydoc IPersistenceBackend::save */
     esp_err_t save(const void *data, size_t size) override;
 
 private:
-    PersistentData &storage_;
+    void *storage_;
+    size_t size_;
 };
 
 /**
@@ -27,14 +31,19 @@ private:
 class NvsBackend : public IPersistenceBackend
 {
 public:
-    explicit NvsBackend(INvsHAL &nvs_hal);
+    NvsBackend(INvsHAL &nvs_hal, const char *nvs_key);
 
+    /** @copydoc IPersistenceBackend::load */
     esp_err_t load(void *data, size_t size) override;
+
+    /** @copydoc IPersistenceBackend::save */
     esp_err_t save(const void *data, size_t size) override;
 
 private:
     esp_err_t init_nvs();
 
     INvsHAL &nvs_;
+    const char *nvs_key_;
+
     bool nvs_initialized_ = false;
 };

@@ -12,7 +12,10 @@ idf_component_register(
         "src/heartbeat_manager.cpp"
         "src/pairing_manager.cpp"
         "src/message_router.cpp"
-        "src/bootstrapper.cpp"
+        "src/espnow_driver.cpp"
+        "src/node_state_machine.cpp"
+        "src/channel_monitor.cpp"
+        "src/statistics_manager.cpp"
     
     INCLUDE_DIRS
         "include"
@@ -23,6 +26,7 @@ idf_component_register(
         esp_timer
         nvs_flash
         driver
+        etl
     
     PRIV_REQUIRES
         esp_common

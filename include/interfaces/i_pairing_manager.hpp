@@ -10,7 +10,7 @@
 
 /**
  * @interface IPairingManager
- * @brief Pairing logic for connecting nodes to HUB (internal)
+ * @brief Pairing logic for connecting nodes to HUB.
  * @internal
  */
 class IPairingManager
@@ -18,36 +18,56 @@ class IPairingManager
 public:
     virtual ~IPairingManager() = default;
 
-    /** @internal */
-    virtual esp_err_t init(NodeType type, NodeId id) = 0;
+    /**
+     * @brief Initializes the pairing manager.
+     * @param id Node ID.
+     * @param type Node type.
+     * @param rx_task_handle RX task handle for notifications.
+     * @param heartbeat_interval_ms Heartbeat interval configured for this node.
+     * @return ESP_OK on success.
+     */
+    virtual esp_err_t init(NodeId id, NodeType type, TaskHandle_t rx_task_handle, uint32_t heartbeat_interval_ms) = 0;
 
     /** @internal */
     template <
         typename T1,
         typename T2,
-        typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeType)>,
-        typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeId)>>
+        typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
+        typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
 
-    esp_err_t init(T1 type, T2 id)
+    esp_err_t init(T1 id, T2 type, TaskHandle_t rx_task_handle, uint32_t heartbeat_interval_ms)
     {
-        return init(static_cast<NodeType>(type), static_cast<NodeId>(id));
+        return init(static_cast<NodeId>(id), static_cast<NodeType>(type), rx_task_handle, heartbeat_interval_ms);
     }
 
-    /** @internal */
-    virtual esp_err_t deinit() = 0;
+    /**
+     * @brief Deinitializes the pairing manager.
+     */
+    virtual void deinit() = 0;
 
-    /** @internal */
-    virtual esp_err_t start(uint32_t timeout_ms) = 0;
+    /**
+     * @brief Ticks the pairing manager.
+     * @param now_ms Current time in milliseconds.
+     */
+    virtual void tick(int64_t now_ms) = 0;
 
-    /** @internal */
-    virtual void set_channel(uint8_t channel) = 0;
+    /**
+     * @brief Starts the pairing process.
+     * @param timeout_ms Timeout in milliseconds.
+     * @param now_ms Current time in milliseconds.
+     * @return ESP_OK on success.
+     */
+    virtual esp_err_t start(uint32_t timeout_ms, int64_t now_ms) = 0;
 
-    /** @internal */
-    virtual bool is_active() const = 0;
+    /**
+     * @brief Handles incoming pair request packets.
+     * @param decoded Decoded packet.
+     */
+    virtual void handle_request(const DecodedRxPacket& decoded) = 0;
 
-    /** @internal */
-    virtual void handle_request(const RxPacket &packet) = 0;
-
-    /** @internal */
-    virtual void handle_response(const RxPacket &packet) = 0;
+    /**
+     * @brief Handles incoming pair response packets.
+     * @param decoded Decoded packet.
+     */
+    virtual void handle_response(const DecodedRxPacket& decoded) = 0;
 };

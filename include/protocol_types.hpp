@@ -14,18 +14,28 @@
 /**
  * @brief Notification Bits for tasks notification
  */
-static constexpr uint32_t NOTIFY_LOGICAL_ACK = 0x01;
-static constexpr uint32_t NOTIFY_PHYSICAL_FAIL = 0x02;
-// static constexpr uint32_t NOTIFY_HUB_FOUND = 0x04; // Redundant with NOTIFY_LINK_ALIVE
-static constexpr uint32_t NOTIFY_DATA = 0x20;
-static constexpr uint32_t NOTIFY_ACK_TIMEOUT = 0x40;
-static constexpr uint32_t NOTIFY_STOP = 0x100;
-static constexpr uint32_t NOTIFY_LINK_ALIVE = 0x200;
+static constexpr uint32_t NOTIFY_LOGICAL_ACK = 0x01;      ///< Sent by TxManager when a valid ACK packet arrives
+static constexpr uint32_t NOTIFY_DELIVERY_FAILURE = 0x02; ///< Sent by TxManager after esp_now_send_cb reports FAIL
+static constexpr uint32_t NOTIFY_MAX_FAILURES = 0x04;     ///< Sent by TxManager when retries exhausted
+static constexpr uint32_t NOTIFY_DELIVERY_SUCCESS = 0x08; ///< Sent by TxManager after esp_now_send_cb reports SUCCESS
+static constexpr uint32_t NOTIFY_DATA = 0x10;             ///< Sent by TxManager to wake tx_task when a packet is queued
+static constexpr uint32_t NOTIFY_ACK_TIMEOUT = 0x20;      ///< Set by TxManager's ack timer callback
+static constexpr uint32_t NOTIFY_TASK_TO_STOP = 0x40;     ///< Sent to signal_task_to_stop()
+static constexpr uint32_t NOTIFY_LINK_ALIVE = 0x80;       ///< Sent on any valid packet reception
+static constexpr uint32_t NOTIFY_START_SCAN = 0x100;      ///< Sent by DiscoveryManager::start_scan()
+static constexpr uint32_t NOTIFY_STOP_SCAN = 0x200;       ///< Sent by DiscoveryManager::stop_scan()
+static constexpr uint32_t NOTIFY_SCAN_RESPONSE = 0x400;   ///< Sent when a scan response packet arrives
+static constexpr uint32_t NOTIFY_CHANNEL_FOUND = 0x800;   ///< Sent by discovery_task() when hub is found
+static constexpr uint32_t NOTIFY_SCAN_FAILED = 0x1000;    ///< Sent by discovery_task() when all channels exhausted
+static constexpr uint32_t NOTIFY_CHANNEL_CHANGED = 0x2000; ///< Sent when WiFi channel drift is detected
+static constexpr uint32_t NOTIFY_PAIRING_DONE = 0x4000;    ///< Sent by PairingManager when pairing timeout or success
+static constexpr uint32_t NOTIFY_PEER_ADDED = 0x10000; ///< Sent by PairingManager after peer_mgr_.add() during pairing
+static constexpr uint32_t NOTIFY_ALL = 0xFFFFFFFF;
 
 static constexpr uint8_t BROADCAST_MAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 /** @brief Correct size of the universal message header */
-constexpr size_t MESSAGE_HEADER_SIZE = 16;
+constexpr size_t MESSAGE_HEADER_SIZE = 17;
 /** @brief Size of the CRC field in the packet */
 constexpr size_t CRC_SIZE = 1;
 /** @brief The maximum payload size is the total ESP-NOW size minus the header and CRC */
@@ -38,22 +48,34 @@ constexpr uint32_t DEFAULT_ACK_TIMEOUT_MS = 500;
 constexpr uint32_t DEFAULT_HEARTBEAT_INTERVAL_MS = 60000;
 /** @brief Default WiFi channel to use if none is specified */
 constexpr uint8_t DEFAULT_WIFI_CHANNEL = 1;
+/** @brief Default interval for channel monitoring (ms) */
+constexpr uint32_t DEFAULT_CHANNEL_MONITOR_INTERVAL_MS = 1000;
 /** @brief Multiplier applied to heartbeat interval to determine if a node is offline */
 constexpr uint8_t HEARTBEAT_OFFLINE_MULTIPLIER = 3;
-
-// Constants for retry logic
-/** @brief Timeout for logical acknowledgments in milliseconds */
-constexpr uint32_t LOGICAL_ACK_TIMEOUT_MS = 500;
+static constexpr uint32_t PAIRING_TIMEOUT_MS = 60000;
+static constexpr uint32_t PAIRING_PERIODIC_INTERVAL_MS = 5000;
 
 /** @brief Maximum number of physical transmission failures before giving up or scanning */
 constexpr uint8_t MAX_FAILURES = 3;
 
+/** @brief Maximum number of recovery scan retries (exponential backoff: 2+4+8+...+128s ≈ 4m14s total) */
+constexpr uint8_t SCAN_MAX_RETRIES = 7;
+/** @brief Base backoff duration for the first recovery scan retry (ms); doubles each attempt */
+constexpr uint32_t SCAN_BACKOFF_BASE_MS = 2000;
+
 /** @brief Timeout for scanning a single channel during discovery (ms) */
 constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 50;
 /** @brief Number of scan attempts per channel */
-constexpr uint8_t SCAN_CHANNEL_ATTEMPTS = 2;
+constexpr uint8_t SCAN_CHANNEL_ATTEMPTS = 1;
 /** @brief Total maximum time allowed for a full channel scan */
-constexpr uint16_t MAX_SCAN_TIME_MS = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 20;
+constexpr uint16_t MAX_SCAN_TIME_MS = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 13 + 500;
+
+/** @brief Threshold for statistics flush */
+constexpr uint8_t FLUSH_THRESHOLD_RX = 50;
+constexpr uint8_t FLUSH_THRESHOLD_TX = 50;
+constexpr uint8_t FLUSH_THRESHOLD_TX_FAILURE = 10;
+constexpr uint8_t FLUSH_THRESHOLD_LOSS = 10;
+constexpr uint8_t FLUSH_THRESHOLD_RTT = 30;
 
 /** @brief Type alias for Node identification (0-255) */
 using NodeId = uint8_t;

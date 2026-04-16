@@ -8,7 +8,7 @@
 
 /**
  * @interface IPersistenceBackend
- * @brief Low-level storage backend (NVS/RTC) (internal)
+ * @brief Low-level storage backend (NVS/RTC).
  * @internal
  */
 class IPersistenceBackend

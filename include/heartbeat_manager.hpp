@@ -1,7 +1,6 @@
 #pragma once
 
 #include "i_heartbeat_manager.hpp"
-#include "i_message_codec.hpp"
 #include "i_peer_manager.hpp"
 #include "i_tx_manager.hpp"
 #include "i_hal_freertos.hpp"
@@ -10,43 +9,47 @@
 class HeartbeatManager : public IHeartbeatManager
 {
 public:
-    HeartbeatManager(
-        NodeId my_id,
-        ITxManager &tx_mgr,
-        IPeerManager &peer_mgr,
-        IMessageCodec &codec,
-        IFreeRTOSHAL &hal_freertos,
-        ITimerHAL &hal_timer);
-    ~HeartbeatManager();
+    HeartbeatManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, ITimerHAL& hal_timer);
+    ~HeartbeatManager() = default;
 
     using IHeartbeatManager::handle_request;
     using IHeartbeatManager::handle_response;
     using IHeartbeatManager::init;
-    using IHeartbeatManager::update_node_id;
 
-    esp_err_t init(uint32_t interval_ms, NodeType type) override;
-    void update_node_id(NodeId id) override;
-    void set_channel(uint8_t channel) override;
-    void handle_response(NodeId hub_id) override;
-    void handle_request(const RxPacket &packet) override;
-    esp_err_t deinit() override;
+    /** @copydoc IHeartbeatManager::init */
+    void init(NodeId id, NodeType type, uint32_t interval_ms) override;
+
+    /** @copydoc IHeartbeatManager::deinit */
+    void deinit() override;
+
+    /** @copydoc IHeartbeatManager::tick */
+    void tick(int64_t now_ms) override;
+
+    /** @copydoc IHeartbeatManager::set_interval_ms */
+    void set_interval_ms(uint32_t heartbeat_interval_ms) override;
+
+    /** @copydoc IHeartbeatManager::handle_response */
+    void handle_response(const DecodedRxPacket& decoded) override;
+
+    /** @copydoc IHeartbeatManager::handle_request */
+    void handle_request(const DecodedRxPacket& decoded) override;
 
 protected:
     void send_heartbeat();
 
 private:
+    int64_t get_time_ms() const;
+
     NodeId my_id_;
 
-    ITxManager &tx_mgr_;
-    IPeerManager &peer_mgr_;
-    IMessageCodec &codec_;
-    IFreeRTOSHAL &hal_freertos_;
-    ITimerHAL &hal_timer_;
+    ITxManager& tx_mgr_;
+    IPeerManager& peer_mgr_;
+    ITimerHAL& hal_timer_;
 
     NodeType my_type_;
     uint32_t interval_ms_;
-    uint8_t current_channel_ = 1;
-    TimerHandle_t timer_ = nullptr;
+    int8_t last_rssi_ = 0; /**< RSSI of the Hub as seen by this Node */
 
-    static void timer_cb(TimerHandle_t xTimer);
+    bool is_initialized_ = false;
+    int64_t last_heartbeat_ms_ = 0;
 };

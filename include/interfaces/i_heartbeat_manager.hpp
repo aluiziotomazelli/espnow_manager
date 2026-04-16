@@ -10,7 +10,7 @@
 
 /**
  * @interface IHeartbeatManager
- * @brief Heartbeat generation and monitoring (internal)
+ * @brief Heartbeat generation and monitoring.
  * @internal
  */
 class IHeartbeatManager
@@ -18,38 +18,50 @@ class IHeartbeatManager
 public:
     virtual ~IHeartbeatManager() = default;
 
-    /** @internal */
-    virtual esp_err_t init(uint32_t interval_ms, NodeType type) = 0;
-    /** @internal */
-    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeType)>>
-    esp_err_t init(uint32_t interval_ms, T type)
+    /**
+     * @brief Initializes the heartbeat manager.
+     * @param id Node ID.
+     * @param type Node type.
+     * @param interval_ms Heartbeat interval in milliseconds.
+     */
+    virtual void init(NodeId id, NodeType type, uint32_t interval_ms) = 0;
+
+    template <
+        typename T1,
+        typename T2,
+        typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
+        typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
+    void init(T1 id, T2 type, uint32_t interval_ms)
     {
-        return init(interval_ms, static_cast<NodeType>(type));
+        init(static_cast<NodeId>(id), static_cast<NodeType>(type), interval_ms);
     }
 
-    /** @internal */
-    virtual void update_node_id(NodeId id) = 0;
-    /** @internal */
-    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
-    void update_node_id(T id)
-    {
-        update_node_id(static_cast<NodeId>(id));
-    }
+    /**
+     * @brief Deinitializes the heartbeat manager.
+     */
+    virtual void deinit() = 0;
 
-    /** @internal */
-    virtual esp_err_t deinit() = 0;
-    /** @internal */
-    virtual void handle_response(NodeId hub_id) = 0;
-    /** @internal */
-    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
-    void handle_response(T hub_id)
-    {
-        handle_response(static_cast<NodeId>(hub_id));
-    }
+    /**
+     * @brief Ticks the heartbeat manager.
+     * @param now_ms Current time in milliseconds.
+     */
+    virtual void tick(int64_t now_ms) = 0;
 
-    /** @internal */
-    virtual void set_channel(uint8_t channel) = 0;
+    /**
+     * @brief Sets the heartbeat interval in milliseconds.
+     * @param heartbeat_interval_ms Heartbeat interval in milliseconds.
+     */
+    virtual void set_interval_ms(uint32_t heartbeat_interval_ms) = 0;
 
-    /** @internal */
-    virtual void handle_request(const RxPacket &packet) = 0;
+    /**
+     * @brief Handles incoming heartbeat response packets.
+     * @param decoded The decoded response packet containing RSSI.
+     */
+    virtual void handle_response(const DecodedRxPacket& decoded) = 0;
+
+    /**
+     * @brief Handles incoming heartbeat request packets.
+     * @param decoded Decoded packet.
+     */
+    virtual void handle_request(const DecodedRxPacket& decoded) = 0;
 };

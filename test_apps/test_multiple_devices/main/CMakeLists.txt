@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "main.cpp"
+        "test_multiple_devices.cpp"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        unity
+        test_utils
+        espnow_manager
+    WHOLE_ARCHIVE
+)

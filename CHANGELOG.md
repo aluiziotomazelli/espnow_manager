@@ -1,0 +1,29 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.0] - 2026-04-15
+
+### Architecture
+
+The `espnow_manager` component was built using a **Facade + Decentralized Managers** pattern to ensure a clean separation of concerns and high testability. By abstracting all hardware dependencies (WiFi, ESP-NOW, FreeRTOS, and Timers) through interfaces, the core protocol logic is 100% decoupled from the ESP-IDF C APIs.
+
+A central **`rx_task`** acts as the decision-making hub, receiving direct task notifications from specialized managers to drive the global **`NodeStateMachine`**. This design allows for a single point of truth regarding the node's state (e.g., IDLE, PAIRING, OPERATIONAL, RECOVERY) while delegating specific protocol logic to dedicated components.
+
+### Added
+- Initial release of ESP-NOW Manager component for ESP32 (C++17).
+- Star topology support with dedicated HUB and NODE roles.
+- **HAL Abstraction Layer**: Interfaces for WiFi, ESP-NOW, FreeRTOS, and Timers to enable host-based mocking.
+- **Node State Machine**: Governance of device states, including automatic recovery and pairing flows.
+- **Reliable Transmission**: `TxManager` with structured encoding (CRC16), sequence numbering, and logical ACK/NACK protocol.
+- **Automatic Discovery**: Multi-channel scanning to find and pair with the HUB without hardcoded MAC addresses.
+- **Link Health Monitoring**: Heartbeat-based connection tracking with automatic offline detection.
+- **Channel Recovery**: Intelligent multi-channel scanning when connection is lost (e.g., HUB changed channel).
+- **Dual Persistence**: Automatic synchronization of peer data between RTC RAM (for fast wake-from-deep-sleep) and NVS.
+- **Network Statistics**: Per-peer tracking of RSSI, RTT (Exponential Moving Averages), and packet delivery metrics.
+- **Host-Based Testing**: Comprehensive test suite using GoogleTest/GoogleMock with 100% logic coverage.
+
+[1.0.0]: https://github.com/aluiziotomazelli/espnow_manager/releases/tag/v1.0.0

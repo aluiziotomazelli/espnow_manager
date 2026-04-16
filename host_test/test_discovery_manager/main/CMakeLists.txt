@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "main.cpp"
+        "test_discovery_manager_task.cpp"
         "test_discovery_manager.cpp"
     INCLUDE_DIRS
         "."

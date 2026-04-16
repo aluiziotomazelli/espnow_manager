@@ -4,9 +4,11 @@
 #include "gtest/gtest.h"
 
 #include "mock_tx_state_machine.hpp"
-#include "mock_hal_wifi.hpp"
+#include "mock_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_discovery_manager.hpp"
+#include "mock_statistics_manager.hpp"
+#include "mock_peer_manager.hpp"
 #include "hal_real_freertos.hpp"
 #include "tx_manager.hpp"
 
@@ -28,40 +30,46 @@ class TxManagerTaskTest : public ::testing::Test
 protected:
     // Owned pointers to correct destruction and no mock leakage on tests
     std::unique_ptr<NiceMock<MockTxStateMachine>> fsm_owned;
-    std::unique_ptr<NiceMock<MockWiFiHAL>> hal_owned;
+    std::unique_ptr<NiceMock<MockEspNowHAL>> hal_owned;
     std::unique_ptr<NiceMock<MockMessageCodec>> codec_owned;
-    std::unique_ptr<NiceMock<MockDiscoveryManager>> scanner_owned;
+    std::unique_ptr<NiceMock<MockStatisticsManager>> statistics_mgr_owned;
+    std::unique_ptr<NiceMock<MockPeerManager>> peer_mgr_owned;
 
     // Raw pointers to use in tests
-    NiceMock<MockTxStateMachine> *fsm;
-    NiceMock<MockWiFiHAL> *hal;
-    NiceMock<MockMessageCodec> *codec;
-    NiceMock<MockDiscoveryManager> *scanner;
+    NiceMock<MockTxStateMachine>* fsm;
+    NiceMock<MockEspNowHAL>* hal;
+    NiceMock<MockMessageCodec>* codec;
+    NiceMock<MockStatisticsManager>* statistics_mgr;
+    NiceMock<MockPeerManager>* peer_mgr;
 
     RealFreeRTOSHAL freertos_hal;
     std::unique_ptr<TxManager> manager;
 
     TxState current_state = TxState::IDLE;
     std::optional<PendingAck> pending_ack = std::nullopt;
+    TaskHandle_t fake_rx_task = reinterpret_cast<TaskHandle_t>(0x6);
 
     uint32_t ack_timeout_ms = 50;
     uint32_t delay_ms = 20;
+    static constexpr uint8_t test_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
     void SetUp() override
     {
         fsm_owned = std::make_unique<NiceMock<MockTxStateMachine>>();
-        hal_owned = std::make_unique<NiceMock<MockWiFiHAL>>();
+        hal_owned = std::make_unique<NiceMock<MockEspNowHAL>>();
         codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
-        scanner_owned = std::make_unique<NiceMock<MockDiscoveryManager>>();
+        statistics_mgr_owned = std::make_unique<NiceMock<MockStatisticsManager>>();
+        peer_mgr_owned = std::make_unique<NiceMock<MockPeerManager>>();
 
         fsm = fsm_owned.get();
         hal = hal_owned.get();
         codec = codec_owned.get();
-        scanner = scanner_owned.get();
+        statistics_mgr = statistics_mgr_owned.get();
+        peer_mgr = peer_mgr_owned.get();
 
         // FSM tracks state via local variable
         ON_CALL(*fsm, get_state()).WillByDefault(ReturnPointee(&current_state));
-        ON_CALL(*fsm, on_tx_success(_)).WillByDefault(Invoke([this](bool requires_ack) {
+        ON_CALL(*fsm, on_packet_sent(_)).WillByDefault(Invoke([this](bool requires_ack) {
             current_state = requires_ack ? TxState::WAITING_FOR_ACK : TxState::IDLE;
             return current_state;
         }));
@@ -73,9 +81,7 @@ protected:
             current_state = TxState::RETRYING;
             return current_state;
         }));
-        ON_CALL(*fsm, on_physical_fail()).WillByDefault(Invoke([this]() {
-            return current_state; // stays in current state unless threshold reached
-        }));
+        ON_CALL(*fsm, on_delivery_failure()).WillByDefault(Return(false));
         ON_CALL(*fsm, on_max_retries()).WillByDefault(Invoke([this]() {
             current_state = TxState::IDLE;
             return current_state;
@@ -93,17 +99,23 @@ protected:
 
         // HAL defaults
         ON_CALL(*hal, hal_esp_now_send(_, _, _)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*hal, wifi_get_channel(_)).WillByDefault(Return(ESP_OK));
-        ON_CALL(*hal, wifi_set_channel(_)).WillByDefault(Return(ESP_OK));
 
         // Codec defaults
-        ON_CALL(*codec, calculate_crc(_, _)).WillByDefault(Return(0xAB));
+        ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
 
-        // Scanner defaults — hub not found
-        ON_CALL(*scanner, scan(_)).WillByDefault(Return(IDiscoveryManager::ScanResult{1, false}));
+        // PeerManager: resolve test_mac to a known node_id (kNodeId = 2 is defined in test constants)
+        ON_CALL(*peer_mgr, find_node_id_by_mac(_, _))
+            .WillByDefault(Invoke([](const uint8_t* mac, NodeId& out_id) {
+                static constexpr uint8_t expected_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+                if (memcmp(mac, expected_mac, 6) == 0) {
+                    out_id = 2;
+                    return ESP_OK;
+                }
+                return ESP_ERR_NOT_FOUND;
+            }));
 
         manager = std::make_unique<TxManager>(
-            *fsm_owned, *scanner_owned, *hal_owned, freertos_hal, *codec_owned, ack_timeout_ms);
+            *fsm_owned, *hal_owned, freertos_hal, *codec_owned, *statistics_mgr_owned, *peer_mgr_owned);
     }
 
     void TearDown() override
@@ -111,22 +123,49 @@ protected:
         manager->deinit();
         vTaskDelay(pdMS_TO_TICKS(50)); // give task time to exit cleanly
         manager.reset();               // destroy TxManager before mocks
-        // Mocks are destroyed automatically
+        if (real_rx_task_handle) {
+            vTaskDelete(real_rx_task_handle);
+            real_rx_task_handle = nullptr;
+        }
     }
 
     // Helper: init and give task time to start and block
     void init_and_wait()
     {
-        ASSERT_EQ(ESP_OK, manager->init(4096, 5));
+        ASSERT_EQ(ESP_OK, manager->init(4096, 5, fake_rx_task, 50));
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
-    // Helper: build a minimal TxPacket
-    TxPacket make_packet(bool requires_ack = false)
+    bool notify_max_failures = false;
+    TaskHandle_t real_rx_task_handle = nullptr;
+    void make_real_rx_task()
     {
-        TxPacket pkt = {};
-        pkt.requires_ack = requires_ack;
-        pkt.len = sizeof(MessageHeader) + 1; // header + CRC byte
+        xTaskCreate(
+            [](void* arg) {
+                auto* self = static_cast<TxManagerTaskTest*>(arg);
+                uint32_t notifications = 0;
+                while (true) {
+                    if (xTaskNotifyWait(0, NOTIFY_ALL, &notifications, portMAX_DELAY)) {
+                        if (notifications & NOTIFY_MAX_FAILURES) {
+                            self->notify_max_failures = true;
+                        }
+                    }
+                }
+            },
+            "RxTask",
+            2048,
+            this,
+            5,
+            &real_rx_task_handle);
+    }
+
+    // Helper: build a minimal DecodedTxPacket
+    DecodedTxPacket make_packet(bool requires_ack = false)
+    {
+        DecodedTxPacket pkt = {};
+        pkt.header.requires_ack = requires_ack;
+        pkt.payload_len = 5;
+        memset(pkt.dest_mac, 0xAA, 6);
         return pkt;
     }
 
@@ -135,7 +174,9 @@ protected:
     {
         PendingAck ack = {};
         ack.retries_left = retries;
-        ack.packet = make_packet(true);
+        ack.packet.requires_ack = true;
+        ack.packet.len = 10;
+        memset(ack.packet.dest_mac, 0xAA, 6);
         return ack;
     }
 };
@@ -148,6 +189,7 @@ TEST_F(TxManagerTaskTest, IdleStateProcessesQueuedPacket)
 {
     init_and_wait();
 
+    EXPECT_CALL(*codec, encode(_, _, _, _, _)).Times(1);
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).Times(1);
 
     manager->queue_packet(make_packet(false));
@@ -201,14 +243,62 @@ TEST_F(TxManagerTaskTest, IdleStateNotifyLinkAliveCallsFsmOnLinkAlive)
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-TEST_F(TxManagerTaskTest, IdleStateNotifyPhysicalFailCallsFsmOnPhysicalFail)
+TEST_F(TxManagerTaskTest, IdleStateNotifyDeliveryFailureCallsFsmOnDeliveryFailure)
 {
     init_and_wait();
 
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(1);
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_failure(2)).Times(1);
 
-    manager->notify_physical_fail();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, IdleStateNotifyDeliverySuccessCallsFsmOnDeliverySuccess)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*fsm, on_delivery_success()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_success(2)).Times(1);
+
+    manager->notify_delivery(ESP_NOW_SEND_SUCCESS, test_mac);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, OnDeliveryFailureReturningTrueCallsNotifyMaxFailuresOnRxTask)
+{
+    // Create a real rx task defined on the test class
+    make_real_rx_task();
+
+    // Init with the real task handle
+    ASSERT_EQ(ESP_OK, manager->init(4096, 5, real_rx_task_handle, 50));
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    // On delivery failure returns true if the number of failures is greater than max_failures
+    EXPECT_CALL(*fsm, on_delivery_failure()).WillOnce(Return(true));
+
+    // Trigger the notification
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+
+    // Real rx task will be notifyed and turns the flag true
+    EXPECT_TRUE(notify_max_failures);
+}
+
+TEST_F(TxManagerTaskTest, NotifyStopStopsTaskAndCleansTheTaskHandle)
+{
+    init_and_wait();
+
+    // Get tx_task_handle
+    TaskHandle_t tx_task_handle = manager->get_task_handle();
+
+    // Manually notify the task to stop
+    xTaskNotify(tx_task_handle, NOTIFY_TASK_TO_STOP, eSetBits);
+
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+
+    // Task should break, stop, clear resources and set task handle to null
+    EXPECT_EQ(nullptr, manager->get_task_handle());
 }
 
 // =============================================================================
@@ -227,7 +317,13 @@ TEST_F(TxManagerTaskTest, WaitingForAckNotifyLogicalAckCallsOnAckReceived)
     EXPECT_CALL(*fsm, on_ack_timeout()).Times(0);  // Should not call on_ack_timeout
     EXPECT_CALL(*fsm, on_ack_received()).Times(1); // Should call on_ack_received
 
-    manager->notify_logical_ack();
+    // Simulate ACK packet arriving via handle_ack()
+    // sequence_number = 0 because it's the first packet (sequence_counter_ starts at 0)
+    DecodedRxPacket ack_packet = {};
+    ack_packet.header.msg_type = MessageType::ACK;
+    ack_packet.header.sequence_number = 0; // First packet sequence number
+    ack_packet.header.ack_status = AckStatus::OK;
+    manager->handle_ack(ack_packet);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     EXPECT_EQ(TxState::IDLE, current_state);
@@ -244,11 +340,11 @@ TEST_F(TxManagerTaskTest, WaitingForAckTimeoutCallsOnAckTimeout)
 
     EXPECT_CALL(*fsm, on_ack_timeout()).Times(1);
 
-    manager->notify_logical_ack();
-    vTaskDelay(pdMS_TO_TICKS(ack_timeout_ms + 10));
+    // Give time for the timer to expire
+    vTaskDelay(pdMS_TO_TICKS(ack_timeout_ms + 20));
 }
 
-TEST_F(TxManagerTaskTest, WaitingForAckNotifyPhysicalFailCallsOnPhysicalFail)
+TEST_F(TxManagerTaskTest, WaitingForAckNotifyDeliveryFailureCallsOnDeliveryFailure)
 {
     init_and_wait();
 
@@ -256,9 +352,57 @@ TEST_F(TxManagerTaskTest, WaitingForAckNotifyPhysicalFailCallsOnPhysicalFail)
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
     ASSERT_EQ(TxState::WAITING_FOR_ACK, current_state);
 
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(1);
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
 
-    manager->notify_physical_fail();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, DeliveryFailureWithTimeoutSkipsStats)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*peer_mgr, find_node_id_by_mac(_, _)).WillOnce(Return(ESP_ERR_TIMEOUT));
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_failure(_)).Times(0);
+
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, DeliveryFailureWithNotFoundSkipsStats)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*peer_mgr, find_node_id_by_mac(_, _)).WillOnce(Return(ESP_ERR_NOT_FOUND));
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_failure(_)).Times(0);
+
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, DeliverySuccessWithTimeoutSkipsStats)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*peer_mgr, find_node_id_by_mac(_, _)).WillOnce(Return(ESP_ERR_TIMEOUT));
+    EXPECT_CALL(*fsm, on_delivery_success()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_success(_)).Times(0);
+
+    manager->notify_delivery(ESP_NOW_SEND_SUCCESS, test_mac);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+TEST_F(TxManagerTaskTest, DeliverySuccessWithNotFoundSkipsStats)
+{
+    init_and_wait();
+
+    EXPECT_CALL(*peer_mgr, find_node_id_by_mac(_, _)).WillOnce(Return(ESP_ERR_NOT_FOUND));
+    EXPECT_CALL(*fsm, on_delivery_success()).Times(1);
+    EXPECT_CALL(*statistics_mgr, on_delivery_success(_)).Times(0);
+
+    manager->notify_delivery(ESP_NOW_SEND_SUCCESS, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
@@ -277,11 +421,11 @@ TEST_F(TxManagerTaskTest, RetryingWithPendingAckResendsPacket)
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).Times(1);
 
     // Trigger loop iteration via notify
-    manager->notify_physical_fail();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-TEST_F(TxManagerTaskTest, RetryingWithEspnowErrorCallsFsmOnPhysicalFail)
+TEST_F(TxManagerTaskTest, RetryingWithEspnowErrorCallsFsmOnDeliveryFailure)
 {
     init_and_wait();
 
@@ -291,55 +435,49 @@ TEST_F(TxManagerTaskTest, RetryingWithEspnowErrorCallsFsmOnPhysicalFail)
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _))
         .Times(retry_count)
-        .WillRepeatedly(Return(ESP_ERR_ESPNOW_CHAN));             // Send fail
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(retry_count + 1); // + 1 for the inital fail that trigger the retry loop
+        .WillRepeatedly(Return(ESP_ERR_ESPNOW_CHAN)); // Send fail
+    EXPECT_CALL(*fsm, on_delivery_failure())
+        .Times(retry_count + 1); // + 1 for the inital fail that trigger the retry loop
 
-    manager->notify_physical_fail(); // trigger retry loop
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac); // trigger retry loop
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-TEST_F(TxManagerTaskTest, RetryingWithNoPendingAckCallsOnMaxRetries)
+// =============================================================================
+// Statistics Reporting
+// =============================================================================
+
+// Delivery success is now reported via callback, not in tx_task loop.
+// The on_delivery_success() stats call happens when ESP-NOW callback fires.
+// TEST REMOVED: IdleStateProcessesPacketAndReportsSent (no longer applicable)
+
+TEST_F(TxManagerTaskTest, RetryingResendsPacketAndReportsRetry)
 {
     init_and_wait();
-
-    pending_ack = std::nullopt;
+    
+    // Setup state: RETRYING
+    pending_ack = make_pending_ack(2);
     current_state = TxState::RETRYING;
 
-    EXPECT_CALL(*fsm, on_max_retries()).Times(1);
+    // Expectation: stats manager is called on retry
+    EXPECT_CALL(*statistics_mgr, on_retry(_)).Times(1);
 
-    manager->notify_physical_fail();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-// =============================================================================
-// SCANNING
-// =============================================================================
-
-TEST_F(TxManagerTaskTest, ScanningStateCallsScannerAndResetsOnHubNotFound)
+TEST_F(TxManagerTaskTest, MaxRetriesExhaustedReportsDeliveryFailure)
 {
     init_and_wait();
 
-    current_state = TxState::SCANNING;
+    // Setup state: RETRYING
+    pending_ack = make_pending_ack(0); // No retries left
+    current_state = TxState::RETRYING;
 
-    EXPECT_CALL(*scanner, scan(_)).Times(1).WillOnce(Return(IDiscoveryManager::ScanResult{6, false}));
-    EXPECT_CALL(*fsm, reset()).Times(1);
+    // Expectation: stats manager reports delivery failure
+    EXPECT_CALL(*statistics_mgr, on_delivery_failure(_)).Times(1);
 
-    manager->notify_physical_fail(); // trigger loop
-    vTaskDelay(pdMS_TO_TICKS(delay_ms));
-}
-
-TEST_F(TxManagerTaskTest, ScanningStateWithHubFoundSetsChannelAndCallsOnLinkAlive)
-{
-    init_and_wait();
-
-    current_state = TxState::SCANNING;
-
-    ON_CALL(*scanner, scan(_)).WillByDefault(Return(IDiscoveryManager::ScanResult{9, true}));
-
-    EXPECT_CALL(*hal, wifi_set_channel(9)).Times(1);
-    EXPECT_CALL(*fsm, on_link_alive()).Times(1);
-
-    manager->notify_physical_fail();
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
@@ -347,13 +485,13 @@ TEST_F(TxManagerTaskTest, ScanningStateWithHubFoundSetsChannelAndCallsOnLinkAliv
 // TxManager::handle_esp_now_send_errors(esp_err_t error)
 // =============================================================================
 
-TEST_F(TxManagerTaskTest, EspnowNoMemoryErrorDoesNotCallPhysicalFail)
+TEST_F(TxManagerTaskTest, EspnowNoMemoryErrorDoesNotCallDeliveryFailure)
 {
     init_and_wait();
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_ERR_ESPNOW_NO_MEM)); // Send fail
-    EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0); // Pending ack should not be set
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(0); // Should not call on_physical_fail
+    EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);    // Pending ack should not be set
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
     manager->queue_packet(make_packet(true)); // Call with pending ack == true
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
@@ -361,13 +499,13 @@ TEST_F(TxManagerTaskTest, EspnowNoMemoryErrorDoesNotCallPhysicalFail)
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state
 }
 
-TEST_F(TxManagerTaskTest, EspnowNotInitiErrorDoesNotCallPhysicalFail)
+TEST_F(TxManagerTaskTest, EspnowNotInitiErrorDoesNotCallDeliveryFailure)
 {
     init_and_wait();
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_ERR_ESPNOW_NOT_INIT)); // Send fail
-    EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0); // Pending ack should not be set
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(0); // Should not call on_physical_fail
+    EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);    // Pending ack should not be set
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
     manager->queue_packet(make_packet(true)); // Call with pending ack == true
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
@@ -375,13 +513,13 @@ TEST_F(TxManagerTaskTest, EspnowNotInitiErrorDoesNotCallPhysicalFail)
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state
 }
 
-TEST_F(TxManagerTaskTest, EspnowArgErrorDoesNotCallPhysicalFail)
+TEST_F(TxManagerTaskTest, EspnowArgErrorDoesNotCallDeliveryFailure)
 {
     init_and_wait();
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_ERR_ESPNOW_ARG)); // Send fail
     EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);                                    // Pending ack should not be set
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(0); // Should not call on_physical_fail
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
     manager->queue_packet(make_packet(true)); // Call with pending ack == true
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
@@ -389,13 +527,13 @@ TEST_F(TxManagerTaskTest, EspnowArgErrorDoesNotCallPhysicalFail)
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state
 }
 
-TEST_F(TxManagerTaskTest, EspnowArgErrorCallsPhysicalFail)
+TEST_F(TxManagerTaskTest, EspnowOtherErrorCallsDeliveryFailure)
 {
     init_and_wait();
 
     EXPECT_CALL(*hal, hal_esp_now_send(_, _, _)).WillOnce(Return(ESP_ERR_ESPNOW_CHAN)); // Send fail
     EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);                                     // Pending ack should not be set
-    EXPECT_CALL(*fsm, on_physical_fail()).Times(1);                                     // Must call on_physical_fail
+    EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);                                  // Must call on_delivery_failure
 
     manager->queue_packet(make_packet(true)); // Call with pending ack == true
     vTaskDelay(pdMS_TO_TICKS(delay_ms));

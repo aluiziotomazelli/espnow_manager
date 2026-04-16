@@ -9,5 +9,5 @@
 class MockTimerHAL : public ITimerHAL
 {
 public:
-    MOCK_METHOD(uint64_t, get_time_us, (), (const override));
+    MOCK_METHOD(int64_t, get_time_us, (), (const override));
 };

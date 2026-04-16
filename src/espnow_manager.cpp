@@ -1,23 +1,13 @@
-// src/espnow_manager.cpp
-// #include <algorithm>
 #include <cstring>
-// #include <inttypes.h>
 
 #include "esp_log.h"
-// #include "esp_mac.h"
-// #include "esp_rom_crc.h"
-#include "esp_timer.h"
 #include "esp_attr.h"
-// #include "freertos/FreeRTOS.h"
-// #include "freertos/queue.h"
-// #include "freertos/semphr.h"
-// #include "freertos/task.h"
 
-#include "bootstrapper.hpp"
 #include "discovery_manager.hpp"
 #include "heartbeat_manager.hpp"
 #include "message_codec.hpp"
 #include "message_router.hpp"
+#include "node_state_machine.hpp"
 #include "pairing_manager.hpp"
 #include "peer_manager.hpp"
 #include "protocol_messages.hpp"
@@ -25,487 +15,935 @@
 #include "tx_manager.hpp"
 #include "tx_state_machine.hpp"
 #include "hal_wifi.hpp"
-#include "bootstrapper.hpp"
+#include "hal_espnow.hpp"
+#include "espnow_driver.hpp"
 #include "hal_freertos.hpp"
 #include "hal_nvs.hpp"
 #include "persistence_backend.hpp"
 #include "storage_manager.hpp"
+#include "channel_monitor.hpp"
+#include "statistics_manager.hpp"
 
 #include "espnow_manager.hpp"
 
-static const char *TAG = "EspNow";
+static const char* TAG = "EspNowManager";
 
 // RTC storage for peer list persistence must stay in global scope
-static RTC_DATA_ATTR PersistentData g_rtc_storage;
+static RTC_DATA_ATTR PersistentPeers g_rtc_peers;
+static RTC_DATA_ATTR PersistentChannel g_rtc_channel;
+static RTC_DATA_ATTR PersistentStats g_rtc_stats;
 
-// --- Singleton ---
-EspNowManager &EspNowManager::instance()
+// Pointer to the currently active (initialized) instance.
+// ESP-NOW only supports a single active context at a time, so a single
+// static pointer is sufficient. It is set in init() and cleared in deinit()
+// so that the ISR callbacks never reach a stale or uninitialized object.
+static EspNowManager* s_active_instance_ = nullptr;
+
+// Singleton Factory Constructor ---- (not used in host based tests) LCOV_EXCL_START
+EspNowManager& EspNowManager::instance()
 {
     static NvsHAL nvs_hal;
-    static auto rtc_backend = std::make_unique<RtcBackend>(g_rtc_storage);
-    static auto nvs_backend = std::make_unique<NvsBackend>(nvs_hal);
-    static StorageManager storage(std::move(rtc_backend), std::move(nvs_backend));
+    static auto rtc_peers_backend = std::make_unique<RtcBackend>(&g_rtc_peers, sizeof(g_rtc_peers));
+    static auto rtc_channel_backend = std::make_unique<RtcBackend>(&g_rtc_channel, sizeof(g_rtc_channel));
+    static auto rtc_stats_backend = std::make_unique<RtcBackend>(&g_rtc_stats, sizeof(g_rtc_stats));
+    static auto nvs_peers_backend = std::make_unique<NvsBackend>(nvs_hal, "peers_data");
+    static auto nvs_channel_backend = std::make_unique<NvsBackend>(nvs_hal, "channel_data");
+    static auto nvs_stats_backend = std::make_unique<NvsBackend>(nvs_hal, "stats_data");
+    static auto storage = std::make_unique<StorageManager>(
+        std::move(rtc_peers_backend),
+        std::move(rtc_channel_backend),
+        std::move(rtc_stats_backend),
+        std::move(nvs_peers_backend),
+        std::move(nvs_channel_backend),
+        std::move(nvs_stats_backend));
 
     static auto hal_wifi = std::make_unique<WiFiHAL>();
+    static auto hal_espnow = std::make_unique<EspNowHAL>();
     static auto hal_timer = std::make_unique<TimerHAL>();
     static auto hal_freertos = std::make_unique<FreeRTOSHAL>();
-    static auto bootstraper = std::make_unique<Bootstrapper>(*hal_wifi, *hal_freertos);
-    static auto peer_manager = std::make_unique<PeerManager>(storage, *hal_wifi, *hal_freertos);
+    static auto espnow_driver = std::make_unique<EspNowDriver>(*hal_wifi, *hal_espnow);
+    static auto peer_manager = std::make_unique<PeerManager>(*storage, *hal_espnow, *hal_freertos);
     static auto message_codec = std::make_unique<MessageCodec>();
-    static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *message_codec, *hal_freertos);
+    static auto channel_monitor = std::make_unique<ChannelMonitor>(*hal_wifi, *hal_freertos);
+    static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *hal_espnow, *message_codec, *hal_freertos);
+    static auto stats_mgr = std::make_unique<StatisticsManager>(*storage, *hal_freertos);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
     static auto tx_manager =
-        std::make_unique<TxManager>(*tx_fsm, *scanner, *hal_wifi, *hal_freertos, *message_codec, 500);
-    static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(
-        ReservedIds::HUB, *tx_manager, *peer_manager, *message_codec, *hal_freertos, *hal_timer);
-    static auto pairing_mgr =
-        std::make_unique<PairingManager>(*tx_manager, *peer_manager, *message_codec, *hal_freertos);
-    static auto message_router =
-        std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr, *message_codec);
+        std::make_unique<TxManager>(*tx_fsm, *hal_espnow, *hal_freertos, *message_codec, *stats_mgr, *peer_manager);
+    static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *hal_timer);
+    static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *hal_freertos, *hal_timer);
+    static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
 
     static EspNowManager instance(
+        std::move(storage),
         std::move(hal_wifi),
         std::move(hal_timer),
         std::move(hal_freertos),
-        std::move(bootstraper),
+        std::move(hal_espnow),
+        std::move(espnow_driver),
         std::move(peer_manager),
         std::move(message_codec),
+        std::move(channel_monitor),
         std::move(scanner),
         std::move(tx_fsm),
         std::move(tx_manager),
         std::move(heartbeat_mgr),
         std::move(pairing_mgr),
-        std::move(message_router));
+        std::move(message_router),
+        std::move(stats_mgr),
+        std::make_unique<NodeStateMachine>());
     return instance;
 }
+// LCOV_EXCL_STOP
 
 EspNowManager::EspNowManager(
-    std::unique_ptr<IWiFiHAL> driver_hal,
-    std::unique_ptr<ITimerHAL> timer_hal,
-    std::unique_ptr<IFreeRTOSHAL> freertos_hal,
-    std::unique_ptr<IBootstrapper> bootstraper,
+    std::unique_ptr<IStorageManager> storage,
+    std::unique_ptr<IWiFiHAL> hal_wifi,
+    std::unique_ptr<ITimerHAL> hal_timer,
+    std::unique_ptr<IFreeRTOSHAL> hal_freertos,
+    std::unique_ptr<IEspNowHAL> hal_espnow,
+    std::unique_ptr<IEspNowDriver> espnow_driver,
     std::unique_ptr<IPeerManager> peer_manager,
     std::unique_ptr<IMessageCodec> message_codec,
+    std::unique_ptr<IChannelMonitor> channel_monitor,
     std::unique_ptr<IDiscoveryManager> scanner,
     std::unique_ptr<ITxStateMachine> tx_fsm,
     std::unique_ptr<ITxManager> tx_manager,
     std::unique_ptr<IHeartbeatManager> heartbeat_manager,
     std::unique_ptr<IPairingManager> pairing_manager,
-    std::unique_ptr<IMessageRouter> message_router)
-    : hal_driver_(std::move(driver_hal))
-    , hal_timer_(std::move(timer_hal))
-    , hal_freertos_(std::move(freertos_hal))
-    , bootstrapper_(std::move(bootstraper))
+    std::unique_ptr<IMessageRouter> message_router,
+    std::unique_ptr<IStatisticsManager> stats_mgr,
+    std::unique_ptr<INodeStateMachine> node_fsm)
+    : storage_(std::move(storage))
+    , hal_wifi_(std::move(hal_wifi))
+    , hal_timer_(std::move(hal_timer))
+    , hal_freertos_(std::move(hal_freertos))
+    , hal_espnow_(std::move(hal_espnow))
+    , espnow_driver_(std::move(espnow_driver))
     , peer_manager_(std::move(peer_manager))
     , message_codec_(std::move(message_codec))
+    , channel_monitor_(std::move(channel_monitor))
     , scanner_(std::move(scanner))
     , tx_fsm_(std::move(tx_fsm))
     , tx_manager_(std::move(tx_manager))
     , heartbeat_manager_(std::move(heartbeat_manager))
     , pairing_manager_(std::move(pairing_manager))
     , message_router_(std::move(message_router))
+    , stats_mgr_(std::move(stats_mgr))
+    , node_fsm_(std::move(node_fsm))
 {
 }
 
 EspNowManager::~EspNowManager()
 {
-    deinit();
+    // Caller is responsible for calling deinit() before destruction.
+    // Resources allocated in init() must be explicitly released.
 }
 
-esp_err_t EspNowManager::deinit()
+// =========================================================================================
+// Public API
+// =========================================================================================
+
+esp_err_t EspNowManager::init(const EspNowConfig& config)
 {
-    if (!is_initialized_ && !esp_now_initialized_ && rx_dispatch_queue_ == nullptr &&
-        transport_worker_queue_ == nullptr && ack_mutex_ == nullptr && rx_dispatch_task_handle_ == nullptr &&
-        transport_worker_task_handle_ == nullptr) {
-        return ESP_OK;
-    }
-
-    ESP_LOGI(TAG, "Deinitializing EspNow component...");
-
-    if (tx_manager_)
-        tx_manager_->deinit();
-    if (heartbeat_manager_)
-        heartbeat_manager_->deinit();
-    if (pairing_manager_)
-        pairing_manager_->deinit();
-
-    // Signal tasks to stop
-    if (rx_dispatch_task_handle_ != nullptr) {
-        hal_freertos_->task_notify(rx_dispatch_task_handle_, NOTIFY_STOP, eSetBits);
-    }
-    if (transport_worker_task_handle_ != nullptr) {
-        hal_freertos_->task_notify(transport_worker_task_handle_, NOTIFY_STOP, eSetBits);
-    }
-
-    // Send packets to weakup tasks
-    RxPacket stop_packet = {};
-    if (rx_dispatch_queue_ != nullptr)
-        hal_freertos_->queue_send(rx_dispatch_queue_, &stop_packet, 0);
-    if (transport_worker_queue_ != nullptr)
-        hal_freertos_->queue_send(transport_worker_queue_, &stop_packet, 0);
-
-    // Wait for tasks to exit (up to 1s).
-    int timeout = 1000;
-    while ((rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr) && timeout-- > 0) {
-        hal_freertos_->task_delay(pdMS_TO_TICKS(10));
-    }
-
-    if (timeout <= 0 && (rx_dispatch_task_handle_ != nullptr || transport_worker_task_handle_ != nullptr)) {
-        ESP_LOGW(TAG, "Tasks did not terminate gracefully within timeout");
-    }
-
-    // Delete peers
-    if (esp_now_initialized_ && peer_manager_) {
-        std::vector<PeerInfo> peers = peer_manager_->get_all();
-        for (const auto &peer : peers) {
-            hal_driver_->hal_esp_now_del_peer(peer.mac);
-        }
-    }
-
-    // Call bootstraper to delete queues, mutex and task if not terminated gracefully
-    if (bootstrapper_) {
-        bootstrapper_->deinit(
-            rx_dispatch_queue_,
-            transport_worker_queue_,
-            ack_mutex_,
-            rx_dispatch_task_handle_,
-            transport_worker_task_handle_);
-    }
-
-    // Reset state
-    esp_now_initialized_ = false;
-    last_header_requiring_ack_.reset();
-    config_ = EspNowConfig();
-    is_initialized_ = false;
-
-    ESP_LOGI(TAG, "EspNow component deinitialized.");
-    return ESP_OK;
-}
-
-void EspNowManager::on_channel_found(uint8_t channel)
-{
-    update_wifi_channel(channel);
-}
-
-esp_err_t EspNowManager::init(const EspNowConfig &config)
-{
-    if (is_initialized_)
+    if (node_fsm_->get_state() != NodeState::UNINITIALIZED) {
         return ESP_ERR_INVALID_STATE;
-    if (config.app_rx_queue == nullptr)
+    }
+    if (config.app_rx_queue == nullptr) {
         return ESP_ERR_INVALID_ARG;
+    }
 
     config_ = config;
     esp_err_t ret = ESP_OK;
 
-    uint8_t stored_channel;
-    if (peer_manager_->load_from_storage(stored_channel) == ESP_OK) {
-        config_.wifi_channel = stored_channel;
-    }
-    peer_manager_->set_channel(config_.wifi_channel);
-
-    EspNowBootstrapConfig bootstrap_cfg = {};
-    bootstrap_cfg.recv_cb = esp_now_recv_cb;
-    bootstrap_cfg.send_cb = esp_now_send_cb;
-    bootstrap_cfg.rx_dispatch_fn = EspNowManager::rx_dispatch_task;
-    bootstrap_cfg.transport_worker_fn = EspNowManager::transport_worker_task;
-    bootstrap_cfg.task_params = this;
-
-    ret = bootstrapper_->init(
-        config_,
-        bootstrap_cfg,
-        rx_dispatch_queue_,
-        transport_worker_queue_,
-        ack_mutex_,
-        rx_dispatch_task_handle_,
-        transport_worker_task_handle_);
-
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize bootstraper: %s", esp_err_to_name(ret));
-        goto fail;
-    }
-    esp_now_initialized_ = true;
-
-    ret = tx_manager_->init(config_.stack_size_tx_manager, 9);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "tx_manager init failed: %s", esp_err_to_name(ret));
-        goto fail;
-    }
-
-    heartbeat_manager_->update_node_id(config_.node_id);
-    if (scanner_)
-        scanner_->init(config_.node_id, config_.node_type, *tx_manager_, this);
-    if (message_router_) {
-        message_router_->set_app_queue(config_.app_rx_queue);
-        message_router_->set_node_info(config_.node_id, config_.node_type);
-    }
-
-    {
-        std::vector<PeerInfo> peers = peer_manager_->get_all();
-        for (auto &peer : peers) {
-            esp_now_peer_info_t info = {};
-            memcpy(info.peer_addr, peer.mac, 6);
-            info.channel = peer.channel;
-            info.ifidx = WIFI_IF_STA;
-            info.encrypt = false;
-            hal_driver_->hal_esp_now_add_peer(&info);
+    // Storage needs to be initialized to load channel from storage before EspNowDriver
+    if (storage_ != nullptr) {
+        uint8_t stored_channel;
+        if (storage_->load_channel(stored_channel) == ESP_OK) {
+            config_.wifi_channel = stored_channel;
         }
     }
 
-    ret = heartbeat_manager_->init(config_.heartbeat_interval_ms, config_.node_type);
+    // Register this instance as the active one before enabling the ESP-NOW
+    // callbacks. The callbacks run in ISR context and must reach this object.
+    s_active_instance_ = this;
+
+    // EspNowDriver initializes ESPNOW
+    ret = espnow_driver_->init(config_, esp_now_recv_cb, esp_now_send_cb);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "heartbeat_manager init failed: %s", esp_err_to_name(ret));
-        goto fail;
+        s_active_instance_ = nullptr;
+        return init_fail(ret, "EspNow Driver");
     }
-    ret = pairing_manager_->init(config_.node_type, config_.node_id);
+    esp_now_initialized_ = true;
+
+    ret = create_queue();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "pairing_manager init failed: %s", esp_err_to_name(ret));
-        goto fail;
+        return init_fail(ret, "Queues");
     }
 
-    is_initialized_ = true;
+    ret = create_task();
+    if (ret != ESP_OK) {
+        return init_fail(ret, "Tasks");
+    }
+
+    ret = init_tx_manager();
+    if (ret != ESP_OK) {
+        return init_fail(ret, "Tx Manager");
+    }
+
+    ret = init_discovery_manager();
+    if (ret != ESP_OK) {
+        return init_fail(ret, "Discovery Manager");
+    }
+
+    ret = init_heartbeat_manager();
+    if (ret != ESP_OK) {
+        return init_fail(ret, "Heartbeat Manager");
+    }
+
+    ret = init_pairing_manager();
+    if (ret != ESP_OK) {
+        return init_fail(ret, "Pairing Manager");
+    }
+
+    ret = init_channel_monitor();
+    if (ret != ESP_OK) {
+        return init_fail(ret, "Channel Monitor");
+    }
+
+    if (stats_mgr_ != nullptr) {
+        ret = stats_mgr_->init();
+        if (ret != ESP_OK) {
+            return init_fail(ret, "Stats Manager");
+        }
+    }
+
+    // Load peers from storage and add them to ESP-NOW
+    peer_manager_->load_peers_from_storage();
+    etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
+
+    // Ensure statistics entries exist for all loaded peers. This covers the case where
+    // peer storage survived but stats storage was corrupted or never flushed.
+    for (const auto& peer : peers) {
+        stats_mgr_->on_peer_added(peer.node_id, peer.heartbeat_interval_ms);
+    }
+
+    // NodeStateMachine decides the initial state
+    NodeState old_state = node_fsm_->get_state();
+
+    bool is_hub = (config_.node_type == ReservedTypes::HUB);
+    bool has_peers = !peers.empty();
+    node_fsm_->on_init(is_hub, has_peers);
+
+    NodeState new_state = node_fsm_->get_state();
+
+    if (new_state == NodeState::OPERATIONAL) {
+        add_peers_to_espnow(peers);
+    }
+
+    // React to the initial state transition
+    handle_state_transition(old_state, new_state);
+
+    // Update scanner and storage with current channel
+    scanner_->set_channel(config_.wifi_channel);
+    storage_->store_channel(config_.wifi_channel);
+
     ESP_LOGI(TAG, "EspNow component initialized successfully.");
-    return ESP_OK;
+    return ret;
+}
 
-fail:
-    deinit();
+void EspNowManager::deinit()
+{
+    ESP_LOGI(TAG, "Deinitializing EspNowManager...");
+
+    if (stats_mgr_ != nullptr) {
+        stats_mgr_->deinit();
+    }
+
+    if (tx_manager_ != nullptr) {
+        tx_manager_->deinit();
+    }
+
+    if (scanner_ != nullptr) {
+        scanner_->deinit();
+    }
+
+    if (heartbeat_manager_ != nullptr) {
+        heartbeat_manager_->deinit();
+    }
+
+    if (pairing_manager_ != nullptr) {
+        pairing_manager_->deinit();
+    }
+
+    if (channel_monitor_ != nullptr) {
+        channel_monitor_->deinit();
+    }
+
+    if (rx_task_handle_ != nullptr) {
+        // Signal rx task to stop
+        signal_task_to_stop();
+        // Delete tasks if not terminated gracefully
+        delete_task();
+    }
+
+    // Call cleanup_resources to delete queues and mutex
+    if (rx_queue_handle_ != nullptr) {
+        cleanup_resources();
+    }
+
+    // Delete peers
+    if (esp_now_initialized_ && peer_manager_) {
+        etl::vector<PeerInfo, MAX_PEERS> peers = peer_manager_->get_all();
+        for (const auto& peer : peers) {
+            hal_espnow_->hal_esp_now_del_peer(peer.mac);
+        }
+    }
+
+    // Call EspNowDriver to deinit ESP-NOW
+    if (espnow_driver_ != nullptr) {
+        espnow_driver_->deinit();
+    }
+
+    // Reset state
+    esp_now_initialized_ = false;
+    config_ = EspNowConfig();
+    node_fsm_->on_deinit();
+
+    // Clear the active-instance pointer so that any late ISR callback
+    // arriving after deinit() drops the packet safely.
+    s_active_instance_ = nullptr;
+
+    ESP_LOGI(TAG, "EspNow component deinitialized.");
+}
+
+esp_err_t EspNowManager::reconnect()
+{
+    if (node_fsm_->get_state() != NodeState::IDLE) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (peer_manager_->get_all().empty()) {
+        return ESP_ERR_INVALID_ARG; // Cannot reconnect if there are no peers
+    }
+
+    scan_retry_.reset(); // Reset counter - full attempts restored
+    NodeState old_state = node_fsm_->get_state();
+    esp_err_t ret = node_fsm_->on_scan_requested(); // IDLE -> RECOVERY_SCAN
+    if (ret == ESP_OK) {
+        handle_state_transition(old_state, node_fsm_->get_state());
+    }
+    return ret;
+}
+
+esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
+{
+    if (node_fsm_->get_state() == NodeState::UNINITIALIZED) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    // Store timeout for use when pairing start or scan completes
+    pairing_timeout_ms_ = timeout_ms;
+
+    NodeState old_state = node_fsm_->get_state();
+
+    bool is_hub = (config_.node_type == ReservedTypes::HUB);
+    bool has_peers = !peer_manager_->get_all().empty();
+    esp_err_t ret = node_fsm_->on_pairing_requested(is_hub, has_peers);
+
+    NodeState new_state = node_fsm_->get_state();
+
+    handle_state_transition(old_state, new_state);
+
     return ret;
 }
 
 esp_err_t EspNowManager::send_data(
     NodeId dest_node_id,
     PayloadType payload_type,
-    const void *payload,
+    const void* payload,
     size_t len,
     bool require_ack)
 {
-    TxPacket tx_packet;
-    if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac))
-        return ESP_ERR_NOT_FOUND;
-
-    MessageHeader header;
-    header.msg_type = MessageType::DATA;
-    header.sequence_number = 0;
-    header.sender_type = config_.node_type;
-    header.sender_node_id = config_.node_id;
-    header.payload_type = payload_type;
-    header.requires_ack = require_ack;
-    header.dest_node_id = dest_node_id;
-    header.timestamp_ms = get_time_ms();
-
-    auto encoded = message_codec_->encode(header, payload, len);
-    if (encoded.empty())
-        return ESP_ERR_INVALID_ARG;
-
-    tx_packet.len = encoded.size();
-    memcpy(tx_packet.data, encoded.data(), tx_packet.len);
-    tx_packet.requires_ack = require_ack;
-
-    return tx_manager_->queue_packet(tx_packet);
+    return send_packet(dest_node_id, MessageType::DATA, payload_type, payload, len, require_ack);
 }
 
 esp_err_t EspNowManager::send_command(
     NodeId dest_node_id,
     CommandType command_type,
-    const void *payload,
+    const void* payload,
     size_t len,
     bool require_ack)
 {
-    TxPacket tx_packet;
-    if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac))
+    return send_packet(
+        dest_node_id, MessageType::COMMAND, static_cast<PayloadType>(command_type), payload, len, require_ack);
+}
+
+esp_err_t EspNowManager::confirm_reception(NodeId sender_id, uint16_t sequence_number, AckStatus status)
+{
+    auto current_state = node_fsm_->get_state();
+    if (current_state != NodeState::OPERATIONAL && current_state != NodeState::PAIRING)
+        return ESP_ERR_INVALID_STATE;
+
+    DecodedTxPacket tx_packet{};
+    if (!peer_manager_->find_mac(sender_id, tx_packet.dest_mac)) {
         return ESP_ERR_NOT_FOUND;
+    }
 
-    MessageHeader header;
-    header.msg_type = MessageType::COMMAND;
-    header.sequence_number = 0;
-    header.sender_type = config_.node_type;
-    header.sender_node_id = config_.node_id;
-    header.payload_type = static_cast<PayloadType>(command_type);
-    header.requires_ack = require_ack;
-    header.dest_node_id = dest_node_id;
-    header.timestamp_ms = get_time_ms();
+    // Make a header for the ack message
+    MessageHeader ack_header{};
+    ack_header.msg_type = MessageType::ACK;
+    ack_header.sequence_number = sequence_number;
+    ack_header.sender_type = config_.node_type;
+    ack_header.sender_node_id = config_.node_id;
+    ack_header.dest_node_id = sender_id;
+    ack_header.requires_ack = false;
+    ack_header.ack_status = status;
+    ack_header.timestamp_ms = get_time_ms();
 
-    auto encoded = message_codec_->encode(header, payload, len);
-    if (encoded.empty())
-        return ESP_ERR_INVALID_ARG;
+    tx_packet.header = ack_header;
 
-    tx_packet.len = encoded.size();
-    memcpy(tx_packet.data, encoded.data(), tx_packet.len);
-    tx_packet.requires_ack = require_ack;
+    // Payload for ACK matches AckMessage structure fields after header
+    AckMessage ack_message{};
+    ack_message.processing_time_us = 0; // Not in use yet
+
+    // Copy only the payload portion of AckMessage, skipping MessageHeader.
+    tx_packet.payload_len = sizeof(AckMessage) - sizeof(MessageHeader);
+    memcpy(tx_packet.payload, &ack_message.processing_time_us, tx_packet.payload_len);
 
     return tx_manager_->queue_packet(tx_packet);
 }
 
-esp_err_t EspNowManager::confirm_reception(AckStatus status)
+// Peer management
+esp_err_t EspNowManager::add_peer(NodeId node_id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms)
 {
-    if (hal_freertos_->semaphore_take(ack_mutex_, pdMS_TO_TICKS(100)) != pdTRUE)
-        return ESP_ERR_TIMEOUT;
-    if (!last_header_requiring_ack_.has_value()) {
-        hal_freertos_->semaphore_give(ack_mutex_);
-        return ESP_ERR_INVALID_STATE;
+    esp_err_t ret = peer_manager_->add(node_id, mac, type, heartbeat_interval_ms);
+    if (ret == ESP_OK) {
+        stats_mgr_->on_peer_added(node_id, heartbeat_interval_ms);
     }
-
-    const auto &header_to_ack = last_header_requiring_ack_.value();
-    AckMessage ack;
-    ack.header.msg_type = MessageType::ACK;
-    ack.header.sender_node_id = config_.node_id;
-    ack.header.sender_type = config_.node_type;
-    ack.header.dest_node_id = header_to_ack.sender_node_id;
-    ack.header.sequence_number = 0;
-    ack.ack_sequence = header_to_ack.sequence_number;
-    ack.status = status;
-
-    TxPacket tx_packet;
-    if (!peer_manager_->find_mac(header_to_ack.sender_node_id, tx_packet.dest_mac)) {
-        last_header_requiring_ack_.reset();
-        hal_freertos_->semaphore_give(ack_mutex_);
-        return ESP_ERR_NOT_FOUND;
-    }
-
-    auto encoded = message_codec_->encode(ack.header, &ack.ack_sequence, sizeof(AckMessage) - sizeof(MessageHeader));
-    if (encoded.empty()) {
-        last_header_requiring_ack_.reset();
-        hal_freertos_->semaphore_give(ack_mutex_);
-        return ESP_FAIL;
-    }
-
-    tx_packet.len = encoded.size();
-    memcpy(tx_packet.data, encoded.data(), tx_packet.len);
-    tx_packet.requires_ack = false;
-
-    esp_err_t err = tx_manager_->queue_packet(tx_packet);
-    last_header_requiring_ack_.reset();
-    hal_freertos_->semaphore_give(ack_mutex_);
-    return err;
+    return ret;
 }
 
-std::vector<PeerInfo> EspNowManager::get_peers()
+esp_err_t EspNowManager::remove_peer(NodeId node_id)
+{
+    esp_err_t ret = peer_manager_->remove(node_id);
+    if (ret == ESP_OK) {
+        stats_mgr_->on_peer_removed(node_id);
+    }
+    return ret;
+}
+
+etl::vector<NodeId, MAX_PEERS> EspNowManager::get_offline_peers() const
+{
+    NodeState state = node_fsm_->get_state();
+    if (state != NodeState::OPERATIONAL && state != NodeState::PAIRING) {
+        return {};
+    }
+    return peer_manager_->get_offline(get_time_ms());
+}
+
+// Getters
+NodeState EspNowManager::get_node_state() const
+{
+    return node_fsm_->get_state();
+}
+
+bool EspNowManager::is_initialized() const
+{
+    return node_fsm_->get_state() != NodeState::UNINITIALIZED;
+}
+
+etl::vector<PeerInfo, MAX_PEERS> EspNowManager::get_peers()
 {
     return peer_manager_->get_all();
 }
-std::vector<NodeId> EspNowManager::get_offline_peers() const
+
+bool EspNowManager::get_peer_stats(NodeId node_id, PeerStatistics& out) const
 {
-    return peer_manager_->get_offline(get_time_ms());
-}
-esp_err_t EspNowManager::add_peer(NodeId node_id, const uint8_t *mac, NodeType type)
-{
-    return peer_manager_->add(node_id, mac, type);
-}
-esp_err_t EspNowManager::remove_peer(NodeId node_id)
-{
-    return peer_manager_->remove(node_id);
-}
-esp_err_t EspNowManager::start_pairing(uint32_t timeout_ms)
-{
-    return pairing_manager_->start(timeout_ms);
+    if (stats_mgr_ == nullptr) {
+        return false;
+    }
+    return stats_mgr_->get(node_id, out);
 }
 
-void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len)
+etl::vector<PeerStatistics, MAX_PEERS> EspNowManager::get_all_peer_stats() const
+{
+    if (stats_mgr_ == nullptr) {
+        return {};
+    }
+    return stats_mgr_->get_all();
+}
+
+// =========================================================================================
+// ESP-NOW callbacks - called by ESP-NOW driver in ISR context --- LCOV_EXCL_START
+// =========================================================================================
+void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t* info, const uint8_t* data, int len)
 {
     if (!info || !data || len <= 0 || len > ESP_NOW_MAX_DATA_LEN)
+        return;
+    EspNowManager* self = s_active_instance_;
+    if (self == nullptr || self->rx_queue_handle_ == nullptr)
         return;
     RxPacket packet;
     memcpy(packet.src_mac, info->src_addr, 6);
     memcpy(packet.data, data, len);
     packet.len = len;
-    packet.rssi = info->rx_ctrl->rssi;
-    packet.timestamp_us = esp_timer_get_time();
-    instance().hal_freertos_->queue_send_fromISR(instance().rx_dispatch_queue_, &packet, 0);
+    packet.rssi = static_cast<int8_t>(info->rx_ctrl->rssi);
+    // Raw timestamp in us, will be converted to ms in rx_task
+    packet.timestamp_ms = self->hal_timer_->get_time_us();
+    self->hal_freertos_->queue_send_fromISR(self->rx_queue_handle_, &packet, 0);
 }
 
-void EspNowManager::esp_now_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status)
+void EspNowManager::esp_now_send_cb(const esp_now_send_info_t* info, esp_now_send_status_t status)
 {
-    if (info->tx_status == static_cast<wifi_tx_status_t>(ESP_NOW_SEND_FAIL))
-        instance().tx_manager_->notify_physical_fail();
-}
+    EspNowManager* self = s_active_instance_;
+    if (self == nullptr || info == nullptr || info->des_addr == nullptr) {
+        return;
+    }
 
-void EspNowManager::rx_dispatch_task(void *arg)
+    // Broadcast sends have no logical peer counterpart. Delivery tracking is meaningless
+    // for them. Driver-level errors are already handled synchronously via
+    // handle_esp_now_send_errors() right after hal_esp_now_send() returns.
+    // This covers: pairing requests/responses, channel scan probes/responses.
+    if (memcmp(info->des_addr, BROADCAST_MAC, 6) == 0) {
+        return;
+    }
+
+    self->tx_manager_->notify_delivery(status, info->des_addr);
+}
+// LCOV_EXCL_STOP
+
+// =========================================================================================
+// Task implementations
+// =========================================================================================
+void EspNowManager::rx_task(void* arg)
 {
-    EspNowManager *self = static_cast<EspNowManager *>(arg);
-    RxPacket packet;
+    EspNowManager* self = static_cast<EspNowManager*>(arg);
+
+    RxPacket packet{};
+    DecodedRxPacket decoded{};
+    uint32_t notifications = 0;
+    bool should_stop = false;
+
     while (true) {
-        uint32_t notifications = 0;
-        if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE &&
-            (notifications & NOTIFY_STOP))
-            break;
-        if (self->hal_freertos_->queue_receive(self->rx_dispatch_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
-            // Check for stop packet (empty packet or specific flag)
-            if (packet.len == 0) {
-                uint32_t notif = 0;
-                if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif & NOTIFY_STOP))
-                    break;
+        // Check for pending notifications without blocking (timeout = 0). We prioritize packet reception below
+        // notifications are checked every ~100 ms as a side effect of the queue_receive timeout.
+        if (self->hal_freertos_->task_notify_wait(0, 0xFFFFFFFF, &notifications, 0) == pdTRUE) {
+            // Check for notifications and handle them
+            self->handle_notifications(notifications, should_stop);
+            // If stop is requested, break the loop
+            if (should_stop) {
+                break;
             }
+        }
 
-            if (!self->message_codec_->validate_crc(packet.data, packet.len))
-                continue;
-            auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
-            if (!header_opt)
-                continue;
-            const MessageHeader &header = header_opt.value();
+        // Wait for incoming packets with a timeout to periodically check for notifications and tick managers.
+        if (self->hal_freertos_->queue_receive(self->rx_queue_handle_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
+            // Convert raw timestamp from us to ms
+            packet.timestamp_ms /= 1000;
 
-            if (self->message_router_->should_dispatch_to_worker(header.msg_type)) {
-                self->hal_freertos_->queue_send(self->transport_worker_queue_, &packet, 0);
-            }
-            else {
-                if (header.requires_ack) {
-                    if (self->hal_freertos_->semaphore_take(self->ack_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-                        self->last_header_requiring_ack_ = header;
-                        self->hal_freertos_->semaphore_give(self->ack_mutex_);
+            // Validate CRC
+            if (self->message_codec_->validate_crc(packet.data, packet.len)) {
+                // Decode header
+                auto header_opt = self->message_codec_->decode_header(packet.data, packet.len);
+                if (header_opt) {
+                    // Any valid packet is proof the link is alive notify tx_manager about it
+                    self->tx_manager_->notify_link_alive();
+
+                    // Report packet reception to stats manager
+                    self->stats_mgr_->on_packet_received(header_opt->sender_node_id, packet.rssi);
+
+                    decoded = {packet, header_opt.value()};
+
+                    // Application-level packets — deliver directly to app queue
+                    if (decoded.header.msg_type == MessageType::DATA ||
+                        decoded.header.msg_type == MessageType::COMMAND) {
+                        if (self->config_.app_rx_queue != nullptr) {
+                            AppMessage msg = self->build_app_message(decoded);
+                            if (self->hal_freertos_->queue_send(self->config_.app_rx_queue, &msg, 0) != pdTRUE) {
+                                ESP_LOGW(TAG, "App queue full, dropping packet");
+                            }
+                        }
                     }
+                    else {
+                        // Protocol-internal packets — handle immediately via router
+                        self->message_router_->handle_packet(decoded);
+                    }
+                    // After processing (Routing or App delivery), update peer last_seen.
+                    // If it was a new pairing, the peer is now in the list.
+                    self->peer_manager_->update_last_seen(decoded.header.sender_node_id, self->get_time_ms());
                 }
-                self->message_router_->handle_packet(packet);
             }
         }
+        // HUBs go to pairing inactive only by timeout, not when sucessfull pair a node.
+        // Non_HUB cannot be handled here because the scanning process is not instantaneous and if
+        // on_pairing_timeout is called before the scan is completed, the node will go to IDLE instead of
+        // OPERATIONAL.
+        // TODO: remove this after full refactor, pairing done is notified to rx_task
+        // if (self->config_.node_type == ReservedTypes::HUB && !self->pairing_manager_->is_active()) {
+        //     bool has_peers = !self->peer_manager_->get_all().empty();
+        //     self->node_fsm_->on_pairing_timeout(has_peers);
+        // }
+
+        // Tick submodules to handle timers
+        int64_t now_ms = self->get_time_ms();
+        NodeState current_state = self->node_fsm_->get_state();
+        if (current_state == NodeState::PAIRING) {
+            self->channel_monitor_->tick(now_ms);
+            self->pairing_manager_->tick(now_ms);
+        }
+        else if (current_state == NodeState::OPERATIONAL) {
+            self->channel_monitor_->tick(now_ms);
+            self->heartbeat_manager_->tick(now_ms);
+        }
+        self->tick_scan_retry(now_ms);
     }
-    self->rx_dispatch_task_handle_ = nullptr;
+
+    // Task cleanup on exit
+    self->rx_task_handle_ = nullptr;
     self->hal_freertos_->task_suspend(NULL);
     self->hal_freertos_->task_delete(NULL);
 }
 
-void EspNowManager::transport_worker_task(void *arg)
-{
-    EspNowManager *self = static_cast<EspNowManager *>(arg);
-    RxPacket packet;
-    while (true) {
-        uint32_t notifications = 0;
-        if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notifications, 0) == pdTRUE &&
-            (notifications & NOTIFY_STOP))
-            break;
-        if (self->hal_freertos_->queue_receive(self->transport_worker_queue_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
-            if (packet.len == 0) {
-                uint32_t notif = 0;
-                if (self->hal_freertos_->task_notify_wait(0, NOTIFY_STOP, &notif, 0) == pdTRUE && (notif & NOTIFY_STOP))
-                    break;
-            }
+// =========================================================================================
+// Internal methods
+// =========================================================================================
 
-            // Delegate directly to router. Channel updates are now handled
-            // via DiscoveryManager callbacks, avoiding redundant decoding here.
-            self->message_router_->handle_packet(packet);
+// Helper method used by send_data and send_command
+esp_err_t EspNowManager::send_packet(
+    NodeId dest_node_id,
+    MessageType msg_type,
+    PayloadType payload_type,
+    const void* payload,
+    size_t len,
+    bool require_ack)
+{
+    if (node_fsm_->get_state() != NodeState::OPERATIONAL)
+        return ESP_ERR_INVALID_STATE;
+
+    DecodedTxPacket tx_packet;
+    if (!peer_manager_->find_mac(dest_node_id, tx_packet.dest_mac))
+        return ESP_ERR_NOT_FOUND;
+
+    tx_packet.header.msg_type = msg_type;
+    tx_packet.header.sequence_number = 0;
+    tx_packet.header.sender_type = config_.node_type;
+    tx_packet.header.sender_node_id = config_.node_id;
+    tx_packet.header.payload_type = payload_type;
+    tx_packet.header.requires_ack = require_ack;
+    tx_packet.header.dest_node_id = dest_node_id;
+    tx_packet.header.timestamp_ms = get_time_ms();
+
+    if (len > MAX_PAYLOAD_SIZE) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    tx_packet.payload_len = len;
+    if (payload != nullptr && len > 0) {
+        memcpy(tx_packet.payload, payload, len);
+    }
+
+    return tx_manager_->queue_packet(tx_packet);
+}
+
+int64_t EspNowManager::get_time_ms() const
+{
+    return hal_timer_->get_time_us() / 1000;
+}
+
+// Helper to build AppMessage from DecodedRxPacket
+AppMessage EspNowManager::build_app_message(const DecodedRxPacket& decoded)
+{
+    AppMessage msg{};
+    msg.sender_id = decoded.header.sender_node_id;
+    msg.sender_type = decoded.header.sender_type;
+    msg.msg_type = decoded.header.msg_type;
+    msg.payload_type = decoded.header.payload_type;
+    msg.sequence_number = decoded.header.sequence_number;
+    msg.requires_ack = decoded.header.requires_ack;
+    memcpy(msg.src_mac, decoded.raw.src_mac, 6);
+    msg.rssi = decoded.raw.rssi;
+
+    const size_t payload_offset = sizeof(MessageHeader);
+    msg.payload_len = decoded.raw.len - payload_offset - CRC_SIZE;
+    memcpy(msg.payload, decoded.raw.data + payload_offset, msg.payload_len);
+
+    return msg;
+}
+
+void EspNowManager::handle_notifications(uint32_t notifications, bool& should_stop)
+{
+    // If we receive NOTIFY_MAX_FAILURES from TxManager::tx_task()
+    if ((notifications & NOTIFY_MAX_FAILURES) == NOTIFY_MAX_FAILURES) {
+        NodeState old_state = node_fsm_->get_state();
+        node_fsm_->on_scan_requested();
+        handle_state_transition(old_state, node_fsm_->get_state());
+    }
+
+    // NOTIFY_CHANNEL_FOUND is set by DiscoveryManager::discovery_task()
+    if ((notifications & NOTIFY_CHANNEL_FOUND) == NOTIFY_CHANNEL_FOUND) {
+        // Calls get_channel() to get the channel where the HUB was found
+        config_.wifi_channel = scanner_->get_channel();
+
+        NodeState old_state = node_fsm_->get_state();
+        node_fsm_->on_channel_found();
+        handle_state_transition(old_state, node_fsm_->get_state());
+    }
+
+    // NOTIFY_PEER_ADDED is set by PairingManager::notify_rx_task_peer_add()
+    if ((notifications & NOTIFY_PEER_ADDED) == NOTIFY_PEER_ADDED) {
+        for (const auto& p : peer_manager_->get_all()) {
+            stats_mgr_->on_peer_added(p.node_id, p.heartbeat_interval_ms);
         }
     }
-    self->transport_worker_task_handle_ = nullptr;
-    self->hal_freertos_->task_suspend(NULL);
-    self->hal_freertos_->task_delete(NULL);
-}
 
-uint64_t EspNowManager::get_time_ms() const
-{
-    return esp_timer_get_time() / 1000;
-}
+    // NOTIFY_PAIRING_DONE is set by PairingManager::notify_rx_task_pairing_done()
+    if ((notifications & NOTIFY_PAIRING_DONE) == NOTIFY_PAIRING_DONE) {
+        bool has_peers = !peer_manager_->get_all().empty();
 
-void EspNowManager::update_wifi_channel(uint8_t channel)
-{
-    if (config_.wifi_channel != channel) {
+        NodeState old_state = node_fsm_->get_state();
+        node_fsm_->on_pairing_timeout(has_peers);
+        handle_state_transition(old_state, node_fsm_->get_state());
+    }
+
+    // NOTIFY_SCAN_FAILED is set by DiscoveryManager::discovery_task()
+    if ((notifications & NOTIFY_SCAN_FAILED) == NOTIFY_SCAN_FAILED) {
+        bool has_peers = !peer_manager_->get_all().empty();
+        NodeState old_state = node_fsm_->get_state();
+        node_fsm_->on_scan_failed();
+        handle_state_transition(old_state, node_fsm_->get_state());
+        handle_scan_retries(has_peers);
+    }
+
+    // NOTIFY_CHANNEL_CHANGED is set by ChannelMonitor via direct to task notification
+    if ((notifications & NOTIFY_CHANNEL_CHANGED) == NOTIFY_CHANNEL_CHANGED) {
+        uint8_t channel = channel_monitor_->get_wifi_channel();
         config_.wifi_channel = channel;
-        esp_now_peer_info_t broadcast = {};
-        const uint8_t b_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-        memcpy(broadcast.peer_addr, b_mac, 6);
-        broadcast.channel = channel;
-        broadcast.ifidx = WIFI_IF_STA;
-        broadcast.encrypt = false;
-        esp_now_mod_peer(&broadcast);
-        peer_manager_->set_channel(channel);
-        heartbeat_manager_->set_channel(channel);
-        pairing_manager_->set_channel(channel);
-        peer_manager_->persist();
+        scanner_->set_channel(channel);
+        storage_->store_channel(channel);
+        ESP_LOGI(TAG, "Channel changed to %d", channel);
+    }
+
+    // If NOTIFY_TASK_TO_STOP is set, we break the loop and exit the task.
+    if (notifications & NOTIFY_TASK_TO_STOP) {
+        should_stop = true;
+    }
+}
+
+void EspNowManager::handle_state_transition(NodeState old_state, NodeState new_state)
+{
+    if (old_state == new_state) {
+        return;
+    }
+
+    // ESP_LOGI(TAG, "Reacting to state change: %d -> %d", static_cast<int>(old_state), static_cast<int>(new_state));
+
+    switch (new_state) {
+    case NodeState::PAIRING_SCAN:
+        scan_retry_.reset(); // Do not interfere with pairing which has separate logic
+        scanner_->start_scan();
+        break;
+
+    case NodeState::RECOVERY_SCAN:
+        scanner_->start_scan();
+        break;
+
+    case NodeState::PAIRING:
+        if (scanner_->is_scanning()) {
+            scanner_->stop_scan();
+        }
+        pairing_manager_->start(pairing_timeout_ms_, get_time_ms());
+        break;
+
+    case NodeState::OPERATIONAL:
+        if (scanner_->is_scanning()) {
+            scanner_->stop_scan();
+        }
+        scan_retry_.reset(); // Success: cancel any pending retry and reset counter
+        // If we just rediscovered the channel, store it
+        if (old_state == NodeState::RECOVERY_SCAN || old_state == NodeState::PAIRING_SCAN) {
+            storage_->store_channel(config_.wifi_channel);
+        }
+        break;
+
+    case NodeState::IDLE:
+        if (scanner_->is_scanning()) {
+            scanner_->stop_scan();
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+void EspNowManager::tick_scan_retry(int64_t now_ms)
+{
+    if (!scan_retry_.active || now_ms < scan_retry_.next_attempt_ms) {
+        return;
+    }
+    if (node_fsm_->get_state() != NodeState::IDLE) {
+        scan_retry_.reset();
+        return;
+    }
+
+    scan_retry_.active = false;
+    NodeState old_state = node_fsm_->get_state();
+
+    // Always RECOVERY_SCAN because we only schedule if we have peers
+    node_fsm_->on_scan_requested();
+    handle_state_transition(old_state, node_fsm_->get_state());
+}
+
+void EspNowManager::handle_scan_retries(bool has_peers)
+{
+    // Only retry scan if we have peers (RECOVERY_SCAN)
+    if (!has_peers) {
+        return;
+    }
+    if (scan_retry_.count < config_.scan_max_retries) {
+        uint32_t delay = SCAN_BACKOFF_BASE_MS << scan_retry_.count;
+        scan_retry_.active = true;
+        scan_retry_.next_attempt_ms = get_time_ms() + delay;
+        scan_retry_.count++;
+        ESP_LOGI(
+            TAG,
+            "Recovery scan failed. Retry %d/%d in %lu ms",
+            scan_retry_.count,
+            config_.scan_max_retries,
+            (unsigned long)delay);
+    }
+    else {
+        ESP_LOGW(TAG, "Recovery scan max retries (%d) exhausted. Node is IDLE.", config_.scan_max_retries);
+    }
+}
+
+// ==================================================================
+// Init helpers
+// ==================================================================
+
+esp_err_t EspNowManager::create_queue()
+{
+    rx_queue_handle_ = hal_freertos_->queue_create(config_.rx_queue_length, sizeof(RxPacket));
+    if (rx_queue_handle_ == nullptr) {
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t EspNowManager::create_task()
+{
+    BaseType_t ret;
+    ret = hal_freertos_->task_create(
+        rx_task, "rx_task", config_.stack_size_rx_task, this, config_.priority_rx_task, &rx_task_handle_);
+
+    if (ret != pdPASS) {
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t EspNowManager::init_tx_manager()
+{
+    // TODO: remove nullptr guards, since the objects are not optional, they are passed as reference
+    // to the constructor, the compiler should complain if they are not initialized.
+    if (tx_manager_ == nullptr) {
+        return ESP_FAIL;
+    }
+    return tx_manager_->init(
+        config_.stack_size_tx_task, config_.priority_tx_task, rx_task_handle_, config_.ack_timeout_ms);
+}
+
+esp_err_t EspNowManager::init_discovery_manager()
+{
+    if (scanner_ == nullptr) {
+        return ESP_FAIL;
+    }
+    return scanner_->init(
+        config_.node_id, config_.node_type, rx_task_handle_, config_.priority_rx_task, config_.stack_size_rx_task);
+}
+
+esp_err_t EspNowManager::init_heartbeat_manager()
+{
+    if (heartbeat_manager_ == nullptr) {
+        return ESP_FAIL;
+    }
+    heartbeat_manager_->init(config_.node_id, config_.node_type, config_.heartbeat_interval_ms);
+    return ESP_OK;
+}
+
+esp_err_t EspNowManager::init_pairing_manager()
+{
+    if (pairing_manager_ == nullptr) {
+        return ESP_FAIL;
+    }
+    return pairing_manager_->init(config_.node_id, config_.node_type, rx_task_handle_, config_.heartbeat_interval_ms);
+}
+
+esp_err_t EspNowManager::init_channel_monitor()
+{
+    if (channel_monitor_ == nullptr) {
+        return ESP_FAIL;
+    }
+    return channel_monitor_->init(config_.channel_monitor_interval_ms, rx_task_handle_);
+}
+
+esp_err_t EspNowManager::init_fail(esp_err_t ret, const char* step)
+{
+    ESP_LOGE(TAG, "init failed at %s: %s", step, esp_err_to_name(ret));
+    deinit();
+    return ret;
+}
+
+void EspNowManager::add_peers_to_espnow(etl::ivector<PeerInfo>& peers)
+{
+    for (auto& peer : peers) {
+        esp_now_peer_info_t peer_info = {};
+        memcpy(peer_info.peer_addr, peer.mac, 6);
+        peer_info.channel = 0;
+        peer_info.ifidx = WIFI_IF_STA;
+        peer_info.encrypt = false;
+        hal_espnow_->hal_esp_now_add_peer(&peer_info);
+    }
+}
+
+void EspNowManager::signal_task_to_stop()
+{
+    // Signal tasks to stop
+    if (rx_task_handle_ != nullptr) {
+        hal_freertos_->task_notify(rx_task_handle_, NOTIFY_TASK_TO_STOP, eSetBits);
+    }
+
+    // Wait for tasks to exit (up to 1s).
+    uint16_t timeout_ms = 1000;
+    uint8_t delay_ms = 10;
+    while (timeout_ms > 0) {
+        if (rx_task_handle_ == nullptr) {
+            break;
+        }
+        hal_freertos_->task_delay(pdMS_TO_TICKS(delay_ms));
+        timeout_ms -= delay_ms;
+    }
+
+    if (rx_task_handle_ != nullptr) {
+        ESP_LOGW(TAG, "Tasks did not terminate gracefully within timeout");
+    }
+}
+
+void EspNowManager::delete_task()
+{
+    if (rx_task_handle_ != nullptr) {
+        hal_freertos_->task_suspend(rx_task_handle_);
+        hal_freertos_->task_delete(rx_task_handle_);
+        rx_task_handle_ = nullptr;
+    }
+}
+
+void EspNowManager::cleanup_resources()
+{
+    if (rx_queue_handle_ != nullptr) {
+        hal_freertos_->queue_delete(rx_queue_handle_);
+        rx_queue_handle_ = nullptr;
     }
 }

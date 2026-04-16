@@ -1,7 +1,8 @@
 #pragma once
 
 #include <type_traits>
-#include <vector>
+
+#include "etl/vector.h"
 
 #include "esp_err.h"
 
@@ -52,18 +53,17 @@ public:
      * @note This method must be called before any other operation.
      * @note On fail, deinit() is called automatically.
      */
-    virtual esp_err_t init(const EspNowConfig &config) = 0;
+    virtual esp_err_t init(const EspNowConfig& config) = 0;
 
     /**
      * @brief Deinitialize the ESP-NOW Manager
      *
      * Stops all background tasks, releases memory, and deinitializes the ESP-NOW driver.
      *
-     * @return ESP_OK on success.
-     *
      * @note Idempotent if is already deinitialized.
+     * @note This method does not return errors.
      */
-    virtual esp_err_t deinit() = 0;
+    virtual void deinit() = 0;
 
     // ========================================
     // Data Communication
@@ -82,20 +82,20 @@ public:
      * @param len Length of the payload in bytes.
      * @param require_ack If true, the transmission will wait for a logical acknowledgment.
      * @return ESP_OK: the packet was successfully queued.
+     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL state or tx_queue not initialized.
      * @return ESP_ERR_NOT_FOUND: the peer is not registered.
-     * @return ESP_ERR_INVALID_ARG: the packet is empty.
-     * @return ESP_ERR_TIMEOUT: ACK timeout (when require_ack=true).
-     * @return ESP_FAIL: failed to send message to tx_queue_
+     * @return ESP_ERR_INVALID_ARG: payload length exceeds MAX_PAYLOAD_SIZE.
+     * @return ESP_FAIL: failed to send message to tx_queue_.
      *
      * @note Non-blocking unless require_ack=true
-     * @note Enter in channel SCANNING mode after MAX_FAILURES
+     * @note Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
      */
     virtual esp_err_t send_data(
         NodeId dest_node_id,
         PayloadType payload_type,
-        const void *payload,
+        const void* payload,
         size_t len,
         bool require_ack = false) = 0;
 
@@ -111,7 +111,7 @@ public:
         typename T2,
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(PayloadType)>>
-    esp_err_t send_data(T1 dest_node_id, T2 payload_type, const void *payload, size_t len, bool require_ack = false)
+    esp_err_t send_data(T1 dest_node_id, T2 payload_type, const void* payload, size_t len, bool require_ack = false)
     {
         return send_data(
             static_cast<NodeId>(dest_node_id), static_cast<PayloadType>(payload_type), payload, len, require_ack);
@@ -130,20 +130,20 @@ public:
      * @param len Length of the payload.
      * @param require_ack If true, waits for a logical acknowledgment.
      * @return ESP_OK: on success.
+     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL state or tx_queue not initialized.
      * @return ESP_ERR_NOT_FOUND: the peer is not registered.
-     * @return ESP_ERR_INVALID_ARG: the packet is empty.
-     * @return ESP_ERR_TIMEOUT: ACK timeout (when require_ack=true).
-     * @return ESP_FAIL: failed to send message to tx_queue_
+     * @return ESP_ERR_INVALID_ARG: payload length exceeds MAX_PAYLOAD_SIZE.
+     * @return ESP_FAIL: failed to send message to tx_queue_.
      *
      * @note Non-blocking unless require_ack=true
-     * @note Enter in channel SCANNING mode after MAX_FAILURES
+     * @note Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
      */
     virtual esp_err_t send_command(
         NodeId dest_node_id,
         CommandType command_type,
-        const void *payload,
+        const void* payload,
         size_t len,
         bool require_ack = false) = 0;
 
@@ -155,7 +155,7 @@ public:
      */
     template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
     esp_err_t
-    send_command(T dest_node_id, CommandType command_type, const void *payload, size_t len, bool require_ack = false)
+    send_command(T dest_node_id, CommandType command_type, const void* payload, size_t len, bool require_ack = false)
     {
         return send_command(static_cast<NodeId>(dest_node_id), command_type, payload, len, require_ack);
     }
@@ -163,14 +163,20 @@ public:
     /**
      * @brief Confirm the reception of a message that required an ACK
      *
-     * Sends a logical acknowledgment back to the sender of the last received message that had the `require_ack` flag
-     * set. This should be called by the application after successfully processing the received data.
+     * Sends a logical acknowledgment back to the specified sender. This should be called by the
+     * application after processing a received message that had the `require_ack` flag set, to inform
+     * the sender of the processing outcome.
      *
-     * @param status Status of the processing: OK, ERROR_INVALID_DATA or ERROR_PROCESSING
-     * @return ESP_OK: ACK was sent.
-     * @return ESP_ERR_INVALID_STATE: no message is pending ACK.
+     * @param sender_id Logical ID of the sender node to acknowledge.
+     * @param sequence_number Sequence number of the original message being acknowledged.
+     * @param status Processing outcome: `AckStatus::OK` for success, `AckStatus::ERROR_INVALID_DATA`
+     *               for invalid payload, or `AckStatus::ERROR_PROCESSING` for internal errors.
+     * @return ESP_OK: ACK was queued successfully.
+     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL/PAIRING state, or tx_queue not initialized.
+     * @return ESP_ERR_NOT_FOUND: peer MAC not found for the specified sender_id.
+     * @return ESP_FAIL: failed to queue ACK packet for transmission.
      */
-    virtual esp_err_t confirm_reception(AckStatus status) = 0;
+    virtual esp_err_t confirm_reception(NodeId sender_id, uint16_t sequence_number, AckStatus status) = 0;
 
     // ========================================
     // Peer Management
@@ -185,10 +191,21 @@ public:
      * @param mac MAC address of the node (6 bytes).
      * @param channel WiFi channel the node is operating on.
      * @param type Role/Type of the node.
+     * @param heartbeat_interval_ms Heartbeat interval in milliseconds.
      * @return ESP_OK: on success.
-     * @return ESP_ERR_INVALID_ARG: mac is nullptr
-     * @return ESP_ERR_TIMEOUT: method timed out to get the mutex_
-     * @return Other: error from the ESP-NOW driver
+     * @return ESP_ERR_INVALID_ARG: mac is nullptr.
+     * @return ESP_ERR_TIMEOUT: failed to acquire mutex within timeout.
+     * @return ESP_ERR_NO_MEM: ESP-NOW driver failed to allocate memory for peer.
+     * @return ESP_ERR_ESPNOW_NOT_INIT: ESP-NOW driver not initialized.
+     * @return ESP_ERR_ESPNOW_ARG: invalid argument passed to ESP-NOW driver.
+     * @return ESP_ERR_ESPNOW_NO_MEM: ESP-NOW driver out of memory.
+     * @return ESP_ERR_ESPNOW_NOT_FOUND: peer not found when updating existing peer.
+     * @return ESP_ERR_ESPNOW_CHAN: invalid WiFi channel.
+     * @return ESP_ERR_ESPNOW_IF: invalid interface.
+     * @return ESP_ERR_WIFI_NOT_INIT: WiFi not initialized.
+     * @return ESP_ERR_WIFI_NOT_STARTED: WiFi not started.
+     * @return ESP_ERR_WIFI_ARG: invalid WiFi argument.
+     * @return ESP_ERR_INVALID_STATE: storage failed to persist peer data.
      *
      * @note List uses LRU (Least Recently Used) policy with maximum MAX_PEERS = 19 (ESP-NOW limitation)
      * @note When full, oldest peer (least recently used) is removed to make room
@@ -198,7 +215,7 @@ public:
      *
      * @warning ESP-NOW hardware limit is 20 peers, but 1 is reserved for broadcast
      */
-    virtual esp_err_t add_peer(NodeId node_id, const uint8_t *mac, NodeType type) = 0; // TODO: Verify channel
+    virtual esp_err_t add_peer(NodeId node_id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms) = 0;
 
     /**
      * @brief Template overload for add_peer using enums
@@ -212,9 +229,9 @@ public:
         typename T2,
         typename = std::enable_if_t<std::is_enum_v<T1> && sizeof(T1) == sizeof(NodeId)>,
         typename = std::enable_if_t<std::is_enum_v<T2> && sizeof(T2) == sizeof(NodeType)>>
-    esp_err_t add_peer(T1 node_id, const uint8_t *mac, T2 type) // TODO: Verify channel
+    esp_err_t add_peer(T1 node_id, const uint8_t* mac, T2 type, uint32_t heartbeat_interval_ms)
     {
-        return add_peer(static_cast<NodeId>(node_id), mac, static_cast<NodeType>(type)); // TODO: Verify channel
+        return add_peer(static_cast<NodeId>(node_id), mac, static_cast<NodeType>(type), heartbeat_interval_ms);
     }
 
     /**
@@ -225,7 +242,16 @@ public:
      * @param node_id ID of the node to remove.
      * @return ESP_OK: on success.
      * @return ESP_ERR_NOT_FOUND: the peer is not present.
-     * @return ESP_ERR_TIMEOUT: method timed out to get the mutex_
+     * @return ESP_ERR_TIMEOUT: failed to acquire mutex within timeout.
+     * @return ESP_ERR_ESPNOW_NOT_INIT: ESP-NOW driver not initialized.
+     * @return ESP_ERR_ESPNOW_ARG: invalid argument passed to ESP-NOW driver.
+     * @return ESP_ERR_ESPNOW_NOT_FOUND: peer not found in ESP-NOW driver.
+     * @return ESP_ERR_ESPNOW_CHAN: invalid WiFi channel.
+     * @return ESP_ERR_ESPNOW_IF: invalid interface.
+     * @return ESP_ERR_WIFI_NOT_INIT: WiFi not initialized.
+     * @return ESP_ERR_WIFI_NOT_STARTED: WiFi not started.
+     * @return ESP_ERR_WIFI_ARG: invalid WiFi argument.
+     * @return ESP_ERR_INVALID_STATE: storage failed to persist peer removal.
      */
     virtual esp_err_t remove_peer(NodeId node_id) = 0;
 
@@ -245,17 +271,43 @@ public:
      * @brief Get a list of all registered peers
      *
      * @return Vector containing information for all registered peers.
+     * @note This method does not return errors. Returns empty vector if mutex acquisition fails.
      */
-    virtual std::vector<PeerInfo> get_peers() = 0;
+    virtual etl::vector<PeerInfo, MAX_PEERS> get_peers() = 0;
+
+    // ========================================
+    // Statistics
+    // ========================================
+
+    /**
+     * @brief Get statistics for a specific peer.
+     *
+     * @param node_id The logical ID of the peer.
+     * @param out Output parameter filled with current statistics.
+     * @return true if the peer was found and out was populated.
+     * @return false if the peer is not tracked or stats not yet available.
+     */
+    virtual bool get_peer_stats(NodeId node_id, PeerStatistics& out) const = 0;
+
+    /**
+     * @brief Get statistics for all tracked peers.
+     *
+     * @return Vector of PeerStatistics. Empty if no peers are tracked.
+     * @note This method does not return errors.
+     */
+    virtual etl::vector<PeerStatistics, MAX_PEERS> get_all_peer_stats() const = 0;
 
     /**
      * @brief Get a list of IDs for peers considered offline
      *
-     * A peer is considered offline if no heartbeat has been received within its expected interval.
+     * A peer is considered offline if no heartbeat has been received within its
+     * expected interval multiplied by HEARTBEAT_OFFLINE_MULTIPLIER.
      *
-     * @return Vector of Node IDs.
+     * @return Vector of Node IDs. Returns empty vector if mutex acquisition fails or manager not operational.
+     * @note This method does not return errors.
+     * @see HEARTBEAT_OFFLINE_MULTIPLIER in protocol_types.hpp
      */
-    virtual std::vector<NodeId> get_offline_peers() const = 0;
+    virtual etl::vector<NodeId, MAX_PEERS> get_offline_peers() const = 0;
 
     // ========================================
     // Pairing
@@ -276,7 +328,7 @@ public:
      *
      * @param timeout_ms Duration of the pairing mode in milliseconds.
      * @return ESP_OK: pairing started successfully.
-     * @return ESP_ERR_INVALID_STATE: pairing is already active.
+     * @return ESP_ERR_INVALID_STATE: manager is UNINITIALIZED or pairing already active.
      *
      * @note Automatic stop after specified timeout duration
      *
@@ -284,14 +336,38 @@ public:
      */
     virtual esp_err_t start_pairing(uint32_t timeout_ms = 30000) = 0;
 
+    /**
+     * @brief Attempt to reconnect after scan exhaustion
+     *
+     * Resets the retry counter and immediately triggers a RECOVERY_SCAN.
+     * Intended to be called by the application when the node is in IDLE
+     * state due to exhausted scan retries. Semantically different from
+     * start_pairing(): reconnect assumes the HUB ID is already and in the
+     * peer list and the node just needs to find the HUB channel.
+     *
+     * @return ESP_OK on success
+     * @return ESP_ERR_INVALID_STATE if node is not in IDLE state
+     * @return ESP_ERR_INVALID_ARG if there are no peers
+     */
+    virtual esp_err_t reconnect() = 0;
+
     // ========================================
     // Status
     // ========================================
 
     /**
-     * @brief Check if the manager is initialized
+     * @brief Get the current node state
+     *
+     * @return The current node state.
+     * @note This method does not return errors.
+     */
+    virtual NodeState get_node_state() const = 0;
+
+    /**
+     * @brief Check if EspNowManager is initialized
      *
      * @return true if initialized, false otherwise.
+     * @note This method does not return errors.
      */
     virtual bool is_initialized() const = 0;
 };

@@ -1,20 +1,16 @@
-// mock_pairing_manager.hpp
+// host_test/common/mock_pairing_manager.hpp
 #pragma once
 
 #include <gmock/gmock.h>
-#include "interface/i_pairing_manager.hpp"
+#include "i_pairing_manager.hpp"
 
 class MockPairingManager : public IPairingManager
 {
 public:
-    MOCK_METHOD(esp_err_t, init, (NodeType type, NodeId id), (override));
-    MOCK_METHOD(esp_err_t, deinit, (), (override));
-    MOCK_METHOD(esp_err_t, start, (uint32_t timeout_ms), (override));
-    MOCK_METHOD(void, set_channel, (uint8_t channel), (override));
-    MOCK_METHOD(bool, is_active, (), (const, override));
-    MOCK_METHOD(void, handle_request, (const RxPacket &packet), (override));
-    MOCK_METHOD(void, handle_response, (const RxPacket &packet), (override));
+    MOCK_METHOD(esp_err_t, init, (NodeId id, NodeType type, TaskHandle_t rx_task_handle, uint32_t heartbeat_interval_ms), (override));
+    MOCK_METHOD(void, deinit, (), (override));
+    MOCK_METHOD(esp_err_t, start, (uint32_t timeout_ms, int64_t now_ms), (override));
+    MOCK_METHOD(void, tick, (int64_t now_ms), (override));
+    MOCK_METHOD(void, handle_request, (const DecodedRxPacket& decoded), (override));
+    MOCK_METHOD(void, handle_response, (const DecodedRxPacket& decoded), (override));
 };
-
-// Note: Template method init with enum is implemented in the base interface
-// and redirects to the mocked method

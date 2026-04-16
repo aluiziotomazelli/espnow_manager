@@ -1,5 +1,6 @@
 # Build directories
 **/build/
+**/build_*/
 **/.cmake/
 **/sdkconfig
 **/sdkconfig.old
@@ -38,6 +39,16 @@ Thumbs.db
 *.pyc
 **/coverage/**
 
-#cli
-GEMINI.*
-.gemini/
+#agents
+**/.gemini/
+**/.qwen/
+*qwen*
+*QWEN*
+GEMINI.md
+AGENTS.md
+
+#TODO folder
+**/todo/
+
+# External dependencies source
+external/etl/etl-src/

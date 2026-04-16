@@ -1,25 +1,10 @@
+# host_test/test_tx_state_machine/CMakeLists.txt
 cmake_minimum_required(VERSION 3.16)
 
-# Append extra component directories so IDF can find our local components.
-list(APPEND EXTRA_COMPONENT_DIRS
-    "../.."
-    "../gtest"
-    "../common"
-    "$ENV{IDF_PATH}/tools/mocks/esp_wifi"
-    "$ENV{IDF_PATH}/tools/mocks/esp_netif"
-    "$ENV{IDF_PATH}/tools/mocks/lwip"
-    "$ENV{IDF_PATH}/tools/mocks/esp_timer"
-    "$ENV{IDF_PATH}/tools/mocks/driver"
-)
+# Common CMake configuration for all tests in the host_test directory.
+include("../extra_dirs_common.cmake")
 
-# Explicitly list the components to be included in the build.
-set(COMPONENTS 
-    "main"
-    "espnow_manager"
-)
-
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-
+# Define the project name for this test application.
 project(test_tx_state_machine)
 
 
@@ -27,7 +12,7 @@ project(test_tx_state_machine)
 set(EXTRACT_PATTERNS_test_tx_state_machine "*/espnow_manager/src/tx_state_machine.cpp")
 
 # Set the patterns to remove from the binary
-# set(REMOVE_PATTERNS_test_channel_scanner 
+# set(REMOVE_PATTERNS_test_tx_state_machine 
 #
 # )
 

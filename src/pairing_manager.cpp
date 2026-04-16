@@ -1,203 +1,204 @@
 #include <cstring>
 
 #include "esp_log.h"
-// #include "freertos/FreeRTOS.h"
-// #include "freertos/queue.h"
-// #include "freertos/semphr.h"
-// #include "freertos/task.h"
-// #include "freertos/timers.h"
 
-#include "i_message_codec.hpp"
 #include "i_peer_manager.hpp"
 #include "i_tx_manager.hpp"
-#include "i_hal_freertos.hpp"
+
 #include "pairing_manager.hpp"
 #include "protocol_types.hpp"
 
-static const char *TAG = "PairingMgr";
+static const char* TAG = "PairingMgr";
 
 PairingManager::PairingManager(
-    ITxManager &tx_mgr,
-    IPeerManager &peer_mgr,
-    IMessageCodec &codec,
-    IFreeRTOSHAL &hal_freertos)
+    ITxManager& tx_mgr,
+    IPeerManager& peer_mgr,
+    IFreeRTOSHAL& hal_freertos,
+    ITimerHAL& hal_timer)
     : tx_mgr_(tx_mgr)
     , peer_mgr_(peer_mgr)
-    , codec_(codec)
     , hal_freertos_(hal_freertos)
+    , hal_timer_(hal_timer)
 {
-    mutex_ = hal_freertos_.mutex_create();
 }
 
-PairingManager::~PairingManager()
+esp_err_t PairingManager::init(NodeId id, NodeType type, TaskHandle_t rx_task_handle, uint32_t heartbeat_interval_ms)
 {
-    deinit();
-    if (mutex_)
-        hal_freertos_.semaphore_delete(mutex_);
-}
-
-esp_err_t PairingManager::init(NodeType type, NodeId id)
-{
-    my_type_ = type;
-    my_id_ = id;
-    return ESP_OK;
-}
-
-void PairingManager::set_channel(uint8_t channel)
-{
-    current_channel_ = channel;
-}
-
-esp_err_t PairingManager::deinit()
-{
-    hal_freertos_.semaphore_take(mutex_, PORT_MAX_DELAY);
-    if (timeout_timer_) {
-        hal_freertos_.timer_delete(timeout_timer_, PORT_MAX_DELAY);
-        timeout_timer_ = nullptr;
+    if (rx_task_handle == nullptr) {
+        return ESP_ERR_INVALID_ARG;
     }
-    if (periodic_timer_) {
-        hal_freertos_.timer_delete(periodic_timer_, PORT_MAX_DELAY);
-        periodic_timer_ = nullptr;
-    }
-    is_active_ = false;
-    hal_freertos_.semaphore_give(mutex_);
-    return ESP_OK;
-}
-
-esp_err_t PairingManager::start(uint32_t timeout_ms)
-{
-    hal_freertos_.semaphore_take(mutex_, PORT_MAX_DELAY);
-    if (is_active_) {
-        hal_freertos_.semaphore_give(mutex_);
+    if (is_initialized_) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_LOGI(TAG, "Pairing started for %u ms.", (unsigned int)timeout_ms);
+    my_id_ = id;
+    my_type_ = type;
+    rx_task_handle_ = rx_task_handle;
+    heartbeat_interval_ms_ = heartbeat_interval_ms;
+    is_initialized_ = true;
 
-    timeout_timer_ = hal_freertos_.timer_create("pair_timeout", pdMS_TO_TICKS(timeout_ms), pdFALSE, this, timeout_cb);
-    if (my_type_ != ReservedTypes::HUB) {
-        periodic_timer_ = hal_freertos_.timer_create("pair_periodic", pdMS_TO_TICKS(5000), pdTRUE, this, periodic_cb);
-        hal_freertos_.timer_start(periodic_timer_, 0);
-        send_pair_request();
-    }
-    hal_freertos_.timer_start(timeout_timer_, 0);
-    is_active_ = true;
-    hal_freertos_.semaphore_give(mutex_);
     return ESP_OK;
 }
 
-void PairingManager::handle_request(const RxPacket &packet)
+void PairingManager::deinit()
 {
-    hal_freertos_.semaphore_take(mutex_, PORT_MAX_DELAY);
-    if (!is_active_ || my_type_ != ReservedTypes::HUB) {
-        hal_freertos_.semaphore_give(mutex_);
+    is_initialized_ = false;
+    is_active_ = false;
+    rx_task_handle_ = nullptr;
+}
+
+void PairingManager::tick(int64_t now_ms)
+{
+    if (!is_initialized_ || !is_active_) {
         return;
     }
-    hal_freertos_.semaphore_give(mutex_);
 
-    auto header_opt = codec_.decode_header(packet.data, packet.len);
-    if (!header_opt)
+    if (now_ms - started_at_ms_ >= timeout_ms_) {
+        is_active_ = false;
+        ESP_LOGI(TAG, "Pairing timed out.");
+        notify_rx_task_pairing_done();
         return;
-    const MessageHeader &header = header_opt.value();
-    const PairRequest *req = reinterpret_cast<const PairRequest *>(packet.data);
-
-    ESP_LOGI(TAG, "Pair request from Node ID %d", (int)header.sender_node_id);
-
-    PairResponse resp;
-    resp.header.msg_type = MessageType::PAIR_RESPONSE;
-    resp.header.sender_node_id = my_id_;
-    resp.header.sender_type = my_type_;
-    resp.header.dest_node_id = header.sender_node_id;
-    resp.header.sequence_number = 0;
-
-    if (header.sender_type == ReservedTypes::HUB) {
-        resp.status = PairStatus::REJECTED_NOT_ALLOWED;
     }
-    else {
-        peer_mgr_.add(header.sender_node_id, packet.src_mac, header.sender_type, req->heartbeat_interval_ms);
-        resp.status = PairStatus::ACCEPTED;
-        resp.wifi_channel = current_channel_;
-    }
-
-    TxPacket tx_packet;
-    memcpy(tx_packet.dest_mac, packet.src_mac, 6);
-    auto encoded = codec_.encode(resp.header, &resp.status, sizeof(PairResponse) - sizeof(MessageHeader));
-    if (!encoded.empty()) {
-        tx_packet.len = encoded.size();
-        memcpy(tx_packet.data, encoded.data(), tx_packet.len);
-        tx_packet.requires_ack = false;
-        tx_mgr_.queue_packet(tx_packet);
+    if (my_type_ != ReservedTypes::HUB && now_ms - last_request_ms_ >= periodic_interval_ms_) {
+        send_pair_request();
+        last_request_ms_ = now_ms;
     }
 }
 
-void PairingManager::handle_response(const RxPacket &packet)
+esp_err_t PairingManager::start(uint32_t timeout_ms, int64_t now_ms)
 {
-    hal_freertos_.semaphore_take(mutex_, PORT_MAX_DELAY);
-    if (!is_active_ || my_type_ == ReservedTypes::HUB) {
-        hal_freertos_.semaphore_give(mutex_);
+    if (!is_initialized_ || is_active_) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    timeout_ms_ = timeout_ms;
+    started_at_ms_ = now_ms;
+    last_request_ms_ = now_ms;
+    is_active_ = true;
+
+    if (my_type_ != ReservedTypes::HUB) {
+        send_pair_request(); // Send initial pair request immediately
+    }
+
+    return ESP_OK;
+}
+
+void PairingManager::handle_request(const DecodedRxPacket& decoded)
+{
+    // Only initialized and  active pairing session processes requests
+    if (!is_initialized_ || !is_active_) {
+        return;
+    }
+    // Only HUB handle pair requests; Nodes only expect pair responses from the HUB
+    if (my_type_ != ReservedTypes::HUB) {
         return;
     }
 
-    auto header_opt = codec_.decode_header(packet.data, packet.len);
-    if (!header_opt) {
-        xSemaphoreGive(mutex_);
+    const MessageHeader& header = decoded.header;
+    // PairRequest is packed — safe to reinterpret raw data directly
+    const PairRequest* req = reinterpret_cast<const PairRequest*>(decoded.raw.data);
+
+    ESP_LOGI(TAG, "Pair request from Node ID %d", (int)header.sender_node_id);
+
+    DecodedTxPacket tx_packet{};
+    memcpy(tx_packet.dest_mac, BROADCAST_MAC, 6);
+
+    uint64_t now_ms = get_time_ms();
+
+    tx_packet.header.msg_type = MessageType::PAIR_RESPONSE;
+    tx_packet.header.sender_node_id = my_id_;
+    tx_packet.header.sender_type = my_type_;
+    tx_packet.header.dest_node_id = header.sender_node_id;
+    tx_packet.header.timestamp_ms = now_ms;
+
+    PairStatus status;
+    if (header.sender_type == ReservedTypes::HUB) {
+        status = PairStatus::REJECTED_NOT_ALLOWED;
+    }
+    else {
+        peer_mgr_.add(header.sender_node_id, decoded.raw.src_mac, header.sender_type, req->heartbeat_interval_ms);
+        status = PairStatus::ACCEPTED;
+        notify_rx_task_peer_add();
+    }
+
+    PairResponse resp{};
+    resp.status = status;
+    // assigned_id, heartbeat_interval_ms, report_interval_ms remain zero for now
+
+    // Copy only the payload portion of PairResponse, skipping MessageHeader.
+    // &resp.status points to the first field after the header.
+    tx_packet.payload_len = sizeof(PairResponse) - sizeof(MessageHeader);
+    memcpy(tx_packet.payload, &resp.status, tx_packet.payload_len);
+
+    tx_mgr_.queue_packet(tx_packet);
+}
+
+void PairingManager::handle_response(const DecodedRxPacket& decoded)
+{
+    // Only initialized and active pairing session processes requests
+    if (!is_initialized_ || !is_active_) {
+        return;
+    }
+    // Only non-HUB nodes expect pair responses from the HUB
+    if (my_type_ == ReservedTypes::HUB) {
         return;
     }
 
-    const PairResponse *resp = reinterpret_cast<const PairResponse *>(packet.data);
+    // Broadcast responses must be explicitly addressed to this node.
+    // Without this check, two nodes pairing simultaneously would both
+    // accept the first ACCEPTED response on air.
+    if (decoded.header.dest_node_id != my_id_) {
+        return;
+    }
+
+    const PairResponse* resp = reinterpret_cast<const PairResponse*>(decoded.raw.data);
     if (resp->status == PairStatus::ACCEPTED) {
-        ESP_LOGI(TAG, "Pairing accepted by Hub on channel %d.", (int)resp->wifi_channel);
-        peer_mgr_.set_channel(resp->wifi_channel);
-        peer_mgr_.add(header_opt->sender_node_id, packet.src_mac, header_opt->sender_type);
+        ESP_LOGI(TAG, "Pairing accepted by Hub");
+        peer_mgr_.add(decoded.header.sender_node_id, decoded.raw.src_mac, decoded.header.sender_type);
+        notify_rx_task_peer_add();
         is_active_ = false;
-        if (periodic_timer_) {
-            hal_freertos_.timer_stop(periodic_timer_, 0);
-        }
-        if (timeout_timer_) {
-            hal_freertos_.timer_stop(timeout_timer_, 0);
-        }
+        notify_rx_task_pairing_done();
     }
-    hal_freertos_.semaphore_give(mutex_);
 }
 
 void PairingManager::send_pair_request()
 {
-    PairRequest req;
-    req.header.msg_type = MessageType::PAIR_REQUEST;
-    req.header.sender_node_id = my_id_;
-    req.header.sender_type = my_type_;
-    req.header.dest_node_id = ReservedIds::HUB;
-    req.header.sequence_number = 0;
-    req.heartbeat_interval_ms = 60000;
-
-    TxPacket tx_packet;
+    DecodedTxPacket tx_packet{};
     memcpy(tx_packet.dest_mac, BROADCAST_MAC, 6);
 
-    auto encoded = codec_.encode(req.header, &req.firmware_version, sizeof(PairRequest) - sizeof(MessageHeader));
-    if (!encoded.empty()) {
-        tx_packet.len = encoded.size();
-        memcpy(tx_packet.data, encoded.data(), tx_packet.len);
-        tx_packet.requires_ack = false;
-        tx_mgr_.queue_packet(tx_packet);
+    tx_packet.header.msg_type = MessageType::PAIR_REQUEST;
+    tx_packet.header.sender_node_id = my_id_;
+    tx_packet.header.sender_type = my_type_;
+    tx_packet.header.dest_node_id = ReservedIds::HUB;
+    tx_packet.header.timestamp_ms = get_time_ms();
+
+    PairRequest req{};
+    req.heartbeat_interval_ms = heartbeat_interval_ms_;
+    // other fiels remain zero for now
+
+    // Copy only the payload portion of PairRequest, skipping MessageHeader.
+    // &req.heartbeat_interval_ms points to the first field after the header.
+    tx_packet.payload_len = sizeof(PairRequest) - sizeof(MessageHeader);
+    memcpy(tx_packet.payload, &req.heartbeat_interval_ms, tx_packet.payload_len);
+
+    tx_mgr_.queue_packet(tx_packet);
+}
+
+void PairingManager::notify_rx_task_pairing_done()
+{
+    if (rx_task_handle_ != nullptr) {
+        hal_freertos_.task_notify(rx_task_handle_, NOTIFY_PAIRING_DONE, eSetBits);
     }
 }
 
-void PairingManager::timeout_cb(TimerHandle_t xTimer)
+void PairingManager::notify_rx_task_peer_add()
 {
-    static_cast<PairingManager *>(pvTimerGetTimerID(xTimer))->on_timeout();
+    if (rx_task_handle_ != nullptr) {
+        hal_freertos_.task_notify(rx_task_handle_, NOTIFY_PEER_ADDED, eSetBits);
+    }
 }
 
-void PairingManager::periodic_cb(TimerHandle_t xTimer)
+int64_t PairingManager::get_time_ms() const
 {
-    static_cast<PairingManager *>(pvTimerGetTimerID(xTimer))->send_pair_request();
-}
-
-void PairingManager::on_timeout()
-{
-    hal_freertos_.semaphore_take(mutex_, PORT_MAX_DELAY);
-    is_active_ = false;
-    if (periodic_timer_)
-        hal_freertos_.timer_stop(periodic_timer_, 0);
-    ESP_LOGI(TAG, "Pairing timed out.");
-    hal_freertos_.semaphore_give(mutex_);
+    return hal_timer_.get_time_us() / 1000;
 }

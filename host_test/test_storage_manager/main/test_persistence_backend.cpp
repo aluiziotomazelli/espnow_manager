@@ -20,7 +20,7 @@ class NvsBackendTest : public ::testing::Test
 {
 protected:
     NiceMock<MockNvsHAL> nvs_hal;
-    NvsBackend nvs{nvs_hal};
+    NvsBackend nvs{nvs_hal, "nvs_peers"};
 
     void SetUp() override
     {
@@ -39,8 +39,8 @@ TEST_F(NvsBackendTest, NvsFlahsInitFailPropagatesError)
 {
     EXPECT_CALL(nvs_hal, hal_nvs_flash_init()).WillOnce(Return(ESP_FAIL)); // NVS init fails
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_FAIL, nvs.save(&data, sizeof(PersistentData))); // Returns error
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_FAIL, nvs.save(&data, sizeof(PersistentPeers))); // Returns error
 }
 
 TEST_F(NvsBackendTest, NvsFlahsInitWithMoFreePagesCallsEraseandInit)
@@ -51,8 +51,8 @@ TEST_F(NvsBackendTest, NvsFlahsInitWithMoFreePagesCallsEraseandInit)
         .WillOnce(Return(ESP_OK));                        // Second call returns ESP_OK
     EXPECT_CALL(nvs_hal, hal_nvs_flash_erase()).Times(1); // Must call erase
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_OK, nvs.save(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_OK, nvs.save(&data, sizeof(PersistentPeers)));
 }
 
 TEST_F(NvsBackendTest, NvsFlahsInitWithNewVersionCallsEraseandInit)
@@ -63,8 +63,8 @@ TEST_F(NvsBackendTest, NvsFlahsInitWithNewVersionCallsEraseandInit)
         .WillOnce(Return(ESP_OK));                        // Second call returns ESP_OK
     EXPECT_CALL(nvs_hal, hal_nvs_flash_erase()).Times(1); // Must call erase
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_OK, nvs.save(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_OK, nvs.save(&data, sizeof(PersistentPeers)));
 }
 
 TEST_F(NvsBackendTest, NvsFlahsInitFailsTwoTimesPropagatesError)
@@ -75,20 +75,20 @@ TEST_F(NvsBackendTest, NvsFlahsInitFailsTwoTimesPropagatesError)
         .WillOnce(Return(ESP_FAIL));                      // Second call returns ESP_FAIL
     EXPECT_CALL(nvs_hal, hal_nvs_flash_erase()).Times(1); // Must call erase
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_FAIL, nvs.save(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_FAIL, nvs.save(&data, sizeof(PersistentPeers)));
 }
 
 TEST_F(NvsBackendTest, SecondSaveSkipsFlashInit)
 {
     // Firts save - nvs_initialized_ = false
     EXPECT_CALL(nvs_hal, hal_nvs_flash_init()).Times(1); // Must call hal_nvs_flash_init
-    PersistentData data = {};
-    nvs.save(&data, sizeof(PersistentData));
+    PersistentPeers data = {};
+    nvs.save(&data, sizeof(PersistentPeers));
 
     // Second save - nvs_initialized_ = true
     EXPECT_CALL(nvs_hal, hal_nvs_flash_init()).Times(0); // Must not call hal_nvs_flash_init
-    nvs.save(&data, sizeof(PersistentData));
+    nvs.save(&data, sizeof(PersistentPeers));
 }
 
 // Test NVS Save
@@ -97,8 +97,8 @@ TEST_F(NvsBackendTest, SaveFailsToOpenNvsPropagatesError)
     ON_CALL(nvs_hal, hal_nvs_open(_, _, _)).WillByDefault(Return(ESP_FAIL)); // NVS open fails
     EXPECT_CALL(nvs_hal, hal_nvs_set_blob(_, _, _, _)).Times(0);             // Must not call hal_nvs_set_blob)
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_FAIL, nvs.save(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_FAIL, nvs.save(&data, sizeof(PersistentPeers)));
 }
 
 TEST_F(NvsBackendTest, SaveFailsToSetBlobPropagatesError)
@@ -106,16 +106,16 @@ TEST_F(NvsBackendTest, SaveFailsToSetBlobPropagatesError)
     ON_CALL(nvs_hal, hal_nvs_set_blob(_, _, _, _)).WillByDefault(Return(ESP_FAIL)); // Returns ESP_FAIL
     EXPECT_CALL(nvs_hal, hal_nvs_commit(_)).Times(0);                               // Must not call hal_nvs_commit
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_FAIL, nvs.save(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_FAIL, nvs.save(&data, sizeof(PersistentPeers)));
 }
 
 TEST_F(NvsBackendTest, SaveFailsToCommitPropagatesError)
 {
     ON_CALL(nvs_hal, hal_nvs_commit(_)).WillByDefault(Return(ESP_FAIL)); // Returns ESP_FAIL
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_FAIL, nvs.save(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_FAIL, nvs.save(&data, sizeof(PersistentPeers)));
 }
 
 TEST_F(NvsBackendTest, SaveReturnsSuccess)
@@ -125,15 +125,15 @@ TEST_F(NvsBackendTest, SaveReturnsSuccess)
     EXPECT_CALL(nvs_hal, hal_nvs_commit(_)).Times(1);
     EXPECT_CALL(nvs_hal, hal_nvs_close(_)).Times(1);
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_OK, nvs.save(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_OK, nvs.save(&data, sizeof(PersistentPeers)));
 }
 
 // Load Tests
 TEST_F(NvsBackendTest, LoadReturnsSuccess)
 {
-    PersistentData data = {};
-    EXPECT_EQ(ESP_OK, nvs.load(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_OK, nvs.load(&data, sizeof(PersistentPeers)));
 }
 
 TEST_F(NvsBackendTest, LoadReturnsErroWhenNvsInitFails)
@@ -141,8 +141,8 @@ TEST_F(NvsBackendTest, LoadReturnsErroWhenNvsInitFails)
     ON_CALL(nvs_hal, hal_nvs_flash_init()).WillByDefault(Return(ESP_FAIL)); // NVS init fails
     EXPECT_CALL(nvs_hal, hal_nvs_open(_, _, _)).Times(0);                   // Must not call hal_nvs_open
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_FAIL, nvs.load(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_FAIL, nvs.load(&data, sizeof(PersistentPeers)));
 }
 
 TEST_F(NvsBackendTest, LoadReturnsErroWhenNvsOpenFails)
@@ -150,29 +150,29 @@ TEST_F(NvsBackendTest, LoadReturnsErroWhenNvsOpenFails)
     ON_CALL(nvs_hal, hal_nvs_open(_, _, _)).WillByDefault(Return(ESP_FAIL)); // NVS open fails
     EXPECT_CALL(nvs_hal, hal_nvs_get_blob(_, _, _, _)).Times(0);             // Must not call hal_nvs_get_blob
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_FAIL, nvs.load(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_FAIL, nvs.load(&data, sizeof(PersistentPeers)));
 }
 
 TEST_F(NvsBackendTest, LoadReturnsErroWhenNvsGetBlobFails)
 {
     ON_CALL(nvs_hal, hal_nvs_get_blob(_, _, _, _)).WillByDefault(Return(ESP_FAIL)); // NVS get blob fails
 
-    PersistentData data = {}; // NVS get blob fails
-    EXPECT_EQ(ESP_FAIL, nvs.load(&data, sizeof(PersistentData)));
+    PersistentPeers data = {}; // NVS get blob fails
+    EXPECT_EQ(ESP_FAIL, nvs.load(&data, sizeof(PersistentPeers)));
 }
 
 TEST_F(NvsBackendTest, LoadReturnsErrorWhenSizeMismatch)
 {
-    size_t wrong_size = sizeof(PersistentData) - 1;
+    size_t wrong_size = sizeof(PersistentPeers) - 1;
 
     ON_CALL(nvs_hal, hal_nvs_get_blob(_, _, _, _))
         .WillByDefault(DoAll(
             SetArgPointee<3>(wrong_size), // NVS get blob returns wrong size
             Return(ESP_OK)));             // NVS get blob returns ESP_OK
 
-    PersistentData data = {};
-    EXPECT_EQ(ESP_ERR_INVALID_SIZE, nvs.load(&data, sizeof(PersistentData)));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_ERR_INVALID_SIZE, nvs.load(&data, sizeof(PersistentPeers)));
 }
 
 // ==============================================================================
@@ -180,42 +180,42 @@ TEST_F(NvsBackendTest, LoadReturnsErrorWhenSizeMismatch)
 // ==============================================================================
 
 // Although RTC_DATA_ATTR is not critical in test environment, it is used for consistency with production code
-static RTC_DATA_ATTR PersistentData g_rtc_storage;
+static RTC_DATA_ATTR PersistentPeers g_rtc_storage;
 
 class RtcBackendTest : public ::testing::Test
 {
 protected:
     // For testing purposes, we can use local storage instead of RTC
-    // PersistentData storage = {};  // local storage for RTC
+    // PersistentPeers storage = {};  // local storage for RTC
     // RtcBackend backend{&storage}; // storage injection
 
-    RtcBackend backend{g_rtc_storage}; // storage injection
+    RtcBackend backend{&g_rtc_storage, sizeof(g_rtc_storage)}; // storage injection
 };
 
 TEST_F(RtcBackendTest, SaveAndLoadRoundtrip)
 {
-    PersistentData original = {};
-    original.magic = PersistentData::MAGIC;
-    original.version = PersistentData::VERSION;
-    original.wifi_channel = 7;
+    PersistentPeers original = {};
+    original.magic = PersistentPeers::MAGIC;
+    original.version = PersistentPeers::VERSION;
+    original.num_peers = 2;
 
-    EXPECT_EQ(ESP_OK, backend.save(&original, sizeof(PersistentData)));
+    EXPECT_EQ(ESP_OK, backend.save(&original, sizeof(PersistentPeers)));
 
-    PersistentData loaded = {};
-    EXPECT_EQ(ESP_OK, backend.load(&loaded, sizeof(PersistentData)));
+    PersistentPeers loaded = {};
+    EXPECT_EQ(ESP_OK, backend.load(&loaded, sizeof(PersistentPeers)));
 
     EXPECT_EQ(loaded.magic, original.magic);
-    EXPECT_EQ(loaded.wifi_channel, original.wifi_channel);
+    EXPECT_EQ(loaded.num_peers, original.num_peers);
 }
 
 TEST_F(RtcBackendTest, LoadReturnsSizeErrorWhenTooLarge)
 {
-    PersistentData data = {};
-    EXPECT_EQ(ESP_ERR_INVALID_SIZE, backend.load(&data, sizeof(PersistentData) + 1));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_ERR_INVALID_SIZE, backend.load(&data, sizeof(PersistentPeers) + 1));
 }
 
 TEST_F(RtcBackendTest, SaveReturnsSizeErrorWhenTooLarge)
 {
-    PersistentData data = {};
-    EXPECT_EQ(ESP_ERR_INVALID_SIZE, backend.save(&data, sizeof(PersistentData) + 1));
+    PersistentPeers data = {};
+    EXPECT_EQ(ESP_ERR_INVALID_SIZE, backend.save(&data, sizeof(PersistentPeers) + 1));
 }

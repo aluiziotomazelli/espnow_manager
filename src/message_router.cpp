@@ -4,97 +4,81 @@
 
 #include "message_router.hpp"
 
-static const char *TAG = "MessageRouter";
+static const char* TAG = "MessageRouter";
 
 MessageRouter::MessageRouter(
-    IDiscoveryManager &discovery_manager,
-    ITxManager &tx_manager,
-    IHeartbeatManager &heartbeat_manager,
-    IPairingManager &pairing_manager,
-    IMessageCodec &message_codec)
+    IDiscoveryManager& discovery_manager,
+    ITxManager& tx_manager,
+    IHeartbeatManager& heartbeat_manager,
+    IPairingManager& pairing_manager)
     : discovery_manager_(discovery_manager)
     , tx_manager_(tx_manager)
     , heartbeat_manager_(heartbeat_manager)
     , pairing_manager_(pairing_manager)
-    , message_codec_(message_codec)
+
 {
 }
 
-void MessageRouter::handle_packet(const RxPacket &packet)
+void MessageRouter::handle_packet(const DecodedRxPacket& decoded)
 {
-    auto header_opt = message_codec_.decode_header(packet.data, packet.len);
-    if (!header_opt)
-        return;
-    const MessageHeader &header = header_opt.value();
-
-    tx_manager_.notify_link_alive();
-    // TODO: update last seen here or on manager rx_dispatch_task
-
-    switch (header.msg_type) {
+    switch (decoded.header.msg_type) {
     case MessageType::PAIR_REQUEST:
-        if (packet.len < sizeof(PairRequest)) {
-            ESP_LOGW(TAG, "Malformed PAIR_REQUEST: len %d < %d", (int)packet.len, (int)sizeof(PairRequest));
+        if (decoded.raw.len < sizeof(PairRequest)) {
+            ESP_LOGW(TAG, "Malformed PAIR_REQUEST: len %d < %d", (int)decoded.raw.len, (int)sizeof(PairRequest));
             return;
         }
-        pairing_manager_.handle_request(packet);
+        pairing_manager_.handle_request(decoded);
         break;
     case MessageType::PAIR_RESPONSE:
-        if (packet.len < sizeof(PairResponse)) {
-            ESP_LOGW(TAG, "Malformed PAIR_RESPONSE: len %d < %d", (int)packet.len, (int)sizeof(PairResponse));
+        if (decoded.raw.len < sizeof(PairResponse)) {
+            ESP_LOGW(TAG, "Malformed PAIR_RESPONSE: len %d < %d", (int)decoded.raw.len, (int)sizeof(PairResponse));
             return;
         }
-        pairing_manager_.handle_response(packet);
+        pairing_manager_.handle_response(decoded);
         break;
     case MessageType::HEARTBEAT:
-        heartbeat_manager_.handle_request(packet);
-        break;
-    case MessageType::HEARTBEAT_RESPONSE:
-    {
-        if (packet.len < sizeof(HeartbeatResponse)) {
-            ESP_LOGW(TAG, "Malformed HEARTBEAT_RESPONSE: len %d < %d", (int)packet.len, (int)sizeof(HeartbeatResponse));
+        if (decoded.raw.len < sizeof(HeartbeatMessage)) {
+            ESP_LOGW(TAG, "Malformed HEARTBEAT: len %d < %d", (int)decoded.raw.len, (int)sizeof(HeartbeatMessage));
             return;
         }
-        // MessageRouter just passes header.sender_node_id, resp->wifi_channel is ignored
-        heartbeat_manager_.handle_response(header.sender_node_id);
+        heartbeat_manager_.handle_request(decoded);
+        break;
+
+    case MessageType::HEARTBEAT_RESPONSE:
+    {
+        if (decoded.raw.len < sizeof(HeartbeatResponse)) {
+            ESP_LOGW(
+                TAG, "Malformed HEARTBEAT_RESPONSE: len %d < %d", (int)decoded.raw.len, (int)sizeof(HeartbeatResponse));
+            return;
+        }
+        heartbeat_manager_.handle_response(decoded);
         break;
     }
     case MessageType::ACK:
-        tx_manager_.notify_logical_ack();
-        break;
-    case MessageType::CHANNEL_SCAN_PROBE:
-        discovery_manager_.handle_probe(packet);
-        break;
-    case MessageType::CHANNEL_SCAN_RESPONSE:
-    {
-        // Hub found response, notify link alive to resume TX
-        tx_manager_.notify_link_alive();
-        break;
-    }
-    case MessageType::DATA:
-    case MessageType::COMMAND:
-        if (app_queue_) {
-            if (xQueueSend(app_queue_, &packet, 0) != pdTRUE) {
-                ESP_LOGW(TAG, "App queue full, dropping packet type %d", (int)header.msg_type);
-            }
+        if (decoded.raw.len < sizeof(AckMessage)) {
+            ESP_LOGW(TAG, "Malformed ACK: len %d < %d", (int)decoded.raw.len, (int)sizeof(AckMessage));
+            return;
         }
+        tx_manager_.handle_ack(decoded);
         break;
-    default:
-        break;
-    }
-}
-
-bool MessageRouter::should_dispatch_to_worker(MessageType type)
-{
-    switch (type) {
-    case MessageType::PAIR_REQUEST:
-    case MessageType::PAIR_RESPONSE:
-    case MessageType::HEARTBEAT:
-    case MessageType::HEARTBEAT_RESPONSE:
-    case MessageType::ACK:
     case MessageType::CHANNEL_SCAN_PROBE:
+        if (decoded.raw.len < sizeof(MessageHeader)) {
+            ESP_LOGW(
+                TAG, "Malformed CHANNEL_SCAN_PROBE: len %d < %d", (int)decoded.raw.len, (int)sizeof(MessageHeader));
+            return;
+        }
+        discovery_manager_.handle_scan_probe(decoded);
+        break;
     case MessageType::CHANNEL_SCAN_RESPONSE:
-        return true;
+        if (decoded.raw.len < sizeof(MessageHeader)) {
+            ESP_LOGW(
+                TAG, "Malformed CHANNEL_SCAN_RESPONSE: len %d < %d", (int)decoded.raw.len, (int)sizeof(MessageHeader));
+            return;
+        }
+        discovery_manager_.handle_scan_response(decoded);
+        break;
+
     default:
-        return false;
+        break;
     }
 }
