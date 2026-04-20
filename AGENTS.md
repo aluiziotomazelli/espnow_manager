@@ -50,15 +50,20 @@ Hello Agent! Welcome to the project. Please follow these guidelines to ensure yo
 
 - **Pre-Build Requirements:**
     1. **Directory Navigation**: Before any build, you MUST `cd` into the specific application folder (e.g., `cd test_apps/test_*`).
-    2. **Environment Activation**: The ESP-IDF environment must be sourced within the same shell execution: `. $HOME/esp/esp-idf/export.sh`, the `IDF_PATH` is also configured to `/home/jules/esp/esp-idf`.
+    2. **Environment Activation**: The ESP-IDF environment must be sourced within the same shell execution: `. $HOME/dev/esp/esp-idf/export.sh`
 
 - **Standard Build Procedure:**
-    - **Targeting:** Identify the chip via `sdkconfig.defaults.*` (e.g., `sdkconfig.defaults.esp32c3`). If no `sdkconfig.defaults.*` exists, use `esp32`as default with 4M of flash. Run `idf.py set-target <target>` if the build fails due to wrong architecture.
+    - **Targeting:** Identify the chip via `sdkconfig.defaults.*` (e.g., `sdkconfig.defaults.esp32c3`). If no `sdkconfig.defaults.*` exists, use `esp32` as default with 4M of flash. Run `idf.py set-target <target>` if the build fails due to wrong architecture.
     - **Cleaning:** Use `idf.py fullclean`. If it fails, manually run `rm -rf build/`.
     - **Building:** Chain the commands to ensure path persistence:
-      `cd <app_folder> && . $HOME/esp/esp-idf/export.sh && idf.py build`
+      `cd <app_folder> && . $HOME/dev/esp/esp-idf/export.sh && idf.py build`
+
+- **Host Tests (Linux):** Run unit tests on Linux with mocked HALs:
+  - `./run-tests.sh` - builds, runs tests, generates coverage HTML report
+  - Or manually: `cd host_test && mkdir -p build && cd build && cmake .. && make run_all_tests`
+  - Coverage report: `host_test/coverage/index.html`
       
-## 6. Technical Reference & Documentation
+## 5. Technical Reference & Documentation
 
 - **Official Docs:** Whenever interacting with ESP-IDF Components, consult the documentation, e.g.: [Latest Stable ESP-IDF API Reference](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/index.html) if the target if the target is `esp32`. Remember to consult the app's target (when applicable) and refer to its documentation. Some chips do not support multicore, while others have hardware-level functions that are slightly different.
 - **FreeRTOS (IDF Version):** When handling tasks, queues, or semaphores, specifically consult the **FreeRTOS (IDF)** section of the API Reference. Be aware that ESP-IDF's FreeRTOS has specific differences and optimizations (such as multicore support/affinity) compared to "Vanilla" FreeRTOS. 

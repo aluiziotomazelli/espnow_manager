@@ -84,6 +84,9 @@ public:
     /** @copydoc IStatisticsManager::get_all */
     etl::vector<PeerStatistics, MAX_PEERS> get_all() const override;
 
+    /** @copydoc IStatisticsManager::reset_all */
+    void reset_all() override;
+
 private:
     struct PeerStatisticsEntry
     {

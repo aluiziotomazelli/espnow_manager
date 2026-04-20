@@ -303,6 +303,23 @@ etl::vector<PeerStatistics, MAX_PEERS> StatisticsManager::get_all() const
     return result;
 }
 
+void StatisticsManager::reset_all()
+{
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+        for (auto& entry : entries_) {
+            NodeId node_id = entry.stats.node_id;
+            uint8_t alpha = entry.stats.rssi_alpha;
+            entry.stats = PeerStatistics{};
+            entry.stats.node_id = node_id;
+            entry.stats.rssi_alpha = alpha;
+        }
+        reset_dirty_counters();
+        auto snapshot = build_persist_snapshot();
+        hal_freertos_.semaphore_give(mutex_);
+        storage_.store_stats(snapshot);
+    }
+}
+
 // =========================================================================================
 // Private methods
 // =========================================================================================

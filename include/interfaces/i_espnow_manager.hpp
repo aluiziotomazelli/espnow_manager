@@ -298,6 +298,11 @@ public:
     virtual etl::vector<PeerStatistics, MAX_PEERS> get_all_peer_stats() const = 0;
 
     /**
+     * @brief Resets all statistics for all peers.
+     */
+    virtual void reset_stats() = 0;
+
+    /**
      * @brief Get a list of IDs for peers considered offline
      *
      * A peer is considered offline if no heartbeat has been received within its
