@@ -15,7 +15,7 @@
 static const char* TAG = "FIELD_TEST_HUB";
 
 static constexpr gpio_num_t BOOT_BUTTON_PIN = GPIO_NUM_0;
-static constexpr gpio_num_t LED_RGB_GPIO = GPIO_NUM_38;
+static constexpr gpio_num_t LED_RGB_GPIO = GPIO_NUM_48;
 
 static led_strip_handle_t led_strip;
 
@@ -54,6 +54,9 @@ static void blink_task(void* arg)
         // Restore based on state
         if (EspNowManager::instance().get_node_state() == NodeState::PAIRING) {
             set_led_color(255, 255, 25); // Yellow-ish
+        }
+        else if (EspNowManager::instance().get_node_state() == NodeState::IDLE) {
+            set_led_color(255, 50, 50); // Pale red
         }
         else {
             set_led_color(0, 0, 0);
@@ -129,7 +132,7 @@ extern "C" void app_main(void)
     // Start with pairing active if no peers, otherwise wait for button
     if (manager.get_peers().empty()) {
         ESP_LOGI(TAG, "No peers found, starting pairing mode...");
-        manager.start_pairing(0xFFFFFFFF);
+        manager.start_pairing(30000);
     }
 
     ESP_LOGI(TAG, "HUB initialized. Waiting for messages...");
@@ -161,15 +164,15 @@ extern "C" void app_main(void)
 
         // Block with timeout to allow checking the button and state
         if (xQueueReceive(app_queue, &msg, pdMS_TO_TICKS(100)) == pdTRUE) {
-            
             if (msg.requires_ack) {
                 // Timing check: avoid sending ACKs for messages older than 1000ms
                 int64_t now = esp_timer_get_time() / 1000;
                 if (now - msg.timestamp_ms < 1000) {
                     manager.confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK);
-                } else {
-                    ESP_LOGW(TAG, "Message from %d too old (%lld ms), skipping ACK",
-                             msg.sender_id, now - msg.timestamp_ms);
+                }
+                else {
+                    ESP_LOGW(
+                        TAG, "Message from %d too old (%lld ms), skipping ACK", msg.sender_id, now - msg.timestamp_ms);
                 }
             }
 
@@ -180,10 +183,15 @@ extern "C" void app_main(void)
             // Print info only on reception
             PeerStatistics stats;
             if (manager.get_peer_stats(msg.sender_id, stats)) {
-                printf("Node %d | Seq: %u | RSSI: %d dBm | Avg: %d | RX: %lu | S: %lu | L: %lu\n",
-                       msg.sender_id, msg.sequence_number, stats.rssi_last, stats.rssi_avg,
-                       (unsigned long)stats.packets_rx, (unsigned long)stats.packets_sent,
-                       (unsigned long)stats.packets_lost);
+                printf(
+                    "Node %d | Seq: %u | RSSI: %d dBm | Avg: %d | RX: %lu | S: %lu | L: %lu\n",
+                    msg.sender_id,
+                    msg.sequence_number,
+                    stats.rssi_last,
+                    stats.rssi_avg,
+                    (unsigned long)stats.packets_rx,
+                    (unsigned long)stats.packets_sent,
+                    (unsigned long)stats.packets_lost);
             }
         }
     }
