@@ -172,11 +172,4 @@ public:
      *         The vector may be empty if no peers are tracked.
      */
     virtual etl::vector<PeerStatistics, MAX_PEERS> get_all() const = 0;
-
-    /**
-     * @brief Resets all statistics for all peers.
-     *
-     * Clears counters and EMA averages, and flushes the reset state to persistent storage.
-     */
-    virtual void reset_all() = 0;
 };

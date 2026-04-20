@@ -147,9 +147,6 @@ public:
     /** @copydoc IEspNowManager::get_all_peer_stats */
     etl::vector<PeerStatistics, MAX_PEERS> get_all_peer_stats() const override;
 
-    /** @copydoc IEspNowManager::reset_stats */
-    void reset_stats() override;
-
 protected:
     // --- Private Members ---
     EspNowConfig config_{};

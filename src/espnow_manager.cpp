@@ -473,13 +473,6 @@ etl::vector<PeerStatistics, MAX_PEERS> EspNowManager::get_all_peer_stats() const
     return stats_mgr_->get_all();
 }
 
-void EspNowManager::reset_stats()
-{
-    if (stats_mgr_ != nullptr) {
-        stats_mgr_->reset_all();
-    }
-}
-
 // =========================================================================================
 // ESP-NOW callbacks - called by ESP-NOW driver in ISR context --- LCOV_EXCL_START
 // =========================================================================================
@@ -669,7 +662,6 @@ AppMessage EspNowManager::build_app_message(const DecodedRxPacket& decoded)
     msg.requires_ack = decoded.header.requires_ack;
     memcpy(msg.src_mac, decoded.raw.src_mac, 6);
     msg.rssi = decoded.raw.rssi;
-    msg.timestamp_ms = decoded.raw.timestamp_ms;
 
     const size_t payload_offset = sizeof(MessageHeader);
     msg.payload_len = decoded.raw.len - payload_offset - CRC_SIZE;

@@ -11,13 +11,10 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
 
-#include "driver/gpio.h"
 #include "espnow_manager.hpp"
 #include "test_config.hpp"
 
 static const char* TAG = "FIELD_TEST_NODE";
-
-static constexpr gpio_num_t BOOT_BUTTON_PIN = GPIO_NUM_0;
 
 // I2C Configuration
 static constexpr i2c_port_t I2C_PORT = I2C_NUM_0;
@@ -115,18 +112,12 @@ static esp_lcd_panel_handle_t lcd_init()
     static esp_lcd_panel_handle_t panel_handle = NULL;
 
     // Clean up if re-initializing
-    if (panel_handle) {
+    if (panel_handle)
         esp_lcd_panel_del(panel_handle);
-        panel_handle = NULL;
-    }
-    if (io_handle) {
+    if (io_handle)
         esp_lcd_panel_io_del(io_handle);
-        io_handle = NULL;
-    }
-    if (i2c_bus) {
+    if (i2c_bus)
         i2c_del_master_bus(i2c_bus);
-        i2c_bus = NULL;
-    }
 
     i2c_master_bus_config_t bus_config = {};
     bus_config.i2c_port = I2C_PORT;
@@ -196,23 +187,8 @@ static void draw_text(uint8_t* fb, int x, int y, const char* str)
 
 extern "C" void app_main(void)
 {
-    // Check BOOT button to decide whether to clear NVS (and peers)
-    gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = (1ULL << BOOT_BUTTON_PIN);
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
-    gpio_config(&io_conf);
-
-    // Give some time for the pull-up to stabilize
-    vTaskDelay(pdMS_TO_TICKS(50));
-    bool boot_pressed = (gpio_get_level(BOOT_BUTTON_PIN) == 0);
-
-    if (boot_pressed) {
-        ESP_LOGI(TAG, "BOOT button pressed at startup, erasing NVS...");
-        ESP_ERROR_CHECK(nvs_flash_erase());
-    }
+    // Clear NVS to ensure a fresh start for every test
+    ESP_ERROR_CHECK(nvs_flash_erase());
 
     wifi_init();
     vTaskDelay(pdMS_TO_TICKS(500));
@@ -230,12 +206,6 @@ extern "C" void app_main(void)
 
     EspNowManager& manager = EspNowManager::instance();
     ESP_ERROR_CHECK(manager.init(config));
-
-    // If we didn't erase NVS, we at least reset the stats for a clean run
-    if (!boot_pressed) {
-        ESP_LOGI(TAG, "Standard boot, resetting session statistics...");
-        manager.reset_stats();
-    }
 
     uint32_t counter = 0;
     static uint8_t frame_buffer[LCD_H_RES * LCD_V_RES / 8];
@@ -257,24 +227,13 @@ extern "C" void app_main(void)
             snprintf(
                 buf, sizeof(buf), "S:%lu L:%lu", (unsigned long)stats.packets_sent, (unsigned long)stats.packets_lost);
             draw_text(frame_buffer, 0, 16, buf);
-
-            snprintf(
-                buf,
-                sizeof(buf),
-                "RTT:%lu AVG:%lu",
-                (unsigned long)stats.rtt_last_ms,
-                (unsigned long)stats.rtt_avg_ms);
-            draw_text(frame_buffer, 0, 32, buf);
-
             ESP_LOGI(
                 TAG,
-                "RSSI: %d AVG: %d S: %lu L: %lu RTT: %lu AVG: %lu",
+                "RSSI: %d AVG: %d S: %lu L: %lu",
                 stats.rssi_last,
                 stats.rssi_avg,
                 (unsigned long)stats.packets_sent,
-                (unsigned long)stats.packets_lost,
-                (unsigned long)stats.rtt_last_ms,
-                (unsigned long)stats.rtt_avg_ms);
+                (unsigned long)stats.packets_lost);
         }
         else {
             draw_text(frame_buffer, 0, 0, "WAITING HUB...");
