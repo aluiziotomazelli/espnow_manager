@@ -236,8 +236,11 @@ void TxManager::tx_task()
         {
             // Non-blocking queue read: the queue alone does not control sleep.
             if (freertos_hal_.queue_receive(tx_queue_, &structured_packet, 0) == pdTRUE) {
-                // Update sequence number in header before encoding
-                structured_packet.header.sequence_number = sequence_counter_++;
+                // Update sequence number only for non-ACK packets.
+                // ACKs must preserve the sequence number of the packet they are acknowledging.
+                if (structured_packet.header.msg_type != MessageType::ACK) {
+                    structured_packet.header.sequence_number = sequence_counter_++;
+                }
 
                 // Encode the packet into raw wire format
                 raw_packet.len = codec_.encode(
