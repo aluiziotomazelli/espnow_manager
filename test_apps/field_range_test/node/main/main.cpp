@@ -11,10 +11,13 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
 
+#include "driver/gpio.h"
 #include "espnow_manager.hpp"
 #include "test_config.hpp"
 
 static const char* TAG = "FIELD_TEST_NODE";
+
+static constexpr gpio_num_t BOOT_BUTTON_PIN = GPIO_NUM_0;
 
 // I2C Configuration
 static constexpr i2c_port_t I2C_PORT = I2C_NUM_0;
@@ -185,10 +188,32 @@ static void draw_text(uint8_t* fb, int x, int y, const char* str)
     }
 }
 
+static const char* state_to_str(NodeState state)
+{
+    switch (state) {
+    case NodeState::IDLE: return "IDLE";
+    case NodeState::PAIRING: return "PAIRING";
+    case NodeState::OPERATIONAL: return "OPERATIONAL";
+    case NodeState::PAIRING_SCAN: return "P-SCAN";
+    case NodeState::RECOVERY_SCAN: return "R-SCAN";
+    default: return "UNKNOWN";
+    }
+}
+
 extern "C" void app_main(void)
 {
-    // Clear NVS to ensure a fresh start for every test
-    ESP_ERROR_CHECK(nvs_flash_erase());
+    // Always clear NVS for field test Node to ensure clean state
+    ESP_LOGW(TAG, "Field test Node: Performing mandatory NVS erase for clean start...");
+    nvs_flash_erase();
+
+    // Configure BOOT button
+    gpio_config_t io_conf = {};
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pin_bit_mask = (1ULL << BOOT_BUTTON_PIN);
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpio_config(&io_conf);
 
     wifi_init();
     vTaskDelay(pdMS_TO_TICKS(500));
@@ -207,10 +232,21 @@ extern "C" void app_main(void)
     EspNowManager& manager = EspNowManager::instance();
     ESP_ERROR_CHECK(manager.init(config));
 
+    // Force pairing mode on boot for 30 seconds
+    ESP_LOGI(TAG, "Entering pairing mode for 30s...");
+    manager.start_pairing(30000);
+
     uint32_t counter = 0;
     static uint8_t frame_buffer[LCD_H_RES * LCD_V_RES / 8];
 
     while (true) {
+        // Check BOOT button for manual NVS erase
+        if (gpio_get_level(BOOT_BUTTON_PIN) == 0) {
+            ESP_LOGW(TAG, "BOOT button pressed! Erasing NVS and restarting...");
+            nvs_flash_erase();
+            esp_restart();
+        }
+
         uint8_t payload[4];
         memcpy(payload, &counter, sizeof(uint32_t));
         manager.send_data(ReservedIds::HUB, field_test::TEST_PAYLOAD_TYPE, payload, sizeof(payload), true);
@@ -218,6 +254,7 @@ extern "C" void app_main(void)
 
         PeerStatistics stats;
         bool has_stats = manager.get_peer_stats(ReservedIds::HUB, stats);
+        NodeState current_state = manager.get_node_state();
 
         memset(frame_buffer, 0, sizeof(frame_buffer));
         char buf[64];
@@ -227,17 +264,31 @@ extern "C" void app_main(void)
             snprintf(
                 buf, sizeof(buf), "S:%lu L:%lu", (unsigned long)stats.packets_sent, (unsigned long)stats.packets_lost);
             draw_text(frame_buffer, 0, 16, buf);
+
+            snprintf(
+                buf,
+                sizeof(buf),
+                "RTT:%lu AVG:%lu",
+                (unsigned long)stats.rtt_last_ms,
+                (unsigned long)stats.rtt_avg_ms);
+            draw_text(frame_buffer, 0, 32, buf);
+
             ESP_LOGI(
                 TAG,
-                "RSSI: %d AVG: %d S: %lu L: %lu",
+                "RSSI: %d AVG: %d S: %lu L: %lu RTT: %lu AVG: %lu",
                 stats.rssi_last,
                 stats.rssi_avg,
                 (unsigned long)stats.packets_sent,
-                (unsigned long)stats.packets_lost);
+                (unsigned long)stats.packets_lost,
+                (unsigned long)stats.rtt_last_ms,
+                (unsigned long)stats.rtt_avg_ms);
         }
         else {
             draw_text(frame_buffer, 0, 0, "WAITING HUB...");
         }
+
+        snprintf(buf, sizeof(buf), "ST: %s", state_to_str(current_state));
+        draw_text(frame_buffer, 0, 48, buf);
 
         if (panel) {
             esp_err_t draw_err = esp_lcd_panel_draw_bitmap(panel, 0, 0, LCD_H_RES, LCD_V_RES, frame_buffer);

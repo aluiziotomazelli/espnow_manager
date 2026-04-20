@@ -6,10 +6,61 @@
 #include "esp_netif.h"
 #include "esp_log.h"
 
+#include "driver/gpio.h"
+#include "led_strip.h"
 #include "espnow_manager.hpp"
 #include "test_config.hpp"
 
 static const char* TAG = "FIELD_TEST_HUB";
+
+static constexpr gpio_num_t BOOT_BUTTON_PIN = GPIO_NUM_0;
+static constexpr gpio_num_t LED_RGB_GPIO = GPIO_NUM_48;
+
+static led_strip_handle_t led_strip;
+
+static void init_led()
+{
+    led_strip_config_t strip_config = {};
+    strip_config.strip_gpio_num = LED_RGB_GPIO;
+    strip_config.max_leds = 1;
+    strip_config.led_model = LED_MODEL_WS2812;
+    strip_config.color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB;
+    strip_config.flags.invert_out = false;
+
+    led_strip_rmt_config_t rmt_config = {};
+    rmt_config.clk_src = RMT_CLK_SRC_DEFAULT;
+    rmt_config.resolution_hz = 10 * 1000 * 1000; // 10MHz
+    rmt_config.flags.with_dma = false;
+
+    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip));
+    led_strip_clear(led_strip);
+}
+
+static void set_led_color(uint8_t r, uint8_t g, uint8_t b)
+{
+    if (led_strip) {
+        led_strip_set_pixel(led_strip, 0, r, g, b);
+        led_strip_refresh(led_strip);
+    }
+}
+
+static void blink_task(void* arg)
+{
+    while (true) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        set_led_color(0, 255, 0); // Green
+        vTaskDelay(pdMS_TO_TICKS(50));
+        // Restore based on state
+        if (EspNowManager::instance().get_node_state() == NodeState::PAIRING) {
+            set_led_color(255, 255, 25); // Yellow-ish
+        }
+        else {
+            set_led_color(0, 0, 0);
+        }
+    }
+}
+
+static TaskHandle_t blink_task_handle = nullptr;
 
 static void wifi_init()
 {
@@ -31,10 +82,22 @@ static void wifi_init()
 
 extern "C" void app_main(void)
 {
-    // Clear NVS to ensure a fresh start
-    ESP_ERROR_CHECK(nvs_flash_erase());
-    
+    // Always clear NVS for field test Hub to ensure clean peer list
+    ESP_LOGW(TAG, "Field test Hub: Performing mandatory NVS erase for clean start...");
+    nvs_flash_erase();
+
+    // Configure BOOT button
+    gpio_config_t io_conf = {};
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pin_bit_mask = (1ULL << BOOT_BUTTON_PIN);
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpio_config(&io_conf);
+
     wifi_init();
+    init_led();
+    xTaskCreate(blink_task, "blink_task", 2048, nullptr, 10, &blink_task_handle);
 
     QueueHandle_t app_queue = xQueueCreate(20, sizeof(AppMessage));
 
@@ -51,17 +114,46 @@ extern "C" void app_main(void)
         return;
     }
 
-    manager.start_pairing(0xFFFFFFFF); 
+    // Force pairing mode on boot for 30 seconds
+    ESP_LOGI(TAG, "Entering pairing mode for 30s...");
+    manager.start_pairing(30000);
 
-    ESP_LOGI(TAG, "HUB re-initialized. Waiting for messages...");
+    ESP_LOGI(TAG, "HUB initialized. Waiting for messages...");
 
     AppMessage msg;
+    NodeState last_state = manager.get_node_state();
+
     while (true) {
-        // Block indefinitely until a message arrives
-        if (xQueueReceive(app_queue, &msg, portMAX_DELAY) == pdTRUE) {
+        // Check BOOT button for manual NVS erase
+        if (gpio_get_level(BOOT_BUTTON_PIN) == 0) {
+            ESP_LOGW(TAG, "BOOT button pressed! Erasing NVS and restarting...");
+            nvs_flash_erase();
+            esp_restart();
+        }
+
+        NodeState current_state = manager.get_node_state();
+        if (current_state != last_state) {
+            if (current_state == NodeState::PAIRING) {
+                set_led_color(255, 255, 25); // Yellow-ish
+            }
+            else {
+                set_led_color(0, 0, 0); // Off
+            }
+            last_state = current_state;
+        }
+
+        // Block with timeout to allow checking the button
+        if (xQueueReceive(app_queue, &msg, pdMS_TO_TICKS(100)) == pdTRUE) {
             
             if (msg.requires_ack) {
-                manager.confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK);
+                esp_err_t ack_err = manager.confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK);
+                if (ack_err == ESP_ERR_NOT_FOUND) {
+                    ESP_LOGW(TAG, "Received message from unregistered Node %d. Please re-pair.", msg.sender_id);
+                }
+            }
+
+            if (blink_task_handle) {
+                xTaskNotifyGive(blink_task_handle);
             }
 
             // Print info only on reception
