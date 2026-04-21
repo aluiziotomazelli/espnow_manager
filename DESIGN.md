@@ -21,6 +21,7 @@ graph TD
     EM --> SM["StorageManager\n(RTC + NVS Persistence)"]
     EM --> CM["ChannelMonitor\n(WiFi Channel Monitoring)"]
     EM --> NSM["NodeStateMachine\n(State Governance)"]
+    EM --> STM["StatisticsManager\n(Link Quality Metrics)"]
 
     EM --> DM["DiscoveryManager\n(Probing / Monitoring + Own Task)"]
     EM --> HM["HeartbeatManager\n(Link Health)"]
@@ -72,6 +73,7 @@ graph TD
 | `PeerManager` | Peer database and MAC-to-Channel mapping | **IEspNowHAL**, IFreeRTOSHAL | Various Managers |
 | `StorageManager` | High-level data persistence logic | IStorageManager (NVS/RTC) | `PeerManager` |
 | `ChannelMonitor` | WiFi channel change detection | **IWiFiHAL**, IFreeRTOSHAL | `rx_task` |
+| `StatisticsManager` | Per-peer link quality metrics (RSSI, RTT, loss) | IFreeRTOSHAL | `rx_task`, `tx_task` |
 | `NodeStateMachine` | High-level node state governance | None (pure state machine) | `EspNowManager` |
 | `MessageCodec` | Protocol serialization and CRC validation | None (pure logic) | `TxManager`, `EspNowManager`, `DiscoveryManager` |
 
@@ -116,7 +118,6 @@ Monitors WiFi channel changes using only **IWiFiHAL**:
     ```cpp
     hal_freertos_.task_notify(rx_task_handle_, NOTIFY_CHANNEL_CHANGED, eSetBits);
     ```
--   **No Observer Interface:** Does NOT use `IChannelObserver` — direct notification only.
 -   Enables automatic channel recovery when HUB changes channels.
 
 ### Specialized Managers (Heartbeat, Pairing)
