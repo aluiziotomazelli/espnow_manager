@@ -78,6 +78,9 @@ public:
     /** @copydoc IStatisticsManager::on_retry */
     void on_retry(NodeId node_id) override;
 
+    /** @copydoc IStatisticsManager::sync_peers */
+    void sync_peers(const etl::ivector<PeerInfo>& known_peers) override;
+
     /** @copydoc IStatisticsManager::get */
     bool get(NodeId node_id, PeerStatistics& out) const override;
 

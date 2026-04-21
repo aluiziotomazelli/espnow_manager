@@ -22,6 +22,8 @@ public:
     MOCK_METHOD(void, on_packet_lost, (NodeId node_id), (override));
     MOCK_METHOD(void, on_retry, (NodeId node_id), (override));
 
+    MOCK_METHOD(void, sync_peers, (const etl::ivector<PeerInfo>& known_peers), (override));
+
     MOCK_METHOD(bool, get, (NodeId node_id, PeerStatistics& out), (const, override));
     MOCK_METHOD((etl::vector<PeerStatistics, MAX_PEERS>), get_all, (), (const, override));
 };

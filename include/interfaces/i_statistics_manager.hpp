@@ -78,6 +78,16 @@ public:
      */
     virtual void on_peer_removed(NodeId node_id) = 0;
 
+    /**
+     * @brief Removes statistics entries for peers not present in @p known_peers.
+     *
+     * Call this after any operation that may have silently changed the peer list
+     * (e.g., LRU eviction or MAC reassignment inside PeerManager::add).
+     *
+     * @param known_peers Current authoritative list of peers from PeerManager.
+     */
+    virtual void sync_peers(const etl::ivector<PeerInfo>& known_peers) = 0;
+
     // --- Rx events (called from rx_task) ---
 
     /**

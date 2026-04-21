@@ -227,6 +227,8 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
     for (const auto& peer : peers) {
         stats_mgr_->on_peer_added(peer.node_id, peer.heartbeat_interval_ms);
     }
+    // Remove any stats entry that has no matching peer (NVS inconsistency)
+    stats_mgr_->sync_peers(peers);
 
     // NodeStateMachine decides the initial state
     NodeState old_state = node_fsm_->get_state();
@@ -419,6 +421,8 @@ esp_err_t EspNowManager::add_peer(NodeId node_id, const uint8_t* mac, NodeType t
     esp_err_t ret = peer_manager_->add(node_id, mac, type, heartbeat_interval_ms);
     if (ret == ESP_OK) {
         stats_mgr_->on_peer_added(node_id, heartbeat_interval_ms);
+        // Sync in case PeerManager silently evicted or reassigned a peer
+        stats_mgr_->sync_peers(peer_manager_->get_all());
     }
     return ret;
 }
@@ -691,9 +695,12 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
 
     // NOTIFY_PEER_ADDED is set by PairingManager::notify_rx_task_peer_add()
     if ((notifications & NOTIFY_PEER_ADDED) == NOTIFY_PEER_ADDED) {
-        for (const auto& p : peer_manager_->get_all()) {
+        auto peers = peer_manager_->get_all();
+        for (const auto& p : peers) {
             stats_mgr_->on_peer_added(p.node_id, p.heartbeat_interval_ms);
         }
+        // Sync in case PairingManager's add() triggered a silent eviction/reassign
+        stats_mgr_->sync_peers(peers);
     }
 
     // NOTIFY_PAIRING_DONE is set by PairingManager::notify_rx_task_pairing_done()

@@ -354,4 +354,42 @@ TEST_F(StatisticsManagerTest, InitLoadsPersistedStats)
     EXPECT_EQ(stats.rssi_avg, -55);
     EXPECT_EQ(stats.packets_rx, 50);
     EXPECT_EQ(stats.rtt_avg_ms, 15);
-}
+    }
+
+    TEST_F(StatisticsManagerTest, SyncPeersRemovesOrphanEntry)
+    {
+    NodeId id1 = 1;
+    NodeId id2 = 2;
+    sut->on_peer_added(id1, 1000);
+    sut->on_peer_added(id2, 1000);
+
+    etl::vector<PeerInfo, MAX_PEERS> known_peers;
+    PeerInfo p1; p1.node_id = id1;
+    known_peers.push_back(p1);
+
+    sut->sync_peers(known_peers);
+
+    PeerStatistics stats;
+    EXPECT_TRUE(sut->get(id1, stats));
+    EXPECT_FALSE(sut->get(id2, stats));
+    }
+
+    TEST_F(StatisticsManagerTest, SyncPeersPreservesKnownEntries)
+    {
+    NodeId id1 = 1;
+    NodeId id2 = 2;
+    sut->on_peer_added(id1, 1000);
+    sut->on_peer_added(id2, 1000);
+
+    etl::vector<PeerInfo, MAX_PEERS> known_peers;
+    PeerInfo p1, p2;
+    p1.node_id = id1; p2.node_id = id2;
+    known_peers.push_back(p1);
+    known_peers.push_back(p2);
+
+    sut->sync_peers(known_peers);
+
+    PeerStatistics stats;
+    EXPECT_TRUE(sut->get(id1, stats));
+    EXPECT_TRUE(sut->get(id2, stats));
+    }

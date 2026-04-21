@@ -51,7 +51,7 @@ esp_err_t StatisticsManager::deinit()
         std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>> snapshot;
 
         if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
-            snapshot = build_persist_snapshot();  // capture before clearing
+            snapshot = build_persist_snapshot(); // capture before clearing
             entries_.clear();
             hal_freertos_.semaphore_give(mutex_);
         }
@@ -90,6 +90,20 @@ void StatisticsManager::on_peer_removed(NodeId node_id)
             entries_.begin(), entries_.end(), [node_id](const auto& e) { return e.stats.node_id == node_id; });
         if (it != entries_.end()) {
             entries_.erase(it);
+        }
+        hal_freertos_.semaphore_give(mutex_);
+    }
+}
+
+void StatisticsManager::sync_peers(const etl::ivector<PeerInfo>& known_peers)
+{
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) == pdTRUE) {
+        auto it = entries_.begin();
+        while (it != entries_.end()) {
+            bool found = std::any_of(known_peers.begin(), known_peers.end(), [&](const PeerInfo& p) {
+                return p.node_id == it->stats.node_id;
+            });
+            it = found ? std::next(it) : entries_.erase(it);
         }
         hal_freertos_.semaphore_give(mutex_);
     }
