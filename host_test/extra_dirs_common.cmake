@@ -8,7 +8,6 @@ get_filename_component(PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 # Append extra component directories so IDF can find our local components.
 list(APPEND EXTRA_COMPONENT_DIRS
     "${PROJECT_ROOT}"
-    "${PROJECT_ROOT}/external"
     "${PROJECT_ROOT}/host_test/gtest"
     "${PROJECT_ROOT}/host_test/common"
     "$ENV{IDF_PATH}/tools/mocks/esp_wifi"
