@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-04-24
+
+### Fixed
+- Fixed dependency resolution for the ETL library when using `espnow_manager` as an external component (e.g., via `idf_component.yml`).
+- Integrated ETL directly into the component's build process using `FetchContent`, eliminating the need for separate `EXTRA_COMPONENT_DIRS` configuration in consumer applications.
+
 ## [1.0.0] - 2026-04-15
 
 ### Architecture
@@ -26,4 +32,5 @@ A central **`rx_task`** acts as the decision-making hub, receiving direct task n
 - **Network Statistics**: Per-peer tracking of RSSI, RTT (Exponential Moving Averages), and packet delivery metrics.
 - **Host-Based Testing**: Comprehensive test suite using GoogleTest/GoogleMock with 100% logic coverage.
 
+[1.0.1]: https://github.com/aluiziotomazelli/espnow_manager/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/aluiziotomazelli/espnow_manager/releases/tag/v1.0.0
