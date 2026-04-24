@@ -7,7 +7,6 @@ get_filename_component(PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../" ABSOLUTE)
 
 list(APPEND EXTRA_COMPONENT_DIRS
     "${PROJECT_ROOT}" 
-    "${PROJECT_ROOT}/external" 
     "$ENV{IDF_PATH}/components" 
     "$ENV{IDF_PATH}/tools/unit-test-app/components/test_utils" 
 )

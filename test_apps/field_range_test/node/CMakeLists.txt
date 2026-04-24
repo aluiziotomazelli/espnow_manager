@@ -5,7 +5,6 @@ get_filename_component(PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../" ABSOLU
 
 list(APPEND EXTRA_COMPONENT_DIRS
     "${PROJECT_ROOT}"
-    "${PROJECT_ROOT}/external"
 )
 
 set(COMPONENTS main espnow_manager)
