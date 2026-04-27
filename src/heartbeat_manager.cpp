@@ -4,6 +4,8 @@
 
 #include "heartbeat_manager.hpp"
 
+namespace espnow {
+
 static const char* TAG = "HeartbeatMgr";
 
 HeartbeatManager::HeartbeatManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, ITimerHAL& hal_timer)
@@ -115,3 +117,5 @@ int64_t HeartbeatManager::get_time_ms() const
 {
     return hal_timer_.get_time_us() / 1000;
 }
+
+} // namespace espnow

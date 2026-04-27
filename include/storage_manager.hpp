@@ -11,6 +11,7 @@
 
 #include "i_persistence_backend.hpp"
 #include "i_storage_manager.hpp"
+namespace espnow {
 
 // Forward declarations for PersistentPeer and MAX_PEERS if they are defined elsewhere and needed.
 // Assuming PersistentPeer is defined and MAX_PEERS is available in the scope.
@@ -182,3 +183,5 @@ private:
     esp_err_t validate_stats_data(const PersistentStats& stats);
     bool is_data_dirty(const PersistentStats& new_stats);
 };
+
+} // namespace espnow

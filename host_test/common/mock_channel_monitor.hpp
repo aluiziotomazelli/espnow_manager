@@ -4,6 +4,8 @@
 #include <gmock/gmock.h>
 #include "i_channel_monitor.hpp"
 
+namespace espnow {
+
 class MockChannelMonitor : public IChannelMonitor
 {
 public:
@@ -12,3 +14,5 @@ public:
     MOCK_METHOD(void, tick, (int64_t now_ms), (override));
     MOCK_METHOD(uint8_t, get_wifi_channel, (), (override));
 };
+
+} // namespace espnow

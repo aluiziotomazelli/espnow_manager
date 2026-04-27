@@ -10,6 +10,7 @@
 #include "i_channel_monitor.hpp"
 #include "i_hal_freertos.hpp"
 #include "i_hal_wifi.hpp"
+namespace espnow {
 
 class ChannelMonitor : public IChannelMonitor
 {
@@ -42,3 +43,4 @@ private:
     uint8_t verify_wifi_channel();
     void notify_rx_task(uint32_t notifications);
 };
+} // namespace espnow

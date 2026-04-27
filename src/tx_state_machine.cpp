@@ -1,6 +1,10 @@
+// src/tx_state_machine.cpp
+
 #include "tx_state_machine.hpp"
 #include "protocol_types.hpp"
 #include "esp_log.h"
+
+namespace espnow {
 
 static const char* TAG = "TxStateMachine";
 
@@ -91,3 +95,5 @@ TxState TxStateMachine::on_max_retries()
     current_state_ = TxState::IDLE;
     return current_state_;
 }
+
+} // namespace espnow

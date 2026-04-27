@@ -5,6 +5,7 @@
 
 #include "i_hal_nvs.hpp"
 #include "nvs_flash.h"
+namespace espnow {
 
 /**
  * Class NvsHAL
@@ -34,3 +35,5 @@ public:
     }
     esp_err_t hal_nvs_commit(nvs_handle_t handle) override { return nvs_commit(handle); }
 };
+
+} // namespace espnow

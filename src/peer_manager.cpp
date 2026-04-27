@@ -1,17 +1,15 @@
+// src/peer_manager.cpp
+
 #include <algorithm>
 #include <cstring>
 
 #include "esp_log.h"
-// #include "esp_now.h"
-// #include "esp_wifi.h"
-// #include "freertos/FreeRTOS.h"
-// #include "freertos/queue.h"
-// #include "freertos/semphr.h"
-// #include "freertos/task.h"
 
 #include "i_storage_manager.hpp"
 #include "i_hal_espnow.hpp"
 #include "peer_manager.hpp"
+
+namespace espnow {
 
 static const char* TAG = "PeerManager";
 
@@ -67,8 +65,7 @@ esp_err_t PeerManager::add(NodeId id, const uint8_t* mac, NodeType type, uint32_
     // Snapshot under mutex, then release before NVS write.
     etl::vector<PersistentPeer, MAX_PEERS> snapshot;
     if (ret == ESP_OK) {
-        for (const auto& p : peers_)
-            snapshot.push_back(info_to_persistent(p));
+        for (const auto& p : peers_) snapshot.push_back(info_to_persistent(p));
     }
     hal_freertos_.semaphore_give(mutex_);
 
@@ -94,10 +91,9 @@ esp_err_t PeerManager::remove(NodeId id)
     esp_err_t ret = hal_espnow_.hal_esp_now_del_peer(it->mac);
 
     etl::vector<PersistentPeer, MAX_PEERS> snapshot;
-    if (ret == ESP_OK) {               // If peer is removed successfully from driver
-        peers_.erase(it);              // Remove from peer list
-        for (const auto& p : peers_)
-            snapshot.push_back(info_to_persistent(p));
+    if (ret == ESP_OK) {  // If peer is removed successfully from driver
+        peers_.erase(it); // Remove from peer list
+        for (const auto& p : peers_) snapshot.push_back(info_to_persistent(p));
     }
 
     hal_freertos_.semaphore_give(mutex_);
@@ -378,3 +374,5 @@ PeerManager::add_new_peer_to_empty_slot(NodeId id, const uint8_t* mac, NodeType 
 
     return ret;
 }
+
+} // namespace espnow

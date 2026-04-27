@@ -7,18 +7,20 @@
 #include "persistence_backend.hpp"
 #include "i_hal_nvs.hpp"
 
-static const char *TAG = "PersistenceBackend";
-static const char *NVS_NAMESPACE = "espnow_store";
+namespace espnow {
+
+static const char* TAG = "PersistenceBackend";
+static const char* NVS_NAMESPACE = "espnow_store";
 
 // --- RTC Backend ---
 
-RtcBackend::RtcBackend(void *storage, size_t size)
+RtcBackend::RtcBackend(void* storage, size_t size)
     : storage_(storage)
     , size_(size)
 {
 }
 
-esp_err_t RtcBackend::load(void *data, size_t size)
+esp_err_t RtcBackend::load(void* data, size_t size)
 {
     if (size > size_) {
         return ESP_ERR_INVALID_SIZE;
@@ -27,7 +29,7 @@ esp_err_t RtcBackend::load(void *data, size_t size)
     return ESP_OK;
 }
 
-esp_err_t RtcBackend::save(const void *data, size_t size)
+esp_err_t RtcBackend::save(const void* data, size_t size)
 {
     if (size > size_) {
         return ESP_ERR_INVALID_SIZE;
@@ -38,13 +40,13 @@ esp_err_t RtcBackend::save(const void *data, size_t size)
 
 // --- NVS Backend ---
 
-NvsBackend::NvsBackend(INvsHAL &nvs_hal, const char *nvs_key)
+NvsBackend::NvsBackend(INvsHAL& nvs_hal, const char* nvs_key)
     : nvs_(nvs_hal)
     , nvs_key_(nvs_key)
 {
 }
 
-esp_err_t NvsBackend::load(void *data, size_t size)
+esp_err_t NvsBackend::load(void* data, size_t size)
 {
     esp_err_t err = init_nvs();
     if (err != ESP_OK) {
@@ -71,7 +73,7 @@ esp_err_t NvsBackend::load(void *data, size_t size)
     return ESP_OK;
 }
 
-esp_err_t NvsBackend::save(const void *data, size_t size)
+esp_err_t NvsBackend::save(const void* data, size_t size)
 {
     esp_err_t err = init_nvs();
     if (err != ESP_OK) {
@@ -115,3 +117,5 @@ esp_err_t NvsBackend::init_nvs()
     }
     return err;
 }
+
+} // namespace espnow

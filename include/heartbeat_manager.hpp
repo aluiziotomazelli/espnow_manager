@@ -5,6 +5,7 @@
 #include "i_tx_manager.hpp"
 #include "i_hal_freertos.hpp"
 #include "i_hal_timer.hpp"
+namespace espnow {
 
 class HeartbeatManager : public IHeartbeatManager
 {
@@ -53,3 +54,5 @@ private:
     bool is_initialized_ = false;
     int64_t last_heartbeat_ms_ = 0;
 };
+
+} // namespace espnow

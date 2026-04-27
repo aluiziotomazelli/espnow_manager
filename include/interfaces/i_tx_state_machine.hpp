@@ -5,6 +5,7 @@
 
 #include "espnow_types.hpp"
 #include "protocol_messages.hpp"
+namespace espnow {
 
 /**
  * @brief Transmission states for individual packets.
@@ -252,3 +253,4 @@ public:
      */
     virtual std::optional<PendingAck> get_pending_ack() const = 0;
 };
+} // namespace espnow

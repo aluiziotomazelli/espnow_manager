@@ -5,6 +5,7 @@
 
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
+namespace espnow {
 
 /**
  * @interface IChannelMonitor
@@ -41,3 +42,5 @@ public:
      */
     virtual void tick(int64_t now_ms) = 0;
 };
+
+} // namespace espnow

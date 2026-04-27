@@ -8,6 +8,7 @@
 #include "i_tx_state_machine.hpp"
 #include "i_statistics_manager.hpp"
 #include "i_peer_manager.hpp"
+namespace espnow {
 
 class TxManager : public ITxManager
 {
@@ -79,3 +80,5 @@ private:
     // FreeRTOS delivery event queue (ISR → tx_task)
     QueueHandle_t delivery_queue_ = nullptr;
 };
+
+} // namespace espnow

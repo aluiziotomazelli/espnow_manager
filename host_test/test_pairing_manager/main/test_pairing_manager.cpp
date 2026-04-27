@@ -8,6 +8,7 @@
 #include "mock_hal_freertos.hpp"
 
 #include "pairing_manager.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::DoAll;

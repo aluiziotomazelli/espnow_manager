@@ -1,15 +1,10 @@
-// #include <algorithm>
-// #include <cinttypes>
-// #include <cstring>
-
-// #include "esp_attr.h"
+// src/storage_manager.cpp
 #include "esp_log.h"
 #include "esp_rom_crc.h"
-// #include "nvs.h"
-// #include "nvs_flash.h"
 
 #include "storage_manager.hpp"
-// #include "persistence_backend.hpp"
+
+namespace espnow {
 
 static const char* TAG = "StorageManager";
 
@@ -357,3 +352,5 @@ bool StorageManager::is_data_dirty(const PersistentStats& new_stats)
 
     return (current_rtc != new_stats);
 }
+
+} // namespace espnow

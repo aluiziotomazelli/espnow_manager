@@ -7,6 +7,7 @@
 
 #include "espnow_types.hpp"
 #include "protocol_messages.hpp"
+namespace espnow {
 
 /**
  * @interface IMessageCodec
@@ -57,3 +58,4 @@ public:
      */
     virtual uint8_t calculate_crc(const uint8_t *data, size_t len) = 0;
 };
+} // namespace espnow

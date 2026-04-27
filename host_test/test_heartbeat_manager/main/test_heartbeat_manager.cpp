@@ -8,6 +8,7 @@
 
 #include "heartbeat_manager.hpp"
 #include "protocol_messages.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::Invoke;

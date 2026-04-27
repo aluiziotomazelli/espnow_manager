@@ -4,6 +4,8 @@
 
 #include "message_router.hpp"
 
+namespace espnow {
+
 static const char* TAG = "MessageRouter";
 
 MessageRouter::MessageRouter(
@@ -82,3 +84,5 @@ void MessageRouter::handle_packet(const DecodedRxPacket& decoded)
         break;
     }
 }
+
+} // namespace espnow

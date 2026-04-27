@@ -4,7 +4,9 @@
 
 #include "esp_rom_crc.h"
 
-size_t MessageCodec::encode(const MessageHeader &header, const void *payload, size_t len, uint8_t *out, size_t out_max)
+namespace espnow {
+
+size_t MessageCodec::encode(const MessageHeader& header, const void* payload, size_t len, uint8_t* out, size_t out_max)
 {
     size_t total_len = sizeof(MessageHeader) + len + CRC_SIZE;
     if (total_len > out_max || total_len > ESP_NOW_MAX_DATA_LEN) {
@@ -26,7 +28,7 @@ size_t MessageCodec::encode(const MessageHeader &header, const void *payload, si
     return total_len;
 }
 
-std::optional<MessageHeader> MessageCodec::decode_header(const uint8_t *data, size_t len)
+std::optional<MessageHeader> MessageCodec::decode_header(const uint8_t* data, size_t len)
 {
     if (len < sizeof(MessageHeader) + CRC_SIZE || !validate_crc(data, len)) {
         return std::nullopt;
@@ -37,7 +39,7 @@ std::optional<MessageHeader> MessageCodec::decode_header(const uint8_t *data, si
     return header;
 }
 
-bool MessageCodec::validate_crc(const uint8_t *data, size_t len)
+bool MessageCodec::validate_crc(const uint8_t* data, size_t len)
 {
     if (len <= CRC_SIZE) {
         return false;
@@ -49,7 +51,9 @@ bool MessageCodec::validate_crc(const uint8_t *data, size_t len)
     return received_crc == calculated_crc;
 }
 
-uint8_t MessageCodec::calculate_crc(const uint8_t *data, size_t len)
+uint8_t MessageCodec::calculate_crc(const uint8_t* data, size_t len)
 {
     return esp_rom_crc8_le(0, data, len);
 }
+
+} // namespace espnow

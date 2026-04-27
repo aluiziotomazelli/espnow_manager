@@ -2,6 +2,7 @@
 #include "gtest/gtest.h"
 
 #include "message_codec.hpp"
+using namespace espnow;
 
 class MessageCodecTest : public ::testing::Test
 {

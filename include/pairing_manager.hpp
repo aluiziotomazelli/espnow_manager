@@ -5,6 +5,7 @@
 #include "i_peer_manager.hpp"
 #include "i_hal_freertos.hpp"
 #include "i_hal_timer.hpp"
+namespace espnow {
 
 class PairingManager : public IPairingManager
 {
@@ -62,3 +63,5 @@ private:
     void notify_rx_task_peer_add();
     int64_t get_time_ms() const;
 };
+
+} // namespace espnow

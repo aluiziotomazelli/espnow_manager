@@ -6,6 +6,7 @@
 #include "i_pairing_manager.hpp"
 #include "i_tx_manager.hpp"
 #include "i_message_router.hpp"
+namespace espnow {
 
 class MessageRouter : public IMessageRouter
 {
@@ -25,3 +26,5 @@ private:
     IHeartbeatManager& heartbeat_manager_;
     IPairingManager& pairing_manager_;
 };
+
+} // namespace espnow

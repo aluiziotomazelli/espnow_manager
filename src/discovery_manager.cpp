@@ -7,6 +7,8 @@
 #include "discovery_manager.hpp"
 #include "protocol_types.hpp"
 
+namespace espnow {
+
 static const char* TAG = "DiscoveryMgr";
 
 DiscoveryManager::DiscoveryManager(
@@ -283,3 +285,5 @@ MessageHeader DiscoveryManager::make_response_header()
 
     return resp;
 }
+
+} // namespace espnow

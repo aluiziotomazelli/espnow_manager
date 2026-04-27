@@ -7,6 +7,7 @@
 #include "mock_pairing_manager.hpp"
 
 #include "message_router.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::NiceMock;

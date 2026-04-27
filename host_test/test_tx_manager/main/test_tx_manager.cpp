@@ -8,6 +8,7 @@
 #include "mock_statistics_manager.hpp"
 #include "mock_peer_manager.hpp"
 #include "tx_manager.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::AnyNumber;

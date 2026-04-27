@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "esp_now.h"
+namespace espnow {
 
 /**
  * @file protocol_types.hpp
@@ -175,3 +176,5 @@ enum class CommandType : uint8_t
     REBOOT = 0x02,              /**< Instructs the node to perform a system reset */
     SET_REPORT_INTERVAL = 0x03, /**< Instructs the node to change its data reporting frequency */
 };
+
+} // namespace espnow

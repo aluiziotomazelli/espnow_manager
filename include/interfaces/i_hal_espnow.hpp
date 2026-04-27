@@ -3,6 +3,7 @@
 
 #include "esp_err.h"
 #include "esp_now.h"
+namespace espnow {
 
 /**
  * @interface IEspNowHAL
@@ -38,3 +39,5 @@ public:
     /** @copydoc esp_now_send() */
     virtual esp_err_t hal_esp_now_send(const uint8_t *dest_mac, const uint8_t *data, size_t len) = 0;
 };
+
+} // namespace espnow

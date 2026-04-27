@@ -1,3 +1,5 @@
+// src/pairing_manager.cpp
+
 #include <cstring>
 
 #include "esp_log.h"
@@ -7,6 +9,8 @@
 
 #include "pairing_manager.hpp"
 #include "protocol_types.hpp"
+
+namespace espnow {
 
 static const char* TAG = "PairingMgr";
 
@@ -202,3 +206,5 @@ int64_t PairingManager::get_time_ms() const
 {
     return hal_timer_.get_time_us() / 1000;
 }
+
+} // namespace espnow

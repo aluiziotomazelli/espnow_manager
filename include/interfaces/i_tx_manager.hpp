@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 
 #include "espnow_types.hpp"
+namespace espnow {
 
 /**
  * @brief Delivery event data passed from ISR callback to TX task.
@@ -148,3 +149,5 @@ public:
      */
     virtual TaskHandle_t get_task_handle() const = 0;
 };
+
+} // namespace espnow

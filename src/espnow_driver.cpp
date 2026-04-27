@@ -4,15 +4,17 @@
 
 #include "espnow_driver.hpp"
 
-const char *TAG = "EspNowDriver";
+namespace espnow {
 
-EspNowDriver::EspNowDriver(IWiFiHAL &wifi_hal, IEspNowHAL &espnow_hal)
+const char* TAG = "EspNowDriver";
+
+EspNowDriver::EspNowDriver(IWiFiHAL& wifi_hal, IEspNowHAL& espnow_hal)
     : wifi_hal_(wifi_hal)
     , espnow_hal_(espnow_hal)
 {
 }
 
-esp_err_t EspNowDriver::init(const EspNowConfig &config, esp_now_recv_cb_t recv_cb, esp_now_send_cb_t send_cb)
+esp_err_t EspNowDriver::init(const EspNowConfig& config, esp_now_recv_cb_t recv_cb, esp_now_send_cb_t send_cb)
 {
     esp_err_t err;
 
@@ -74,9 +76,11 @@ esp_err_t EspNowDriver::add_broadcast_peer()
 }
 
 // Helper to log error and deinit
-esp_err_t EspNowDriver::init_fail(esp_err_t ret, const char *step)
+esp_err_t EspNowDriver::init_fail(esp_err_t ret, const char* step)
 {
     ESP_LOGE(TAG, "%s failed: %s", step, esp_err_to_name(ret));
     deinit();
     return ret;
 }
+
+} // namespace espnow

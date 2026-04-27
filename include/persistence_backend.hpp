@@ -4,6 +4,7 @@
 #include "i_hal_nvs.hpp"
 
 #include "storage_manager.hpp"
+namespace espnow {
 
 /**
  * @brief Default RTC backend that uses a static PersistentData variable.
@@ -47,3 +48,5 @@ private:
 
     bool nvs_initialized_ = false;
 };
+
+} // namespace espnow

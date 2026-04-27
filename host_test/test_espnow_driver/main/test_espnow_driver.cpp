@@ -6,6 +6,7 @@
 #include "mock_hal_espnow.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::NiceMock;

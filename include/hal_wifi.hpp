@@ -3,6 +3,7 @@
 
 #include "esp_wifi.h"
 #include "i_hal_wifi.hpp"
+namespace espnow {
 
 /**
  * @brief Hardware Abstraction Layer implementation for WiFi driver.
@@ -28,3 +29,5 @@ public:
         return esp_wifi_get_channel(primary, second);
     }
 };
+
+} // namespace espnow

@@ -11,6 +11,7 @@
 #include "mock_peer_manager.hpp"
 #include "hal_real_freertos.hpp"
 #include "tx_manager.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::AnyNumber;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+namespace espnow {
 
 /**
  * @file i_timer_hal.hpp
@@ -20,3 +21,4 @@ public:
     /** @copydoc esp_timer_get_time() */
     virtual int64_t get_time_us() const = 0;
 };
+} // namespace espnow

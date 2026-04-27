@@ -1,3 +1,5 @@
+// src/espnow_manager.cpp
+
 #include <cstring>
 
 #include "esp_log.h"
@@ -25,6 +27,8 @@
 #include "statistics_manager.hpp"
 
 #include "espnow_manager.hpp"
+
+namespace espnow {
 
 static const char* TAG = "EspNowManager";
 
@@ -954,3 +958,5 @@ void EspNowManager::cleanup_resources()
         rx_queue_handle_ = nullptr;
     }
 }
+
+} // namespace espnow

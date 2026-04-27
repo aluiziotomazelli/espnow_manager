@@ -2,6 +2,7 @@
 #pragma once
 
 #include "espnow_types.hpp"
+namespace espnow {
 
 /**
  * @interface IMessageRouter
@@ -16,3 +17,4 @@ public:
     /** @internal */
     virtual void handle_packet(const DecodedRxPacket& decoded) = 0;
 };
+} // namespace espnow

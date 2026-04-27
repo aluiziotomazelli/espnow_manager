@@ -29,8 +29,8 @@
 #include "mock_statistics_manager.hpp"
 #include "hal_real_freertos.hpp"
 
-#include "espnow_manager.hpp"
 #include "protocol_types.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::AtLeast;

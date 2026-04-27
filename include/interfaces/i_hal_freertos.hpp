@@ -5,6 +5,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
+namespace espnow {
 
 static constexpr uint32_t PORT_MAX_DELAY = 0xffffffffUL; ///< Equivalent to portMAX_DELAY — wait forever
 
@@ -101,3 +102,4 @@ public:
     /** @copydoc vSemaphoreDelete() */
     virtual void semaphore_delete(SemaphoreHandle_t semaphore_handle) = 0;
 };
+} // namespace espnow

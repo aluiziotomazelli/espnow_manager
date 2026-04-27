@@ -1,6 +1,7 @@
 #pragma once
 
 #include "i_tx_state_machine.hpp"
+namespace espnow {
 
 /**
  * @brief Concrete implementation of ITxStateMachine.
@@ -57,3 +58,5 @@ private:
     std::optional<PendingAck> pending_ack_; ///< Pending ACK information
     uint8_t send_fail_count_;               ///< Consecutive failure counter
 };
+
+} // namespace espnow

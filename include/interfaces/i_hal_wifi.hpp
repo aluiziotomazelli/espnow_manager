@@ -3,6 +3,7 @@
 
 #include "esp_err.h"
 #include "esp_wifi_types.h"
+namespace espnow {
 
 /**
  * @interface IWiFiHAL
@@ -23,3 +24,5 @@ public:
     /** @copydoc esp_wifi_get_channel() */
     virtual esp_err_t wifi_get_channel(uint8_t *primary, wifi_second_chan_t *second) = 0;
 };
+
+} // namespace espnow

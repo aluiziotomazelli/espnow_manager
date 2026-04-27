@@ -3,6 +3,8 @@
 #include "gmock/gmock.h"
 #include "i_node_state_machine.hpp"
 
+namespace espnow {
+
 class MockNodeStateMachine : public INodeStateMachine
 {
 public:
@@ -66,3 +68,5 @@ public:
 private:
     NodeState state_ = NodeState::UNINITIALIZED;
 };
+
+} // namespace espnow

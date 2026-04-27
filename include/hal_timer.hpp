@@ -2,6 +2,7 @@
 
 #include "esp_timer.h"
 #include "i_hal_timer.hpp"
+namespace espnow {
 
 /**
  * @file esp_timer_hal.hpp
@@ -22,3 +23,5 @@ public:
      */
     int64_t get_time_us() const override { return esp_timer_get_time(); }
 };
+
+} // namespace espnow

@@ -7,6 +7,7 @@
 #include "esp_err.h"
 
 #include "espnow_types.hpp"
+namespace espnow {
 
 /**
  * @interface IHeartbeatManager
@@ -65,3 +66,4 @@ public:
      */
     virtual void handle_request(const DecodedRxPacket& decoded) = 0;
 };
+} // namespace espnow

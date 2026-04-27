@@ -8,6 +8,7 @@
 #include "esp_err.h"
 
 #include "espnow_types.hpp"
+namespace espnow {
 
 /**
  * @interface IStorageManager
@@ -68,3 +69,5 @@ public:
      */
     virtual esp_err_t store_stats(const etl::ivector<PeerStatisticsPersist>& stats) = 0;
 };
+
+} // namespace espnow

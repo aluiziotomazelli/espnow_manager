@@ -24,6 +24,8 @@
 #include "i_channel_monitor.hpp"
 #include "i_statistics_manager.hpp"
 
+namespace espnow {
+
 // ========================================
 // ESP-NOW Manager Implementation
 // ========================================
@@ -240,3 +242,5 @@ protected:
     void tick_scan_retry(int64_t now_ms); // protected
     void handle_scan_retries(bool has_peers);
 };
+
+} // namespace espnow

@@ -3,6 +3,7 @@
 
 #include "node_state_machine.hpp"
 #include "espnow_types.hpp"
+using namespace espnow;
 
 class NodeStateMachineTest : public ::testing::Test
 {

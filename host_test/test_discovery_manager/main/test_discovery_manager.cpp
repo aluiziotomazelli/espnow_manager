@@ -8,6 +8,7 @@
 #include "mock_message_codec.hpp"
 
 #include "discovery_manager.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::DoAll;

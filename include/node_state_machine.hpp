@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "i_node_state_machine.hpp"
+namespace espnow {
 
 /**
  * @brief Concrete implementation of the Node State Machine.
@@ -44,3 +45,5 @@ private:
     std::atomic<NodeState> state_;
     esp_err_t transition_to(NodeState new_state);
 };
+
+} // namespace espnow

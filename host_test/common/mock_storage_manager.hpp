@@ -6,6 +6,8 @@
 
 #include "i_storage_manager.hpp"
 
+namespace espnow {
+
 class MockStorageManager : public IStorageManager
 {
 public:
@@ -16,3 +18,5 @@ public:
     MOCK_METHOD(esp_err_t, load_stats, (etl::ivector<PeerStatisticsPersist>&), (override));
     MOCK_METHOD(esp_err_t, store_stats, (const etl::ivector<PeerStatisticsPersist>&), (override));
 };
+
+} // namespace espnow

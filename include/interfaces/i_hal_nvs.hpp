@@ -3,6 +3,7 @@
 
 #include "esp_err.h"
 #include "nvs.h"
+namespace espnow {
 
 /**
  * @interface INvsHAL
@@ -38,3 +39,5 @@ public:
     /** @copydoc nvs_commit() */
     virtual esp_err_t hal_nvs_commit(nvs_handle_t handle) = 0;
 };
+
+} // namespace espnow

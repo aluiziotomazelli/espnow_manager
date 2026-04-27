@@ -3,6 +3,8 @@
 
 #include "i_hal_freertos.hpp"
 
+namespace espnow {
+
 /**
  * @brief FreeRTOS HAL implementation using real FreeRTOS primitives for host testing.
  *
@@ -21,11 +23,11 @@ public:
 
     BaseType_t task_create(
         TaskFunction_t pvTaskCode,
-        const char *const pcName,
+        const char* const pcName,
         const uint32_t usStackDepth,
-        void *const pvParameters,
+        void* const pvParameters,
         UBaseType_t uxPriority,
-        TaskHandle_t *const pxCreatedTask) override
+        TaskHandle_t* const pxCreatedTask) override
     {
         return xTaskCreate(pvTaskCode, pcName, usStackDepth, pvParameters, uxPriority, pxCreatedTask);
     }
@@ -39,7 +41,7 @@ public:
     }
 
     BaseType_t
-    task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t *value, TickType_t xTicksToWait)
+    task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t* value, TickType_t xTicksToWait)
         override
     {
         return xTaskNotifyWait(bits_clear_entry, bits_clear_exit, value, xTicksToWait);
@@ -55,17 +57,17 @@ public:
 
     void queue_delete(QueueHandle_t queue_handle) override { vQueueDelete(queue_handle); }
 
-    BaseType_t queue_send(QueueHandle_t queue_handle, const void *data, TickType_t xTicksToWait) override
+    BaseType_t queue_send(QueueHandle_t queue_handle, const void* data, TickType_t xTicksToWait) override
     {
         return xQueueSend(queue_handle, data, xTicksToWait);
     }
 
-    BaseType_t queue_receive(QueueHandle_t queue_handle, void *data, TickType_t xTicksToWait) override
+    BaseType_t queue_receive(QueueHandle_t queue_handle, void* data, TickType_t xTicksToWait) override
     {
         return xQueueReceive(queue_handle, data, xTicksToWait);
     }
     BaseType_t
-    queue_send_fromISR(QueueHandle_t queue_handle, const void *data, BaseType_t *pxHigherPriorityTaskWoken) override
+    queue_send_fromISR(QueueHandle_t queue_handle, const void* data, BaseType_t* pxHigherPriorityTaskWoken) override
     {
         return xQueueSendFromISR(queue_handle, data, pxHigherPriorityTaskWoken);
     }
@@ -74,10 +76,10 @@ public:
     // Timer
     // -------------------------------------------------------------------------
     TimerHandle_t timer_create(
-        const char *name,
+        const char* name,
         TickType_t xTimerPeriodInTicks,
         UBaseType_t auto_reload,
-        void *id,
+        void* id,
         TimerCallbackFunction_t callback) override
     {
         return xTimerCreate(name, xTimerPeriodInTicks, auto_reload, id, callback);
@@ -98,7 +100,7 @@ public:
         return xTimerDelete(timer_handle, xTicksToWait);
     }
 
-    void *timer_get_id(TimerHandle_t timer_handle) override { return pvTimerGetTimerID(timer_handle); }
+    void* timer_get_id(TimerHandle_t timer_handle) override { return pvTimerGetTimerID(timer_handle); }
 
     // -------------------------------------------------------------------------
     // Semaphore / Mutex
@@ -116,3 +118,5 @@ public:
 
     void semaphore_delete(SemaphoreHandle_t semaphore_handle) override { vSemaphoreDelete(semaphore_handle); }
 };
+
+} // namespace espnow

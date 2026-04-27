@@ -4,6 +4,8 @@
 #include <gmock/gmock.h>
 #include "i_statistics_manager.hpp"
 
+namespace espnow {
+
 class MockStatisticsManager : public IStatisticsManager
 {
 public:
@@ -27,3 +29,5 @@ public:
     MOCK_METHOD(bool, get, (NodeId node_id, PeerStatistics& out), (const, override));
     MOCK_METHOD((etl::vector<PeerStatistics, MAX_PEERS>), get_all, (), (const, override));
 };
+
+} // namespace espnow

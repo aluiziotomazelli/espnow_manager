@@ -11,6 +11,7 @@
 
 #include "protocol_types.hpp"
 #include "protocol_messages.hpp"
+namespace espnow {
 
 /**
  * @file espnow_types.hpp
@@ -250,3 +251,5 @@ struct EspNowConfig
     {
     }
 };
+
+} // namespace espnow

@@ -2,6 +2,7 @@
 #include "gtest/gtest.h"
 
 #include "tx_state_machine.hpp"
+using namespace espnow;
 
 class TxStateMachineTest : public ::testing::Test
 {

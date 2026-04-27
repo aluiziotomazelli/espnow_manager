@@ -10,6 +10,7 @@
 // #include "i_peer_manager.hpp"
 // #include "i_tx_manager.hpp"
 // #include "i_heartbeat_manager.hpp"
+namespace espnow {
 
 /**
  * @class EspNowDriver
@@ -34,3 +35,4 @@ private:
     esp_err_t add_broadcast_peer();
     esp_err_t init_fail(esp_err_t ret, const char *step);
 };
+} // namespace espnow

@@ -4,6 +4,8 @@
 #include <gmock/gmock.h>
 #include "i_heartbeat_manager.hpp"
 
+namespace espnow {
+
 class MockHeartbeatManager : public IHeartbeatManager
 {
 public:
@@ -14,3 +16,5 @@ public:
     MOCK_METHOD(void, handle_response, (const DecodedRxPacket& decoded), (override));
     MOCK_METHOD(void, handle_request, (const DecodedRxPacket& decoded), (override));
 };
+
+} // namespace espnow

@@ -6,6 +6,7 @@
 #include "i_hal_espnow.hpp"
 #include "i_storage_manager.hpp"
 #include "i_hal_freertos.hpp"
+namespace espnow {
 
 class PeerManager : public IPeerManager
 {
@@ -63,3 +64,5 @@ private:
     PeerInfo persistent_to_info(const PersistentPeer& persistent);
     esp_now_peer_info_t make_espnow_peer_info(const uint8_t* mac);
 };
+
+} // namespace espnow

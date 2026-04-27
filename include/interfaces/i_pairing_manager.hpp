@@ -7,6 +7,7 @@
 #include "esp_err.h"
 
 #include "espnow_types.hpp"
+namespace espnow {
 
 /**
  * @interface IPairingManager
@@ -71,3 +72,4 @@ public:
      */
     virtual void handle_response(const DecodedRxPacket& decoded) = 0;
 };
+} // namespace espnow

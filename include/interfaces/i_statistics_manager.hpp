@@ -5,6 +5,7 @@
 #include "etl/vector.h"
 
 #include "espnow_types.hpp"
+namespace espnow {
 
 /**
  * @interface IStatisticsManager
@@ -183,3 +184,4 @@ public:
      */
     virtual etl::vector<PeerStatistics, MAX_PEERS> get_all() const = 0;
 };
+} // namespace espnow

@@ -3,6 +3,7 @@
 
 #include "esp_now.h"
 #include "i_hal_espnow.hpp"
+namespace espnow {
 
 /**
  * @brief Hardware Abstraction Layer implementation for ESP-NOW driver.
@@ -55,3 +56,5 @@ public:
         return esp_now_send(dest_mac, data, len);
     }
 };
+
+} // namespace espnow

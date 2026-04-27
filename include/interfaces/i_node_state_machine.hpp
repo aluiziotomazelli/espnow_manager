@@ -2,6 +2,7 @@
 
 #include "esp_err.h"
 #include "espnow_types.hpp"
+namespace espnow {
 
 /**
  * @brief Enum to represent the action to take when a channel is found.
@@ -81,3 +82,5 @@ public:
      */
     virtual esp_err_t on_scan_failed() = 0;
 };
+
+} // namespace espnow

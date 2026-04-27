@@ -8,6 +8,7 @@
 
 #include "espnow_types.hpp"
 #include "protocol_messages.hpp"
+namespace espnow {
 
 /**
  * @interface IPeerManager
@@ -144,3 +145,5 @@ public:
      */
     virtual esp_err_t load_peers_from_storage() = 0;
 };
+
+} // namespace espnow

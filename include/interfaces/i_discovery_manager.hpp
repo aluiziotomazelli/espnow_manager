@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "espnow_types.hpp"
+namespace espnow {
 
 /**
  * @interface IDiscoveryManager
@@ -91,3 +92,5 @@ public:
         return init(static_cast<NodeId>(id), static_cast<NodeType>(type), rx_task_handle, priority, stack_size);
     }
 };
+
+} // namespace espnow

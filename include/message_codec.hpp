@@ -1,6 +1,7 @@
 #pragma once
 
 #include "i_message_codec.hpp"
+namespace espnow {
 
 class MessageCodec : public IMessageCodec
 {
@@ -17,3 +18,5 @@ public:
     /** @copydoc IMessageCodec::calculate_crc */
     uint8_t calculate_crc(const uint8_t *data, size_t len) override;
 };
+
+} // namespace espnow

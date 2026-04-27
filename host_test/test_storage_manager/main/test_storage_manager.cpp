@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "storage_manager.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::DoAll;

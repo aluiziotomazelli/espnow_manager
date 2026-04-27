@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "esp_err.h"
+namespace espnow {
 
 /**
  * @interface IPersistenceBackend
@@ -22,3 +23,4 @@ public:
     /** @internal */
     virtual esp_err_t save(const void *data, size_t size) = 0;
 };
+} // namespace espnow

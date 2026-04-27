@@ -1,5 +1,9 @@
+// src/node_state_machine.cpp
+
 #include "node_state_machine.hpp"
 #include "esp_log.h"
+
+namespace espnow {
 
 /**
  * State Transition Table
@@ -122,3 +126,5 @@ esp_err_t NodeStateMachine::transition_to(NodeState new_state)
     state_.store(new_state);
     return ESP_OK;
 }
+
+} // namespace espnow

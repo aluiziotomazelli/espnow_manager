@@ -1,7 +1,11 @@
+// src/statistics_manager.cpp
+
 #include <algorithm>
 #include <cstring>
 
 #include "statistics_manager.hpp"
+
+namespace espnow {
 
 // static const char* TAG = "StatsMgr";
 
@@ -417,3 +421,5 @@ StatisticsManager::maybe_build_flush_snapshot(const PeerStatisticsEntry& entry)
     }
     return std::nullopt;
 }
+
+} // namespace espnow

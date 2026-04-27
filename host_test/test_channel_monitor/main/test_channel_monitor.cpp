@@ -6,6 +6,7 @@
 #include "protocol_types.hpp"
 
 #include "channel_monitor.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::Invoke;

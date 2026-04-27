@@ -14,6 +14,7 @@
 #include "i_hal_freertos.hpp"
 #include "i_message_codec.hpp"
 #include "protocol_types.hpp"
+namespace espnow {
 
 class DiscoveryManager : public IDiscoveryManager
 {
@@ -94,3 +95,5 @@ private:
     NodeId my_node_id_;
     NodeType my_node_type_;
 };
+
+} // namespace espnow

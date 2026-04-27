@@ -4,6 +4,8 @@
 #include <gmock/gmock.h>
 #include "i_discovery_manager.hpp"
 
+namespace espnow {
+
 class MockDiscoveryManager : public IDiscoveryManager
 {
 public:
@@ -22,3 +24,5 @@ public:
     MOCK_METHOD(void, set_channel, (uint8_t channel), (override));
     MOCK_METHOD(uint8_t, get_channel, (), (const, override));
 };
+
+} // namespace espnow

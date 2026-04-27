@@ -7,6 +7,7 @@
 #include "esp_err.h"
 
 #include "espnow_types.hpp"
+namespace espnow {
 
 // ========================================
 // ESP-NOW Manager Interface
@@ -371,3 +372,5 @@ public:
      */
     virtual bool is_initialized() const = 0;
 };
+
+} // namespace espnow

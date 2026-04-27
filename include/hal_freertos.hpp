@@ -2,6 +2,7 @@
 #pragma once
 
 #include "i_hal_freertos.hpp"
+namespace espnow {
 
 /**
  * @brief Hardware Abstraction Layer for FreeRTOS drivers
@@ -92,3 +93,4 @@ public:
     BaseType_t semaphore_give(SemaphoreHandle_t semaphore_handle) override { return xSemaphoreGive(semaphore_handle); }
     void semaphore_delete(SemaphoreHandle_t semaphore_handle) override { vSemaphoreDelete(semaphore_handle); }
 };
+} // namespace espnow

@@ -17,6 +17,8 @@
  *     .WillOnce(Return(true));  // MAX_FAILURES reached
  * @endcode
  */
+namespace espnow {
+
 class MockTxStateMachine : public ITxStateMachine
 {
 public:
@@ -56,3 +58,5 @@ public:
     /** @copydoc ITxStateMachine::get_pending_ack() const */
     MOCK_METHOD(std::optional<PendingAck>, get_pending_ack, (), (const, override));
 };
+
+} // namespace espnow

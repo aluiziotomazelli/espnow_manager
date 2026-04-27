@@ -5,6 +5,7 @@
 #include "esp_now.h"
 
 #include "espnow_types.hpp" // EspNowConfig
+namespace espnow {
 
 /**
  * @interface IEspNowDriver
@@ -20,3 +21,4 @@ public:
 
     virtual esp_err_t deinit() = 0;
 };
+} // namespace espnow

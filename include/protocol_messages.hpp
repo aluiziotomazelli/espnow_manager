@@ -1,6 +1,7 @@
 #pragma once
 
 #include "protocol_types.hpp"
+namespace espnow {
 
 /**
  * @file protocol_messages.hpp
@@ -113,3 +114,5 @@ static_assert(sizeof(HeartbeatMessage) <= MAX_PAYLOAD_SIZE, "HeartbeatMessage pa
 static_assert(sizeof(HeartbeatResponse) <= MAX_PAYLOAD_SIZE, "HeartbeatResponse payload is too large");
 static_assert(sizeof(AckMessage) <= MAX_PAYLOAD_SIZE, "AckMessage payload is too large");
 static_assert(sizeof(OtaCommand) <= MAX_PAYLOAD_SIZE, "OtaCommand payload is too large");
+
+} // namespace espnow

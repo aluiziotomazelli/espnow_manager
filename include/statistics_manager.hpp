@@ -6,6 +6,7 @@
 #include "i_statistics_manager.hpp"
 #include "i_storage_manager.hpp"
 #include "i_hal_freertos.hpp"
+namespace espnow {
 
 /**
  * @class StatisticsManager
@@ -125,3 +126,5 @@ private:
     etl::vector<PeerStatisticsEntry, MAX_PEERS> entries_;
     SemaphoreHandle_t mutex_ = nullptr;
 };
+
+} // namespace espnow

@@ -26,6 +26,8 @@
 
 #include "espnow_manager.hpp"
 
+using namespace espnow;
+
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::NiceMock;

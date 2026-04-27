@@ -4,6 +4,8 @@
 
 #include "tx_manager.hpp"
 
+namespace espnow {
+
 static const char* TAG = "TxManager";
 
 TxManager::TxManager(
@@ -442,3 +444,5 @@ void TxManager::notify_logical_ack()
         freertos_hal_.task_notify(tx_task_handle_, NOTIFY_LOGICAL_ACK, eSetBits);
     }
 }
+
+} // namespace espnow

@@ -5,6 +5,7 @@
 #include "mock_hal_nvs.hpp"
 
 #include "persistence_backend.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::DoAll;

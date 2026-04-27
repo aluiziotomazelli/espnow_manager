@@ -7,6 +7,8 @@
 #include "protocol_types.hpp"
 #include "channel_monitor.hpp"
 
+namespace espnow {
+
 static const char* TAG = "ChannelMonitor";
 
 ChannelMonitor::ChannelMonitor(IWiFiHAL& hal_wifi, IFreeRTOSHAL& hal_freertos)
@@ -72,3 +74,5 @@ void ChannelMonitor::notify_rx_task(uint32_t notifications)
 {
     hal_freertos_.task_notify(rx_task_handle_, notifications, eSetBits);
 }
+
+} // namespace espnow

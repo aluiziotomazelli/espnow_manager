@@ -5,6 +5,7 @@
 #include "mock_hal_freertos.hpp"
 
 #include "statistics_manager.hpp"
+using namespace espnow;
 
 using ::testing::_;
 using ::testing::Invoke;
