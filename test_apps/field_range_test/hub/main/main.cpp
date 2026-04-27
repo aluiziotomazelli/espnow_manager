@@ -11,6 +11,8 @@
 #include "espnow_manager.hpp"
 #include "test_config.hpp"
 
+using namespace espnow;
+
 static const char* TAG = "FIELD_TEST_HUB";
 
 static constexpr gpio_num_t BOOT_BUTTON_PIN = GPIO_NUM_0;

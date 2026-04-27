@@ -30,6 +30,7 @@
 #include "hal_real_freertos.hpp"
 
 #include "protocol_types.hpp"
+#include "espnow_manager.hpp"
 using namespace espnow;
 
 using ::testing::_;

@@ -15,6 +15,8 @@
 #include "espnow_manager.hpp"
 #include "test_config.hpp"
 
+using namespace espnow;
+
 static const char* TAG = "FIELD_TEST_NODE";
 
 static constexpr gpio_num_t BOOT_BUTTON_PIN = GPIO_NUM_0;
@@ -191,12 +193,18 @@ static void draw_text(uint8_t* fb, int x, int y, const char* str)
 static const char* state_to_str(NodeState state)
 {
     switch (state) {
-    case NodeState::IDLE: return "IDLE";
-    case NodeState::PAIRING: return "PAIRING";
-    case NodeState::OPERATIONAL: return "OPERATIONAL";
-    case NodeState::PAIRING_SCAN: return "P-SCAN";
-    case NodeState::RECOVERY_SCAN: return "R-SCAN";
-    default: return "UNKNOWN";
+    case NodeState::IDLE:
+        return "IDLE";
+    case NodeState::PAIRING:
+        return "PAIRING";
+    case NodeState::OPERATIONAL:
+        return "OPERATIONAL";
+    case NodeState::PAIRING_SCAN:
+        return "P-SCAN";
+    case NodeState::RECOVERY_SCAN:
+        return "R-SCAN";
+    default:
+        return "UNKNOWN";
     }
 }
 
@@ -266,11 +274,7 @@ extern "C" void app_main(void)
             draw_text(frame_buffer, 0, 16, buf);
 
             snprintf(
-                buf,
-                sizeof(buf),
-                "RTT:%lu AVG:%lu",
-                (unsigned long)stats.rtt_last_ms,
-                (unsigned long)stats.rtt_avg_ms);
+                buf, sizeof(buf), "RTT:%lu AVG:%lu", (unsigned long)stats.rtt_last_ms, (unsigned long)stats.rtt_avg_ms);
             draw_text(frame_buffer, 0, 32, buf);
 
             ESP_LOGI(
