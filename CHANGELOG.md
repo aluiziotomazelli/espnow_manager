@@ -5,11 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-04-26
+
+### Breaking Changes
+- Encapsulated the entire component within `namespace espnow`.
+- All public APIs, types, and internal classes are now namespaced.
+- Updated all test suites and test applications to use the namespaced API.
+
+### Added
+- Added `namespace espnow` to all public headers.
+- Updated build system and documentation to reflect the namespace change.
+
+[1.1.0]: https://github.com/aluiziotomazelli/espnow_manager/releases/tag/v1.1.0
+
 ## [1.0.1] - 2026-04-24
 
 ### Fixed
 - Fixed dependency resolution for the ETL library when using `espnow_manager` as an external component (e.g., via `idf_component.yml`).
 - Integrated ETL directly into the component's build process using `FetchContent`, eliminating the need for separate `EXTRA_COMPONENT_DIRS` configuration in consumer applications.
+
+[1.0.1]: https://github.com/aluiziotomazelli/espnow_manager/releases/tag/v1.0.1
 
 ## [1.0.0] - 2026-04-15
 
@@ -34,3 +49,4 @@ A central **`rx_task`** acts as the decision-making hub, receiving direct task n
 
 [1.0.1]: https://github.com/aluiziotomazelli/espnow_manager/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/aluiziotomazelli/espnow_manager/releases/tag/v1.0.0
+

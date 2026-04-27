@@ -1,3 +1,7 @@
+# ESP-NOW Manager — Internal Design (Namespace v1.1.0)
+
+> **Important Note**: As of version 1.1.0, all public APIs, types, and internal implementations have been moved into the `espnow` namespace to prevent naming collisions.
+
 # ESP-NOW Manager — Internal Design
 
 This document explains the internal architecture, component responsibilities, message flows, and the rationale behind key design decisions of the `espnow_manager` component.
@@ -6,13 +10,13 @@ This document explains the internal architecture, component responsibilities, me
 
 ## 1. Architecture Overview
 
-The `espnow_manager` component follows a **Facade + Decentralized Managers** pattern. `EspNowManager` serves as the public entry point and orchestrates specialized managers. The architecture uses **separated hardware abstraction layers** for WiFi and ESP-NOW to enable fine-grained control and testability.
+The `espnow_manager` component follows a **Facade + Decentralized Managers** pattern. `espnow::EspNowManager` serves as the public entry point and orchestrates specialized managers. The architecture uses **separated hardware abstraction layers** for WiFi and ESP-NOW to enable fine-grained control and testability.
 
 **Critical Design Point:** `rx_task` is the central decision-making hub. All managers notify `rx_task` directly via FreeRTOS task notifications, and `rx_task` uses `NodeStateMachine` to manage state transitions.
 
 ```mermaid
 graph TD
-    App["Application"] --> EM["EspNowManager\n(Facade / RxTask Owner)"]
+    App["Application"] --> EM["espnow::EspNowManager\n(Facade / RxTask Owner)"]
 
     EM --> ED["EspNowDriver\n(Init / Callbacks)"]
     EM --> MR["MessageRouter\n(Protocol Dispatch)"]
@@ -62,8 +66,8 @@ graph TD
 
 | Component | Role | HAL Dependencies | Driven By |
 |---|---|---|---|
-| `EspNowManager` | Public API, Singleton Orchestrator, **RX Task Owner** | IWiFiHAL, IEspNowHAL, ITimerHAL, IFreeRTOSHAL | Application |
-| `EspNowDriver` | ESP-NOW init, ESP-IDF callback registration | IEspNowHAL | `EspNowManager` |
+| `espnow::EspNowManager` | Public API, Singleton Orchestrator, **RX Task Owner** | IWiFiHAL, IEspNowHAL, ITimerHAL, IFreeRTOSHAL | Application |
+| `EspNowDriver` | ESP-NOW init, ESP-IDF callback registration | IEspNowHAL | `espnow::EspNowManager` |
 | `MessageRouter` | Dispatches `DecodedRxPacket` to specific managers | None (stateless) | `rx_task` |
 | `TxManager` | **Centralized Encoding**, Packet queueing, retry logic, FSM | IEspNowHAL, IFreeRTOSHAL, ITimerHAL | `tx_task` |
 | `TxStateMachine` | Manages transmission states (READY / WAITING_FOR_ACK / RETRYING) | None | `TxManager` |
@@ -74,10 +78,10 @@ graph TD
 | `StorageManager` | High-level data persistence logic | IStorageManager (NVS/RTC) | `PeerManager` |
 | `ChannelMonitor` | WiFi channel change detection | **IWiFiHAL**, IFreeRTOSHAL | `rx_task` |
 | `StatisticsManager` | Per-peer link quality metrics (RSSI, RTT, loss) | IFreeRTOSHAL | `rx_task`, `tx_task` |
-| `NodeStateMachine` | High-level node state governance | None (pure state machine) | `EspNowManager` |
-| `MessageCodec` | Protocol serialization and CRC validation | None (pure logic) | `TxManager`, `EspNowManager`, `DiscoveryManager` |
+| `NodeStateMachine` | High-level node state governance | None (pure state machine) | `espnow::EspNowManager` |
+| `MessageCodec` | Protocol serialization and CRC validation | None (pure logic) | `TxManager`, `espnow::EspNowManager`, `DiscoveryManager` |
 
-### EspNowManager (The Facade & RX)
+### espnow::EspNowManager (The Facade & RX)
 The orchestrator. It owns all manager instances and ensures they are correctly wired together. It owns the single **`rx_task`**, which handles:
 1.  Receiving raw packets from the ISR queue.
 2.  Validating CRC and decoding headers.
@@ -431,7 +435,7 @@ WiFi driver abstraction (channel control only):
 - wifi_set_channel(uint8_t primary, wifi_second_chan_t second)
 - wifi_get_channel(uint8_t *primary, wifi_second_chan_t *second)
 ```
-**Used by:** `DiscoveryManager`, `ChannelMonitor`, `EspNowManager`
+**Used by:** `DiscoveryManager`, `ChannelMonitor`, `espnow::EspNowManager`
 
 ### IEspNowHAL
 ESP-NOW driver abstraction:
@@ -445,14 +449,14 @@ ESP-NOW driver abstraction:
 - hal_esp_now_del_peer(const uint8_t *peer_addr)
 - hal_esp_now_send(const uint8_t *dest_mac, const uint8_t *data, size_t len)
 ```
-**Used by:** `EspNowDriver`, `TxManager`, `PeerManager`, `DiscoveryManager`, `EspNowManager`
+**Used by:** `EspNowDriver`, `TxManager`, `PeerManager`, `DiscoveryManager`, `espnow::EspNowManager`
 
 ### ITimerHAL
 Time services:
 ```cpp
 - get_time_us() const → int64_t
 ```
-**Used by:** `HeartbeatManager`, `TxManager`, `PairingManager`, `EspNowManager`
+**Used by:** `HeartbeatManager`, `TxManager`, `PairingManager`, `espnow::EspNowManager`
 
 ### IFreeRTOSHAL
 FreeRTOS services (task, queue, semaphore, timer):
@@ -502,7 +506,7 @@ PAIRING_TIMEOUT_MS = 60000              // Pairing session timeout
 
 | Component | IWiFiHAL | IEspNowHAL | ITimerHAL | IFreeRTOSHAL | IMessageCodec |
 |-----------|:--------:|:----------:|:---------:|:------------:|:-------------:|
-| EspNowManager | ✓ | ✓ | ✓ | ✓ | ✓ |
+| espnow::EspNowManager | ✓ | ✓ | ✓ | ✓ | ✓ |
 | EspNowDriver | - | ✓ | - | - | - |
 | TxManager | - | ✓ | - | ✓ | ✓ |
 | TxStateMachine | - | - | - | - | - |

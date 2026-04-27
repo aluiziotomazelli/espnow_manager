@@ -1,3 +1,5 @@
+> **Important Note**: As of version 1.1.0, all public APIs and types have been moved into the `espnow` namespace to prevent naming collisions.
+
 # ESP-NOW Manager — API Reference
 
 Complete API documentation for the ESP-NOW Manager component. This reference covers all public methods, their parameters, return values, and usage notes.
@@ -7,11 +9,11 @@ Complete API documentation for the ESP-NOW Manager component. This reference cov
 ## Table of Contents
 
 - [Data Types and Enumerations](#data-types-and-enumerations)
-  - [`EspNowConfig`](#espnowconfig)
-  - [`NodeId`](#nodeid)
-  - [`NodeType`](#nodetype)
-  - [`NodeState`](#nodestate)
-  - [`PeerInfo`](#peerinfo)
+  - [`espnow::EspNowConfig`](#espnowconfig)
+  - [`espnow::NodeId`](#nodeid)
+  - [`espnow::NodeType`](#nodetype)
+  - [`espnow::NodeState`](#nodestate)
+  - [`espnow::PeerInfo`](#peerinfo)
 - [Lifecycle Methods](#lifecycle-methods)
   - [`init()`](#init)
   - [`deinit()`](#deinit)
@@ -36,15 +38,15 @@ Complete API documentation for the ESP-NOW Manager component. This reference cov
 
 ## Data Types and Enumerations
 
-### `EspNowConfig`
+### `espnow::EspNowConfig`
 
 Configuration structure for initializing the EspNowManager.
 
 ```cpp
-struct EspNowConfig
+struct espnow::EspNowConfig
 {
-    NodeId node_id;
-    NodeType node_type;
+    espnow::NodeId node_id;
+    espnow::NodeType node_type;
     QueueHandle_t app_rx_queue;
     uint8_t wifi_channel;
     uint32_t ack_timeout_ms;
@@ -65,8 +67,8 @@ struct EspNowConfig
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `node_id` | `NodeId` | `ReservedIds::HUB` | Logical ID for this device |
-| `node_type` | `NodeType` | `ReservedTypes::UNKNOWN` | Role/Type for this device |
+| `node_id` | `espnow::NodeId` | `espnow::ReservedIds::HUB` | Logical ID for this device |
+| `node_type` | `espnow::NodeType` | `ReservedTypes::UNKNOWN` | Role/Type for this device |
 | `app_rx_queue` | `QueueHandle_t` | `nullptr` | **Required.** Handle to application queue where incoming DATA/COMMAND messages are posted |
 | `wifi_channel` | `uint8_t` | `1` | Initial WiFi channel (1-14) |
 | `ack_timeout_ms` | `uint32_t` | `500` | Timeout for logical ACKs |
@@ -87,9 +89,9 @@ struct EspNowConfig
 QueueHandle_t app_queue = xQueueCreate(30, sizeof(AppMessage));
 
 // Configure with defaults, override what's needed
-EspNowConfig config;
-config.node_id = ReservedIds::HUB;
-config.node_type = ReservedTypes::HUB;
+espnow::EspNowConfig config;
+config.node_id = espnow::ReservedIds::HUB;
+config.node_type = espnow::ReservedTypes::HUB;
 config.app_rx_queue = app_queue;  // Required!
 config.wifi_channel = 6;
 config.heartbeat_interval_ms = 30000;  // 30 second heartbeats
@@ -99,19 +101,19 @@ esp_err_t err = manager.init(config);
 
 ---
 
-### `NodeId`
+### `espnow::NodeId`
 
 Unique logical identifier for a node in the ESP-NOW network.
 
 ```cpp
-using NodeId = uint8_t;
+using espnow::NodeId = uint8_t;
 ```
 
 **Reserved IDs:**
 
 | ID | Value | Description |
 |----|-------|-------------|
-| `ReservedIds::HUB` | `0x01` | Central controller/coordinator |
+| `espnow::ReservedIds::HUB` | `0x01` | Central controller/coordinator |
 | `ReservedIds::BROADCAST` | `0x00` | Broadcast address |
 
 **Custom Node IDs:**
@@ -120,7 +122,7 @@ Application-specific node IDs can be defined using strongly-typed enums:
 
 ```cpp
 // Define application-specific node IDs
-enum class MyNodeId : uint8_t {
+enum class Myespnow::NodeId : uint8_t {
     SENSOR_1 = 0x10,
     SENSOR_2 = 0x11,
     SENSOR_3 = 0x12,
@@ -129,10 +131,10 @@ enum class MyNodeId : uint8_t {
 };
 
 // Use with template overloads (automatic casting)
-manager.send_data(MyNodeId::SENSOR_1, ...);
+manager.send_data(Myespnow::NodeId::SENSOR_1, ...);
 
 // Or cast explicitly
-manager.send_data(static_cast<NodeId>(MyNodeId::SENSOR_1), ...);
+manager.send_data(static_cast<espnow::NodeId>(Myespnow::NodeId::SENSOR_1), ...);
 ```
 
 **Best Practices:**
@@ -142,26 +144,26 @@ manager.send_data(static_cast<NodeId>(MyNodeId::SENSOR_1), ...);
 
 ---
 
-### `NodeType`
+### `espnow::NodeType`
 
 Categorization of a node's role in the network.
 
 ```cpp
-using NodeType = uint8_t;
+using espnow::NodeType = uint8_t;
 ```
 
 **Reserved Types:**
 
 | Type | Value | Description |
 |------|-------|-------------|
-| `ReservedTypes::HUB` | `0x01` | Central controller |
+| `espnow::ReservedTypes::HUB` | `0x01` | Central controller |
 | `ReservedTypes::UNKNOWN` | `0x00` | Unknown/unspecified type |
 
 **Custom Node Types:**
 
 ```cpp
 // Define application-specific node types
-enum class MyNodeType : uint8_t {
+enum class Myespnow::NodeType : uint8_t {
     SENSOR = 0x02,
     ACTUATOR = 0x03,
     REPEATER = 0x04,
@@ -169,17 +171,17 @@ enum class MyNodeType : uint8_t {
 };
 
 // Use with template overloads
-manager.add_peer(node_id, mac, MyNodeType::SENSOR, heartbeat_ms);
+manager.add_peer(node_id, mac, Myespnow::NodeType::SENSOR, heartbeat_ms);
 ```
 
 ---
 
-### `NodeState`
+### `espnow::NodeState`
 
 Enumeration of node states managed by the internal state machine.
 
 ```cpp
-enum class NodeState
+enum class espnow::NodeState
 {
     UNINITIALIZED = 0,  ///< Before init()
     IDLE = 1,           ///< Initialized, no peers
@@ -215,16 +217,16 @@ UNINITIALIZED ──init()──> IDLE ──start_pairing()──> PAIRING_SCAN
 
 **Example:**
 ```cpp
-NodeState state = manager.get_node_state();
+espnow::NodeState state = manager.get_node_state();
 
 switch (state) {
-    case NodeState::OPERATIONAL:
+    case espnow::NodeState::OPERATIONAL:
         ESP_LOGI(TAG, "Ready to communicate");
         break;
-    case NodeState::RECOVERY_SCAN:
+    case espnow::NodeState::RECOVERY_SCAN:
         ESP_LOGW(TAG, "Connection lost, scanning...");
         break;
-    case NodeState::IDLE:
+    case espnow::NodeState::IDLE:
         ESP_LOGW(TAG, "No peers, start pairing");
         manager.start_pairing(30000);
         break;
@@ -233,16 +235,16 @@ switch (state) {
 
 ---
 
-### `PeerInfo`
+### `espnow::PeerInfo`
 
 Detailed information about a registered peer.
 
 ```cpp
-struct PeerInfo
+struct espnow::PeerInfo
 {
     uint8_t mac[6];                 ///< 6-byte MAC address
-    NodeType type;                  ///< Node type (HUB, peripheral, etc.)
-    NodeId node_id;                 ///< Logical node ID
+    espnow::NodeType type;                  ///< Node type (HUB, peripheral, etc.)
+    espnow::NodeId node_id;                 ///< Logical node ID
     uint64_t last_seen_ms;          ///< Last message timestamp (ms)
     bool paired;                    ///< Pairing completed
     uint32_t heartbeat_interval_ms; ///< Expected heartbeat interval
@@ -254,8 +256,8 @@ struct PeerInfo
 | Field | Type | Description |
 |-------|------|-------------|
 | `mac` | `uint8_t[6]` | Physical MAC address of the peer |
-| `type` | `NodeType` | Role/type of the peer |
-| `node_id` | `NodeId` | Logical identifier |
+| `type` | `espnow::NodeType` | Role/type of the peer |
+| `node_id` | `espnow::NodeId` | Logical identifier |
 | `last_seen_ms` | `uint64_t` | Timestamp of last received message |
 | `paired` | `bool` | `true` if pairing completed successfully |
 | `heartbeat_interval_ms` | `uint32_t` | Expected interval between heartbeats |
@@ -310,7 +312,7 @@ if (!offline.empty()) {
 Initializes the ESP-NOW Manager with the specified configuration.
 
 ```cpp
-esp_err_t init(const EspNowConfig& config)
+esp_err_t init(const espnow::EspNowConfig& config)
 ```
 
 **Description:**  
@@ -319,7 +321,7 @@ Sets up the necessary resources, including WiFi, ESP-NOW drivers, tasks, and que
 **Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `config` | `const EspNowConfig&` | Configuration structure containing node ID, type, and resource settings |
+| `config` | `const espnow::EspNowConfig&` | Configuration structure containing node ID, type, and resource settings |
 
 **Returns:**
 | Error Code | Description |
@@ -337,9 +339,9 @@ Sets up the necessary resources, including WiFi, ESP-NOW drivers, tasks, and que
 
 **Example:**
 ```cpp
-EspNowConfig config;
-config.node_id = ReservedIds::HUB;
-config.node_type = ReservedTypes::HUB;
+espnow::EspNowConfig config;
+config.node_id = espnow::ReservedIds::HUB;
+config.node_type = espnow::ReservedTypes::HUB;
 config.app_rx_queue = app_queue;
 config.wifi_channel = 6;
 
@@ -383,8 +385,8 @@ Sends data payload to a destination node.
 
 ```cpp
 esp_err_t send_data(
-    NodeId dest_node_id,
-    PayloadType payload_type,
+    espnow::NodeId dest_node_id,
+    espnow::PayloadType payload_type,
     const void* payload,
     size_t len,
     bool require_ack = false
@@ -397,8 +399,8 @@ Encapsulates the payload into a standard message format and queues it for transm
 **Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `dest_node_id` | `NodeId` | ID of the destination node |
-| `payload_type` | `PayloadType` | Type identifier for the payload (application-defined) |
+| `dest_node_id` | `espnow::NodeId` | ID of the destination node |
+| `payload_type` | `espnow::PayloadType` | Type identifier for the payload (application-defined) |
 | `payload` | `const void*` | Pointer to the data buffer to be sent |
 | `len` | `size_t` | Length of the payload in bytes |
 | `require_ack` | `bool` | If `true`, waits for a logical acknowledgment (default: `false`) |
@@ -414,7 +416,7 @@ Encapsulates the payload into a standard message format and queues it for transm
 
 **Notes:**
 - Non-blocking unless `require_ack=true`
-- Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
+- Enters `espnow::NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
 
 **Warning:** Maximum payload is 230 bytes (ESP-NOW limit − header − CRC)
 
@@ -423,8 +425,8 @@ Encapsulates the payload into a standard message format and queues it for transm
 SensorData data = {.temperature = 25.5, .humidity = 60};
 
 esp_err_t err = manager.send_data(
-    ReservedIds::HUB,              // Send to HUB
-    PayloadType::SENSOR_DATA,      // Application-defined type
+    espnow::ReservedIds::HUB,              // Send to HUB
+    espnow::PayloadType::SENSOR_DATA,      // Application-defined type
     &data,                         // Payload pointer
     sizeof(data),                  // Payload size
     true                           // Require ACK
@@ -442,7 +444,7 @@ if (err == ESP_OK) {
 template <typename T1, typename T2>
 esp_err_t send_data(T1 dest_node_id, T2 payload_type, const void* payload, size_t len, bool require_ack = false)
 ```
-Allows using enum types directly for `NodeId` and `PayloadType`.
+Allows using enum types directly for `espnow::NodeId` and `espnow::PayloadType`.
 
 ---
 
@@ -452,8 +454,8 @@ Sends a command to a destination node.
 
 ```cpp
 esp_err_t send_command(
-    NodeId dest_node_id,
-    CommandType command_type,
+    espnow::NodeId dest_node_id,
+    espnow::CommandType command_type,
     const void* payload,
     size_t len,
     bool require_ack = false
@@ -466,8 +468,8 @@ Similar to `send_data()`, but specifically for control commands. For HUB: Used t
 **Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `dest_node_id` | `NodeId` | ID of the destination node |
-| `command_type` | `CommandType` | Type of command to execute |
+| `dest_node_id` | `espnow::NodeId` | ID of the destination node |
+| `command_type` | `espnow::CommandType` | Type of command to execute |
 | `payload` | `const void*` | Optional payload for the command |
 | `len` | `size_t` | Length of the payload |
 | `require_ack` | `bool` | If `true`, waits for logical acknowledgment (default: `false`) |
@@ -483,7 +485,7 @@ Similar to `send_data()`, but specifically for control commands. For HUB: Used t
 
 **Notes:**
 - Non-blocking unless `require_ack=true`
-- Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
+- Enters `espnow::NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
 
 **Warning:** Maximum payload is 230 bytes
 
@@ -493,7 +495,7 @@ SetIntervalCmd cmd = {.interval_ms = 5000};
 
 esp_err_t err = manager.send_command(
     node_id,                       // Target node
-    CommandType::SET_INTERVAL,     // Command type
+    espnow::espnow::CommandType::SET_INTERVAL,     // Command type
     &cmd,                          // Command payload
     sizeof(cmd),
     true                           // Require ACK
@@ -503,7 +505,7 @@ esp_err_t err = manager.send_command(
 **Template Overload (Enum Types):**
 ```cpp
 template <typename T>
-esp_err_t send_command(T dest_node_id, CommandType command_type, const void* payload, size_t len, bool require_ack = false)
+esp_err_t send_command(T dest_node_id, espnow::CommandType command_type, const void* payload, size_t len, bool require_ack = false)
 ```
 
 ---
@@ -513,7 +515,7 @@ esp_err_t send_command(T dest_node_id, CommandType command_type, const void* pay
 Confirms reception of a message that required an ACK.
 
 ```cpp
-esp_err_t confirm_reception(NodeId sender_id, uint16_t sequence_number, AckStatus status)
+esp_err_t confirm_reception(espnow::NodeId sender_id, uint16_t sequence_number, espnow::AckStatus status)
 ```
 
 **Description:**
@@ -522,9 +524,9 @@ Sends a logical acknowledgment back to the specified sender. This should be call
 **Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `sender_id` | `NodeId` | Logical ID of the sender node to acknowledge. |
+| `sender_id` | `espnow::NodeId` | Logical ID of the sender node to acknowledge. |
 | `sequence_number` | `uint16_t` | Sequence number of the original message being acknowledged. |
-| `status` | `AckStatus` | Processing outcome: `AckStatus::OK` for success, `AckStatus::ERROR_INVALID_DATA` for invalid payload, or `AckStatus::ERROR_PROCESSING` for internal errors. |
+| `status` | `espnow::AckStatus` | Processing outcome: `espnow::AckStatus::OK` for success, `espnow::AckStatus::ERROR_INVALID_DATA` for invalid payload, or `espnow::AckStatus::ERROR_PROCESSING` for internal errors. |
 
 **Returns:**
 | Error Code | Description |
@@ -538,7 +540,7 @@ Sends a logical acknowledgment back to the specified sender. This should be call
 ```cpp
 // In your RX task, after processing a received message:
 if (msg.requires_ack) {
-    manager.confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK);
+    manager.confirm_reception(msg.sender_id, msg.sequence_number, espnow::AckStatus::OK);
 }
 ```
 
@@ -552,9 +554,9 @@ Manually adds a peer to the manager.
 
 ```cpp
 esp_err_t add_peer(
-    NodeId node_id,
+    espnow::NodeId node_id,
     const uint8_t* mac,
-    NodeType type,
+    espnow::NodeType type,
     uint32_t heartbeat_interval_ms
 )
 ```
@@ -565,9 +567,9 @@ Registers a node in the internal peer list and adds it to the ESP-NOW driver's p
 **Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `node_id` | `NodeId` | Unique ID of the node |
+| `node_id` | `espnow::NodeId` | Unique ID of the node |
 | `mac` | `const uint8_t*` | MAC address of the node (6 bytes) |
-| `type` | `NodeType` | Role/Type of the node |
+| `type` | `espnow::NodeType` | Role/Type of the node |
 | `heartbeat_interval_ms` | `uint32_t` | Heartbeat interval in milliseconds |
 
 **Returns:**
@@ -601,9 +603,9 @@ Registers a node in the internal peer list and adds it to the ESP-NOW driver's p
 uint8_t hub_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
 esp_err_t err = manager.add_peer(
-    ReservedIds::HUB,      // HUB node ID
+    espnow::ReservedIds::HUB,      // HUB node ID
     hub_mac,               // HUB MAC address
-    ReservedTypes::HUB,    // Node type
+    espnow::ReservedTypes::HUB,    // Node type
     60000                  // 1 minute heartbeat
 );
 ```
@@ -621,7 +623,7 @@ esp_err_t add_peer(T1 node_id, const uint8_t* mac, T2 type, uint32_t heartbeat_i
 Removes a peer from the manager.
 
 ```cpp
-esp_err_t remove_peer(NodeId node_id)
+esp_err_t remove_peer(espnow::NodeId node_id)
 ```
 
 **Description:**  
@@ -630,7 +632,7 @@ Removes the peer from both internal lists and the ESP-NOW driver.
 **Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `node_id` | `NodeId` | ID of the node to remove |
+| `node_id` | `espnow::NodeId` | ID of the node to remove |
 
 **Returns:**
 | Error Code | Description |
@@ -669,14 +671,14 @@ esp_err_t remove_peer(T node_id)
 Gets a list of all registered peers.
 
 ```cpp
-etl::vector<PeerInfo, MAX_PEERS> get_peers()
+etl::vector<espnow::PeerInfo, MAX_PEERS> get_peers()
 ```
 
 **Description:**  
 Returns a vector containing information for all registered peers.
 
 **Returns:**
-- Vector of `PeerInfo` structures
+- Vector of `espnow::PeerInfo` structures
 - Returns empty vector if mutex acquisition fails
 
 **Notes:**
@@ -697,7 +699,7 @@ for (const auto& peer : peers) {
 Gets a list of IDs for peers considered offline.
 
 ```cpp
-etl::vector<NodeId, MAX_PEERS> get_offline_peers() const
+etl::vector<espnow::NodeId, MAX_PEERS> get_offline_peers() const
 ```
 
 **Description:**  
@@ -728,7 +730,7 @@ if (!offline.empty()) {
 Gets statistics for a specific peer.
 
 ```cpp
-bool get_peer_stats(NodeId node_id, PeerStatistics& out) const
+bool get_peer_stats(espnow::NodeId node_id, espnow::PeerStatistics& out) const
 ```
 
 **Description:**
@@ -737,8 +739,8 @@ Retrieves current link quality metrics for a specific peer identified by `node_i
 **Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `node_id` | `NodeId` | Logical ID of the peer |
-| `out` | `PeerStatistics&` | Output parameter filled with current statistics |
+| `node_id` | `espnow::NodeId` | Logical ID of the peer |
+| `out` | `espnow::PeerStatistics&` | Output parameter filled with current statistics |
 
 **Returns:**
 - `true` if the peer was found and `out` was populated
@@ -746,8 +748,8 @@ Retrieves current link quality metrics for a specific peer identified by `node_i
 
 **Example:**
 ```cpp
-PeerStatistics stats;
-if (manager.get_peer_stats(ReservedIds::HUB, stats)) {
+espnow::PeerStatistics stats;
+if (manager.get_peer_stats(espnow::ReservedIds::HUB, stats)) {
     ESP_LOGI(TAG, "HUB RSSI: %d dBm (avg), RTT: %lu ms",
              stats.rssi_avg, (unsigned long)stats.rtt_avg_ms);
     ESP_LOGI(TAG, "Packets: rx=%lu, tx=%lu, lost=%lu",
@@ -766,14 +768,14 @@ if (manager.get_peer_stats(ReservedIds::HUB, stats)) {
 Gets statistics for all tracked peers.
 
 ```cpp
-etl::vector<PeerStatistics, MAX_PEERS> get_all_peer_stats() const
+etl::vector<espnow::PeerStatistics, MAX_PEERS> get_all_peer_stats() const
 ```
 
 **Description:**
 Returns a vector containing link quality statistics for all peers currently tracked by the statistics manager. Useful for dashboards or periodic health reports.
 
 **Returns:**
-- Vector of `PeerStatistics` for all tracked peers
+- Vector of `espnow::PeerStatistics` for all tracked peers
 - Empty vector if no peers are tracked
 
 **Notes:**
@@ -799,14 +801,14 @@ for (const auto& stats : all_stats) {
 
 ---
 
-### `PeerStatistics` Structure
+### `espnow::PeerStatistics` Structure
 
 Detailed link quality metrics for a single peer.
 
 ```cpp
-struct PeerStatistics
+struct espnow::PeerStatistics
 {
-    NodeId node_id;                   ///< Logical node ID
+    espnow::NodeId node_id;                   ///< Logical node ID
     int8_t rssi_last;                 ///< Last received RSSI (dBm)
     int8_t rssi_avg;                  ///< Exponential moving average of RSSI (-127 = unknown)
     uint8_t rssi_alpha;               ///< EMA alpha weight (derived from heartbeat interval)
@@ -825,7 +827,7 @@ struct PeerStatistics
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `node_id` | `NodeId` | Logical identifier of the peer |
+| `node_id` | `espnow::NodeId` | Logical identifier of the peer |
 | `rssi_last` | `int8_t` | Most recent RSSI value in dBm |
 | `rssi_avg` | `int8_t` | EMA-smoothed RSSI average. `-127` (`RSSI_UNKNOWN`) means no data yet |
 | `rssi_alpha` | `uint8_t` | Fixed-point EMA alpha (0-256, where 256 = 100% new sample) |
@@ -901,24 +903,24 @@ err = manager.start_pairing(30000);
 Gets the current node state.
 
 ```cpp
-NodeState get_node_state() const
+espnow::NodeState get_node_state() const
 ```
 
 **Description:**  
 Returns the current state of the node state machine.
 
 **Returns:**
-- Current `NodeState` value
+- Current `espnow::NodeState` value
 
 **Notes:**
 - This method does not return errors
 
 **Example:**
 ```cpp
-NodeState state = manager.get_node_state();
-if (state == NodeState::OPERATIONAL) {
+espnow::NodeState state = manager.get_node_state();
+if (state == espnow::NodeState::OPERATIONAL) {
     ESP_LOGI(TAG, "Ready to communicate");
-} else if (state == NodeState::RECOVERY_SCAN) {
+} else if (state == espnow::NodeState::RECOVERY_SCAN) {
     ESP_LOGW(TAG, "Scanning for channel...");
 }
 ```
