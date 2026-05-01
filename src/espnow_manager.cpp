@@ -872,7 +872,7 @@ esp_err_t EspNowManager::init_discovery_manager()
         return ESP_FAIL;
     }
     return scanner_->init(
-        config_.node_id, config_.node_type, rx_task_handle_, config_.priority_rx_task, config_.stack_size_rx_task);
+        config_.node_id, config_.node_type, rx_task_handle_, config_.priority_discovery_task, config_.stack_size_discovery_task);
 }
 
 esp_err_t EspNowManager::init_heartbeat_manager()
