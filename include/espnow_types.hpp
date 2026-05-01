@@ -243,7 +243,7 @@ struct EspNowConfig
         , scan_max_retries(SCAN_MAX_RETRIES)
         , stack_size_rx_task(6144)
         , stack_size_tx_task(6144)
-        , stack_size_discovery_task(4096)
+        , stack_size_discovery_task(3072)
         , priority_rx_task(10)
         , priority_tx_task(9)
         , priority_discovery_task(8)

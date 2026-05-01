@@ -76,7 +76,7 @@ TxManager::init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_
     }
 
     BaseType_t task_creation =
-        freertos_hal_.task_create(tx_task_func, "tx_manager_task", stack_size, this, priority, &tx_task_handle_);
+        freertos_hal_.task_create(tx_task_func, "tx_task", stack_size, this, priority, &tx_task_handle_);
     if (task_creation != pdPASS) {
         deinit();
         return ESP_ERR_NO_MEM;

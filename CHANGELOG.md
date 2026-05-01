@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-05-01
+
+### Fixed
+- Correct discovery task initialization parameters and add config defaults.
+
+### Added
+- Created `stack_stress_test` application to validate FreeRTOS task memory usage under extreme network conditions.
+- Documented Memory and Task Stack Tuning guidelines in README based on High Water Mark analysis.
+- Optimized `stack_size_discovery_task` to `3072` bytes to free up system memory while maintaining a safe operating margin.
+
 ## [1.1.0] - 2026-04-26
 
 ### Breaking Changes

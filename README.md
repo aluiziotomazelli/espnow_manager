@@ -462,6 +462,46 @@ Test applications are located in the `test_apps/` directory.
 | `SCAN_CHANNEL_TIMEOUT_MS` | 50 | Time per channel during scan |
 | `PAIRING_TIMEOUT_MS` | 60000 | Pairing session timeout |
 
+## Memory and Task Stack Tuning
+
+ESP-NOW Manager creates three dedicated FreeRTOS tasks to handle communication asynchronously, preventing the application's main thread from blocking. The default stack sizes for these tasks are defined in `include/espnow_types.hpp` and have been rigorously tested to ensure stability under extreme stress conditions.
+
+### `app_main` Stack Requirement
+
+When integrating this component, it is highly recommended to increase your `app_main` task stack size (`CONFIG_ESP_MAIN_TASK_STACK_SIZE`) from the ESP-IDF default (typically 3584 or 4096 bytes) to at least **8192 bytes**. 
+
+This is **not** because ESP-NOW Manager uses dynamic allocation for its components (dynamic allocation uses the Heap, not the Stack). Instead, the larger stack is required because:
+1. **Wi-Fi and NVS initialization** (`esp_wifi_init`, `nvs_flash_init`) have deep call trees and consume significant stack memory.
+2. **`ESP_LOG` / `printf`** routines use large temporary buffers on the stack for string formatting.
+3. The component initialization `EspNowManager::init()` cascades through several constructors before returning.
+
+### Task Stack Sizes (High Water Marks)
+
+An aggressive [stack stress test application](test_apps/stack_stress_test/) was used to validate the memory limits. The test scenario involved:
+- Node sending data messages with ACK requests every **250 ms**.
+- Node and Hub sending heartbeats every **500 ms** (originally tested at 2x send interval).
+- Hub artificially changing its Wi-Fi channel every **20 messages** to constantly force the Node to lose connection, triggering intense multi-channel recovery scans and packet loss.
+
+Under this extreme load, the Peak Stack Usage (High Water Mark) was measured (in bytes):
+
+| Task | Default Size | Peak Consumed (Hub) | Peak Consumed (Node) | Minimum Slack (Safety Margin) |
+|------|--------------|---------------------|----------------------|-------------------------------|
+| `rx_task` | 6144 | ~5080 | ~3772 | ~1.0 KB |
+| `tx_task` | 6144 | ~3140 | ~4984 | ~1.1 KB |
+| `discovery_task` | 3072 | ~1436 | ~1952 | ~1.1 KB |
+
+*Note: In ESP-IDF, `uxTaskGetStackHighWaterMark` returns the minimum free stack space (slack) in bytes.*
+
+### Tuning Guidelines
+
+The default sizes are calibrated to leave a safe ~1 KB breathing room in the absolute worst-case scenario. However, depending on your application profile, you can adjust these in `espnow_types.hpp`:
+
+- **`discovery_task` (3072)**: Very stable across all scenarios. It only runs during channel scanning and does not need to be changed.
+- **`rx_task` (6144)**: A Hub handling a massive volume of incoming messages from dozens of Nodes might push this boundary. If you experience crashes on the Hub during extreme bursts of traffic, consider increasing this.
+- **`tx_task` (6144)**: A Node consumes more TX stack because it actively waits for ACKs, manages timeouts, and handles retry queues. If your Node only sends sporadic, non-ACK messages, you could theoretically reduce this, but 6144 is the recommended safe default.
+
+For custom testing with your specific network traffic patterns, you can modify and run the `stack_stress_test` application to find your own system's "sweet spot".
+
 ## Error Handling
 
 All functions return `esp_err_t`. Common error codes:
