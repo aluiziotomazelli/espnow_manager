@@ -5,7 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.1] - 2026-05-01
+## [1.1.2] - 2026-05-01
+### Fixed
+- DiscoveryManager: Add device ID check to handle_scan_response to prevent unintended node state transitions.
+ - 2026-05-01
 
 ### Fixed
 - Correct discovery task initialization parameters and add config defaults.

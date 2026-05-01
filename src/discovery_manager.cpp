@@ -113,6 +113,12 @@ void DiscoveryManager::handle_scan_response(const DecodedRxPacket& decoded)
     if (!node_ready_ || discovery_task_handle_ == nullptr) {
         return;
     }
+
+    // Scan responses must be explicitly addressed to this node.
+    if (decoded.header.dest_node_id != my_node_id_) {
+        return;
+    }
+
     ESP_LOGI(TAG, "Scan response received, notifying discovery task");
     hal_freertos_.task_notify(discovery_task_handle_, NOTIFY_LINK_ALIVE, eSetBits);
 }

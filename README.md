@@ -1,4 +1,4 @@
-# ESP-NOW Manager (Namespace v1.1.0)
+# ESP-NOW Manager
 
 [![ESP-IDF Build](https://github.com/aluiziotomazelli/espnow_manager/actions/workflows/build.yml/badge.svg)](https://github.com/aluiziotomazelli/espnow_manager/actions/workflows/build.yml)
 [![Host Tests](https://github.com/aluiziotomazelli/espnow_manager/actions/workflows/host_test.yml/badge.svg)](https://github.com/aluiziotomazelli/espnow_manager/actions/workflows/host_test.yml)
@@ -8,11 +8,11 @@ A high-level C++ component for ESP32 devices that provides reliable, structured 
 
 ## Overview
 
-ESP-NOW Manager (Namespace v1.1.0) enables seamless wireless communication between ESP32 devices using a **Facade + Decentralized Managers** architecture. It handles peer discovery, pairing, link monitoring, and reliable data transmission automatically.
+ESP-NOW Manager enables seamless wireless communication between ESP32 devices using a **Facade + Decentralized Managers** architecture. It handles peer discovery, pairing, link monitoring, and reliable data transmission automatically.
 
 > **⚠️ Network Topology: Star (Not Mesh)**
 > 
-> ESP-NOW Manager (Namespace v1.1.0) uses a **star topology** centered around a HUB device:
+> ESP-NOW Manager uses a **star topology** centered around a HUB device:
 > - **One HUB required**: All communication flows through a central HUB node
 > - **NODEs cannot communicate directly**: NODEs can only talk to the HUB, not to each other
 > - **HUB coordinates the network**: The HUB manages peer registration and message routing
@@ -38,7 +38,7 @@ ESP-NOW Manager (Namespace v1.1.0) enables seamless wireless communication betwe
 
 ## Architecture
 
-ESP-NOW Manager (Namespace v1.1.0) uses a **Facade pattern** with specialized managers for each protocol aspect:
+ESP-NOW Manager uses a **Facade pattern** with specialized managers for each protocol aspect:
 
 ```
 ┌─────────────────────────────────────────────────────────┐

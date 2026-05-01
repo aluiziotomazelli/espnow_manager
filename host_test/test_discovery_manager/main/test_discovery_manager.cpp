@@ -75,9 +75,22 @@ protected:
     {
         DecodedRxPacket decoded{};
         decoded.header.sender_node_id = sender_id;
+        decoded.header.dest_node_id = MY_ID;
         return decoded;
     }
 };
+
+// ... existing test cases ...
+
+TEST_F(DiscoveryManagerTest, HandleScanResponseIgnoresMismatchedDestId)
+{
+    init_node();
+    DecodedRxPacket decoded = make_decoded_packet(10);
+    decoded.header.dest_node_id = MY_ID + 1; // Mismatched ID
+
+    EXPECT_CALL(freertos_hal, task_notify(fake_discovery_task, NOTIFY_LINK_ALIVE, eSetBits)).Times(0);
+    scanner->handle_scan_response(decoded);
+}
 
 // =============================================================================
 // Initialization & Deinitialization

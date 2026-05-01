@@ -139,6 +139,7 @@ protected:
     {
         DecodedRxPacket decoded{};
         decoded.header.sender_node_id = sender_id;
+        decoded.header.dest_node_id = MY_ID;
         return decoded;
     }
 };
