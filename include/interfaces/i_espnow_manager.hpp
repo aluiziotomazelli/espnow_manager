@@ -371,6 +371,12 @@ public:
      * @note This method does not return errors.
      */
     virtual bool is_initialized() const = 0;
+
+    /**
+     * @brief Get the application RX queue handle.
+     * @return QueueHandle_t or nullptr if not initialized.
+     */
+    virtual QueueHandle_t get_rx_queue() const = 0;
 };
 
 } // namespace espnow

@@ -136,6 +136,9 @@ public:
     /** @copydoc IEspNowManager::is_initialized */
     bool is_initialized() const override;
 
+    /** @copydoc IEspNowManager::get_rx_queue */
+    QueueHandle_t get_rx_queue() const override { return config_.app_rx_queue; }
+
     /** @copydoc IEspNowManager::reconnect */
     esp_err_t reconnect() override;
 
