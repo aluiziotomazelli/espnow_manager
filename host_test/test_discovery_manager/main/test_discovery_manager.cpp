@@ -2,9 +2,9 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "mock_hal_freertos.hpp"
-#include "mock_hal_wifi.hpp"
-#include "mock_hal_espnow.hpp"
+#include "mock_en_hal_freertos.hpp"
+#include "mock_en_hal_wifi.hpp"
+#include "mock_en_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
 
 #include "discovery_manager.hpp"

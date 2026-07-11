@@ -4,7 +4,7 @@
 #include "gtest/gtest.h"
 
 #include "mock_tx_state_machine.hpp"
-#include "mock_hal_espnow.hpp"
+#include "mock_en_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_discovery_manager.hpp"
 #include "mock_statistics_manager.hpp"
@@ -105,15 +105,14 @@ protected:
         ON_CALL(*codec, encode(_, _, _, _, _)).WillByDefault(Return(10));
 
         // PeerManager: resolve test_mac to a known node_id (kNodeId = 2 is defined in test constants)
-        ON_CALL(*peer_mgr, find_node_id_by_mac(_, _))
-            .WillByDefault(Invoke([](const uint8_t* mac, NodeId& out_id) {
-                static constexpr uint8_t expected_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-                if (memcmp(mac, expected_mac, 6) == 0) {
-                    out_id = 2;
-                    return ESP_OK;
-                }
-                return ESP_ERR_NOT_FOUND;
-            }));
+        ON_CALL(*peer_mgr, find_node_id_by_mac(_, _)).WillByDefault(Invoke([](const uint8_t* mac, NodeId& out_id) {
+            static constexpr uint8_t expected_mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+            if (memcmp(mac, expected_mac, 6) == 0) {
+                out_id = 2;
+                return ESP_OK;
+            }
+            return ESP_ERR_NOT_FOUND;
+        }));
 
         manager = std::make_unique<TxManager>(
             *fsm_owned, *hal_owned, freertos_hal, *codec_owned, *statistics_mgr_owned, *peer_mgr_owned);
@@ -455,7 +454,7 @@ TEST_F(TxManagerTaskTest, RetryingWithEspnowErrorCallsFsmOnDeliveryFailure)
 TEST_F(TxManagerTaskTest, RetryingResendsPacketAndReportsRetry)
 {
     init_and_wait();
-    
+
     // Setup state: RETRYING
     pending_ack = make_pending_ack(2);
     current_state = TxState::RETRYING;

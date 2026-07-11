@@ -8,10 +8,10 @@
 
 #include "mock_espnow_driver.hpp"
 #include "mock_discovery_manager.hpp"
-#include "mock_hal_freertos.hpp"
-#include "mock_hal_timer.hpp"
-#include "mock_hal_wifi.hpp"
-#include "mock_hal_espnow.hpp"
+#include "mock_en_hal_freertos.hpp"
+#include "mock_en_hal_timer.hpp"
+#include "mock_en_hal_wifi.hpp"
+#include "mock_en_hal_espnow.hpp"
 #include "mock_heartbeat_manager.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_message_router.hpp"
@@ -1171,10 +1171,10 @@ TEST_F(EspNowManagerTest, BuildAppMessageWithDataPayloadCreatesAppMessage)
     EXPECT_EQ(app_msg.payload_len, payload_len);
     EXPECT_EQ(memcmp(app_msg.src_mac, src_mac, 6), 0);
     EXPECT_EQ(memcmp(app_msg.payload, test_payload, payload_len), 0);
-    }
+}
 
-    TEST_F(EspNowManagerTest, InitTriggersSyncPeers)
-    {
+TEST_F(EspNowManagerTest, InitTriggersSyncPeers)
+{
     // Arrange: Adiciona um peer para que a lista não esteja vazia
     add_peer_to_storage();
 
@@ -1183,24 +1183,24 @@ TEST_F(EspNowManagerTest, BuildAppMessageWithDataPayloadCreatesAppMessage)
 
     // Act
     init_sut();
-    }
+}
 
-    TEST_F(EspNowManagerTest, RemovePeerCallsStatisticsManagerOnPeerRemoved)
-    {
+TEST_F(EspNowManagerTest, RemovePeerCallsStatisticsManagerOnPeerRemoved)
+{
     init_sut();
     add_peer_to_storage();
 
     EXPECT_CALL(*stats_mgr_, on_peer_removed(kNodeId)).Times(1);
 
     sut_->remove_peer(kNodeId);
-    }
+}
 
-    TEST_F(EspNowManagerTest, PairingNotificationTriggersSyncPeers)
-    {
+TEST_F(EspNowManagerTest, PairingNotificationTriggersSyncPeers)
+{
     init_sut();
     add_peer_to_storage();
 
     EXPECT_CALL(*stats_mgr_, sync_peers(_)).Times(1);
 
     sut_->handle_notifications(NOTIFY_PEER_ADDED, should_stop);
-    }
+}

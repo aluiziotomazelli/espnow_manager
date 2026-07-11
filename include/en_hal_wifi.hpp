@@ -1,4 +1,4 @@
-// include/hal_wifi.hpp
+// include/en_hal_wifi.hpp
 #pragma once
 
 #include "esp_wifi.h"

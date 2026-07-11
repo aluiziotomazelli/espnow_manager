@@ -2,10 +2,10 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "mock_hal_timer.hpp"
+#include "mock_en_hal_timer.hpp"
 #include "mock_peer_manager.hpp"
 #include "mock_tx_manager.hpp"
-#include "mock_hal_freertos.hpp"
+#include "mock_en_hal_freertos.hpp"
 
 #include "pairing_manager.hpp"
 using namespace espnow;
@@ -462,9 +462,7 @@ TEST_F(PairingManagerHubTest, HandleRequestSendsPeerAddedNotification)
     // Must add peer and notify rx_task about it
     EXPECT_CALL(peer_mgr_, add(kNodeId, _, kNodeType, _)).Times(1);
     EXPECT_CALL(tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_OK));
-    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PEER_ADDED, _))
-        .Times(1)
-        .WillOnce(Return(pdPASS));
+    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PEER_ADDED, _)).Times(1).WillOnce(Return(pdPASS));
 
     auto decoded = make_decoded_pair_request(kNodeId, kNodeType);
     sut_->handle_request(decoded);
@@ -480,12 +478,8 @@ TEST_F(PairingManagerTest, HandleResponseSendsPeerAddedNotification)
 
     // Must add peer and notify rx_task about it
     EXPECT_CALL(peer_mgr_, add(kHubId, _, kHubType, _)).Times(1);
-    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PEER_ADDED, _))
-        .Times(1)
-        .WillOnce(Return(pdPASS));
-    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PAIRING_DONE, _))
-        .Times(1)
-        .WillOnce(Return(pdPASS));
+    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PEER_ADDED, _)).Times(1).WillOnce(Return(pdPASS));
+    EXPECT_CALL(hal_freertos_, task_notify(fake_rx_task, NOTIFY_PAIRING_DONE, _)).Times(1).WillOnce(Return(pdPASS));
 
     auto decoded = make_decoded_pair_response(PairStatus::ACCEPTED);
     sut_->handle_response(decoded);

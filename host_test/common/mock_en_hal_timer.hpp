@@ -1,4 +1,4 @@
-// host_test/common/mock_wifi_driver_hal.hpp
+// host_test/common/mock_en_hal_timer.hpp
 #pragma once
 
 #include "gmock/gmock.h"

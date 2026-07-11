@@ -2,9 +2,9 @@
 #include "gtest/gtest.h"
 
 #include "mock_tx_state_machine.hpp"
-#include "mock_hal_espnow.hpp"
+#include "mock_en_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
-#include "mock_hal_freertos.hpp"
+#include "mock_en_hal_freertos.hpp"
 #include "mock_statistics_manager.hpp"
 #include "mock_peer_manager.hpp"
 #include "tx_manager.hpp"
@@ -310,9 +310,9 @@ TEST_F(TxManagerTest, QueuePacketWithoutQueueReturnsError)
 TEST_F(TxManagerTest, QueuePacketCallsQueueSend)
 {
     EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task, 10)); // Initialize first
-    DecodedTxPacket packet = {};                             // Queue packet
-    EXPECT_CALL(freertos_hal, queue_send(_, _, _)).Times(1); // Must call queue send
-    EXPECT_EQ(ESP_OK, manager->queue_packet(packet));        // Queue packet
+    DecodedTxPacket packet = {};                                 // Queue packet
+    EXPECT_CALL(freertos_hal, queue_send(_, _, _)).Times(1);     // Must call queue send
+    EXPECT_EQ(ESP_OK, manager->queue_packet(packet));            // Queue packet
 }
 
 TEST_F(TxManagerTest, QueuePacketWithoutTaskHandleDoesNotTryToNotifyTask)

@@ -29,7 +29,7 @@ All component interfaces are mocked using Google Mock, providing:
 - **State Simulation:** Simulate internal state changes (like task handles or queue statuses)
 
 Mock files are located in `host_test/common/`:
-- `mock_hal_wifi.hpp`, `mock_hal_espnow.hpp` - WiFi and ESP-NOW HALs
+- `mock_en_hal_wifi.hpp`, `mock_en_hal_espnow.hpp` - WiFi and ESP-NOW HALs
 - `mock_hal_freertos.hpp`, `mock_hal_timer.hpp` - FreeRTOS and Timer HALs
 - `mock_peer_manager.hpp`, `mock_tx_manager.hpp` - Component managers
 - `mock_message_codec.hpp`, `mock_message_router.hpp` - Protocol components

@@ -2,7 +2,7 @@
 #include <gmock/gmock.h>
 
 #include "esp_attr.h"
-#include "mock_hal_nvs.hpp"
+#include "mock_en_hal_nvs.hpp"
 
 #include "persistence_backend.hpp"
 using namespace espnow;

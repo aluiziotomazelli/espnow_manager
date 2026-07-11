@@ -1,4 +1,4 @@
-// host_test/common/mock_hal_espnow.hpp
+// host_test/common/mock_en_hal_espnow.hpp
 #pragma once
 
 #include "gmock/gmock.h"

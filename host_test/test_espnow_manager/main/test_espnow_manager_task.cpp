@@ -13,9 +13,9 @@
 
 #include "mock_espnow_driver.hpp"
 #include "mock_discovery_manager.hpp"
-#include "mock_hal_timer.hpp"
-#include "mock_hal_wifi.hpp"
-#include "mock_hal_espnow.hpp"
+#include "mock_en_hal_timer.hpp"
+#include "mock_en_hal_wifi.hpp"
+#include "mock_en_hal_espnow.hpp"
 #include "mock_heartbeat_manager.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_message_router.hpp"

@@ -1,4 +1,4 @@
-// mock_freertos_hal.hpp
+// host_test/common/mock_en_hal_freertos.hpp
 #pragma once
 
 #include <gmock/gmock.h>

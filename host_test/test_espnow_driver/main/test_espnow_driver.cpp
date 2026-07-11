@@ -2,8 +2,8 @@
 #include <gmock/gmock.h>
 
 #include "espnow_driver.hpp"
-#include "mock_hal_wifi.hpp"
-#include "mock_hal_espnow.hpp"
+#include "mock_en_hal_wifi.hpp"
+#include "mock_en_hal_espnow.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 using namespace espnow;
@@ -28,7 +28,7 @@ protected:
         espnow_driver = std::make_unique<EspNowDriver>(hal_wifi, hal_espnow);
 
         // Default happy path
-        ON_CALL(hal_wifi, wifi_get_mode(_)).WillByDefault([](wifi_mode_t *mode) {
+        ON_CALL(hal_wifi, wifi_get_mode(_)).WillByDefault([](wifi_mode_t* mode) {
             *mode = WIFI_MODE_STA;
             return ESP_OK;
         });
@@ -62,7 +62,7 @@ TEST_F(EspNowDriverTest, InitFailGetWifiMode)
 
 TEST_F(EspNowDriverTest, InitGetWrongMode)
 {
-    ON_CALL(hal_wifi, wifi_get_mode(_)).WillByDefault([](wifi_mode_t *mode) {
+    ON_CALL(hal_wifi, wifi_get_mode(_)).WillByDefault([](wifi_mode_t* mode) {
         *mode = WIFI_MODE_NULL;
         return ESP_OK;
     });

@@ -1,4 +1,4 @@
-// include/hal_nvs.hpp
+// include/en_hal_nvs.hpp
 #pragma once
 
 #include "esp_err.h"

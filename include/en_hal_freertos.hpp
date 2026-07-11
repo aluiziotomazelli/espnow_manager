@@ -1,4 +1,4 @@
-// include/freertos_hal.hpp
+// include/en_hal_freertos.hpp
 #pragma once
 
 #include "i_en_hal_freertos.hpp"

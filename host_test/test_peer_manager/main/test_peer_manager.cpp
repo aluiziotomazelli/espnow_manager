@@ -2,8 +2,8 @@
 #include <gmock/gmock.h>
 
 #include "peer_manager.hpp"
-#include "mock_hal_espnow.hpp"
-#include "mock_hal_freertos.hpp"
+#include "mock_en_hal_espnow.hpp"
+#include "mock_en_hal_freertos.hpp"
 #include "mock_storage_manager.hpp"
 using namespace espnow;
 
@@ -24,7 +24,7 @@ protected:
     SemaphoreHandle_t fake_mutex_ = reinterpret_cast<SemaphoreHandle_t>(0xDEAD);
 
     // Helper to create a unique mac for each peer.
-    static void make_mac(uint8_t *mac, uint8_t id)
+    static void make_mac(uint8_t* mac, uint8_t id)
     {
         memset(mac, 0, 6);
         mac[5] = id;
@@ -85,14 +85,14 @@ TEST_F(PeerManagerTest, AddPeerWithSameIdandMacDontOverwrite)
     make_mac(mac, ID_2);
 
     EXPECT_CALL(espnow_hal, hal_esp_now_add_peer(_)).Times(1); // First call
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));    // add the peer
-    auto peers = manager->get_all();                         // Get the peers
-    EXPECT_EQ(1, peers.size());                              // Must be only one peer
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));      // add the peer
+    auto peers = manager->get_all();                           // Get the peers
+    EXPECT_EQ(1, peers.size());                                // Must be only one peer
 
     EXPECT_CALL(espnow_hal, hal_esp_now_add_peer(_)).Times(0); // Will not call add again
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));    // Still returns ESP_OK
-    peers = manager->get_all();                              // get the peers
-    EXPECT_EQ(1, peers.size());                              // Must be only one peer
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));      // Still returns ESP_OK
+    peers = manager->get_all();                                // get the peers
+    EXPECT_EQ(1, peers.size());                                // Must be only one peer
 }
 
 TEST_F(PeerManagerTest, AddPeerWithSameIdButDifferentMAcCallsDelAndAdd)
@@ -107,8 +107,8 @@ TEST_F(PeerManagerTest, AddPeerWithSameIdButDifferentMAcCallsDelAndAdd)
 
     EXPECT_CALL(espnow_hal, hal_esp_now_del_peer(_)).Times(1).WillOnce(Return(ESP_OK)); // Must call del
     EXPECT_CALL(espnow_hal, hal_esp_now_add_peer(_)).Times(1); // And call add if del returns ESP_OK
-    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));    // Nwe MAC but same ID
-    EXPECT_EQ(1, manager->get_all().size());                 // Must be only one peer
+    EXPECT_EQ(ESP_OK, manager->add(ID_2, mac, PEER, 10));      // Nwe MAC but same ID
+    EXPECT_EQ(1, manager->get_all().size());                   // Must be only one peer
 }
 
 TEST_F(PeerManagerTest, AddPeerWithSameMacButDifferentIdReassigns)
@@ -168,10 +168,10 @@ TEST_F(PeerManagerTest, AddSameIdDifferentMAcDelFailsAndReturnsError)
     //  the add will not be called - a conservative behavior if the MAX_PEERS list is full.
     EXPECT_CALL(espnow_hal, hal_esp_now_del_peer(_))
         .Times(1)
-        .WillOnce(Return(ESP_FAIL));                         // First will cal del, but if it fails
+        .WillOnce(Return(ESP_FAIL));                           // First will cal del, but if it fails
     EXPECT_CALL(espnow_hal, hal_esp_now_add_peer(_)).Times(0); // then add will not be called
-    EXPECT_EQ(ESP_FAIL, manager->add(ID_2, mac, PEER, 10));  // ESP_FAIL propagates
-    EXPECT_EQ(1, manager->get_all().size());                 // Must be only one peer
+    EXPECT_EQ(ESP_FAIL, manager->add(ID_2, mac, PEER, 10));    // ESP_FAIL propagates
+    EXPECT_EQ(1, manager->get_all().size());                   // Must be only one peer
 }
 
 TEST_F(PeerManagerTest, AddPeersFailsAndDoesNotIncludePeer)
@@ -284,7 +284,7 @@ TEST_F(PeerManagerTest, RemovePeerStoresRemainingPeersInSnapshot)
     EXPECT_CALL(espnow_hal, hal_esp_now_del_peer(_)).Times(1);
     EXPECT_CALL(storage, store_peers(_, true))
         .WillOnce(Invoke([this](const etl::ivector<PersistentPeer>& peers, bool /*force_nvs_commit*/) {
-            EXPECT_EQ(1, peers.size());  // Only remaining peer should be in snapshot
+            EXPECT_EQ(1, peers.size()); // Only remaining peer should be in snapshot
             EXPECT_EQ(ID_2, peers[0].node_id);
             return ESP_OK;
         }));
@@ -304,8 +304,8 @@ TEST_F(PeerManagerTest, RemoveNonExistentPeerDoesNotCallDel)
     EXPECT_EQ(MAX_PEERS, manager->get_all().size()); // Must be MAX_PEERS peers
 
     EXPECT_CALL(espnow_hal, hal_esp_now_del_peer(_)).Times(0); // Should not call del
-    EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->remove(99));       // ID_99 does not exist
-    EXPECT_EQ(MAX_PEERS, manager->get_all().size());         // Must still be MAX_PEERS peers
+    EXPECT_EQ(ESP_ERR_NOT_FOUND, manager->remove(99));         // ID_99 does not exist
+    EXPECT_EQ(MAX_PEERS, manager->get_all().size());           // Must still be MAX_PEERS peers
 }
 
 TEST_F(PeerManagerTest, RemoveReturnsErrorWhenDelFailsAndKeepsPeer)
@@ -315,7 +315,7 @@ TEST_F(PeerManagerTest, RemoveReturnsErrorWhenDelFailsAndKeepsPeer)
     manager->add(ID_2, mac, PEER, 10);
 
     EXPECT_CALL(espnow_hal, hal_esp_now_del_peer(_)).WillOnce(Return(ESP_FAIL)); // esp_now_del_peer fails
-    EXPECT_EQ(ESP_FAIL, manager->remove(ID_2));                                // Must return error
+    EXPECT_EQ(ESP_FAIL, manager->remove(ID_2));                                  // Must return error
 
     // Peer should still be present
     EXPECT_EQ(1, manager->get_all().size()); // Must still be one peer
@@ -468,7 +468,7 @@ TEST_F(PeerManagerTest, LoadFromStoragePopulatesPeerList)
     stored.push_back(p1);
     stored.push_back(p2);
 
-    ON_CALL(storage, load_peers(_)).WillByDefault([&](etl::ivector<PersistentPeer> &peers) {
+    ON_CALL(storage, load_peers(_)).WillByDefault([&](etl::ivector<PersistentPeer>& peers) {
         peers = stored;
         return ESP_OK;
     });
@@ -501,7 +501,7 @@ TEST_F(PeerManagerTest, LoadFromStorageClearsPreviousPeers)
 
     stored.push_back(p1);
 
-    EXPECT_CALL(storage, load_peers(_)).WillOnce([&](etl::ivector<PersistentPeer> &peers) {
+    EXPECT_CALL(storage, load_peers(_)).WillOnce([&](etl::ivector<PersistentPeer>& peers) {
         peers = stored;
         return ESP_OK;
     });

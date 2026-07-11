@@ -1,4 +1,4 @@
-// include/hal_espnow.hpp
+// include/en_hal_espnow.hpp
 #pragma once
 
 #include "esp_now.h"

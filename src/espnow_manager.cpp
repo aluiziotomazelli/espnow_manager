@@ -13,14 +13,14 @@
 #include "pairing_manager.hpp"
 #include "peer_manager.hpp"
 #include "protocol_messages.hpp"
-#include "hal_timer.hpp"
+#include "en_hal_timer.hpp"
 #include "tx_manager.hpp"
 #include "tx_state_machine.hpp"
-#include "hal_wifi.hpp"
-#include "hal_espnow.hpp"
+#include "en_hal_wifi.hpp"
+#include "en_hal_espnow.hpp"
 #include "espnow_driver.hpp"
-#include "hal_freertos.hpp"
-#include "hal_nvs.hpp"
+#include "en_hal_freertos.hpp"
+#include "en_hal_nvs.hpp"
 #include "persistence_backend.hpp"
 #include "storage_manager.hpp"
 #include "channel_monitor.hpp"
@@ -872,7 +872,11 @@ esp_err_t EspNowManager::init_discovery_manager()
         return ESP_FAIL;
     }
     return scanner_->init(
-        config_.node_id, config_.node_type, rx_task_handle_, config_.priority_discovery_task, config_.stack_size_discovery_task);
+        config_.node_id,
+        config_.node_type,
+        rx_task_handle_,
+        config_.priority_discovery_task,
+        config_.stack_size_discovery_task);
 }
 
 esp_err_t EspNowManager::init_heartbeat_manager()
