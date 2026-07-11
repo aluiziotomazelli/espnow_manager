@@ -5,7 +5,7 @@
 
 #include "i_statistics_manager.hpp"
 #include "i_storage_manager.hpp"
-#include "i_hal_freertos.hpp"
+#include "i_en_hal_freertos.hpp"
 namespace espnow {
 
 /**

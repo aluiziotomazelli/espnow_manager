@@ -3,8 +3,8 @@
 #include "i_pairing_manager.hpp"
 #include "i_tx_manager.hpp"
 #include "i_peer_manager.hpp"
-#include "i_hal_freertos.hpp"
-#include "i_hal_timer.hpp"
+#include "i_en_hal_freertos.hpp"
+#include "i_en_hal_timer.hpp"
 namespace espnow {
 
 class PairingManager : public IPairingManager

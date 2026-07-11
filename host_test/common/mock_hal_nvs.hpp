@@ -4,7 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include "i_hal_nvs.hpp"
+#include "i_en_hal_nvs.hpp"
 
 namespace espnow {
 

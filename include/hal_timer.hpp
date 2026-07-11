@@ -1,7 +1,7 @@
 #pragma once
 
 #include "esp_timer.h"
-#include "i_hal_timer.hpp"
+#include "i_en_hal_timer.hpp"
 namespace espnow {
 
 /**

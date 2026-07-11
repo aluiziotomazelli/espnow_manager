@@ -9,9 +9,9 @@
 #include "freertos/task.h"
 
 #include "i_discovery_manager.hpp"
-#include "i_hal_wifi.hpp"
-#include "i_hal_espnow.hpp"
-#include "i_hal_freertos.hpp"
+#include "i_en_hal_wifi.hpp"
+#include "i_en_hal_espnow.hpp"
+#include "i_en_hal_freertos.hpp"
 #include "i_message_codec.hpp"
 #include "protocol_types.hpp"
 namespace espnow {

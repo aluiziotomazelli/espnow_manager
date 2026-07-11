@@ -6,7 +6,7 @@
 #include "esp_log.h"
 
 #include "i_storage_manager.hpp"
-#include "i_hal_espnow.hpp"
+#include "i_en_hal_espnow.hpp"
 #include "peer_manager.hpp"
 
 namespace espnow {

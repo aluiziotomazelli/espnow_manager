@@ -3,9 +3,9 @@
 #include "etl/vector.h"
 
 #include "i_peer_manager.hpp"
-#include "i_hal_espnow.hpp"
+#include "i_en_hal_espnow.hpp"
 #include "i_storage_manager.hpp"
-#include "i_hal_freertos.hpp"
+#include "i_en_hal_freertos.hpp"
 namespace espnow {
 
 class PeerManager : public IPeerManager
@@ -56,7 +56,8 @@ private:
     // Helper methods for add() refactoring
     PeerInfo* find_peer_by_id(NodeId id);
     PeerInfo* find_peer_by_mac(const uint8_t* mac);
-    esp_err_t update_existing_peer_by_id(PeerInfo* peer, const uint8_t* new_mac, NodeType type, uint32_t heartbeat_interval_ms);
+    esp_err_t
+    update_existing_peer_by_id(PeerInfo* peer, const uint8_t* new_mac, NodeType type, uint32_t heartbeat_interval_ms);
     void reassign_mac_to_new_id(PeerInfo* peer, NodeId new_id, NodeType type, uint32_t heartbeat_interval_ms);
     esp_err_t add_new_peer_to_empty_slot(NodeId id, const uint8_t* mac, NodeType type, uint32_t heartbeat_interval_ms);
 

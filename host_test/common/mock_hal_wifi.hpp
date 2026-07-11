@@ -4,7 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include "i_hal_wifi.hpp"
+#include "i_en_hal_wifi.hpp"
 
 namespace espnow {
 

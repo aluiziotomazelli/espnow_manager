@@ -1,8 +1,8 @@
 // include/tx_manager.hpp
 #pragma once
 
-#include "i_hal_espnow.hpp"
-#include "i_hal_freertos.hpp"
+#include "i_en_hal_espnow.hpp"
+#include "i_en_hal_freertos.hpp"
 #include "i_message_codec.hpp"
 #include "i_tx_manager.hpp"
 #include "i_tx_state_machine.hpp"

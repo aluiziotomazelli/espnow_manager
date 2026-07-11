@@ -1,7 +1,7 @@
 // host_test/common/hal_real_freertos.hpp
 #pragma once
 
-#include "i_hal_freertos.hpp"
+#include "i_en_hal_freertos.hpp"
 
 namespace espnow {
 
