@@ -99,9 +99,6 @@ struct OtaCommand
 {
     MessageHeader header;      /**< Universal message header */
     CommandType cmd_type;      /**< Type of OTA command (e.g., START) */
-    char firmware_url[128];    /**< URL where the node can download the new firmware */
-    uint32_t firmware_size;    /**< Expected size of the firmware binary in bytes */
-    uint8_t firmware_hash[32]; /**< SHA-256 hash of the firmware binary for validation */
 };
 
 #pragma pack(pop)
