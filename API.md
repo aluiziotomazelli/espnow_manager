@@ -70,7 +70,7 @@ struct espnow::EspNowConfig
 | `node_id` | `espnow::NodeId` | `espnow::ReservedIds::HUB` | Logical ID for this device |
 | `node_type` | `espnow::NodeType` | `ReservedTypes::UNKNOWN` | Role/Type for this device |
 | `app_rx_queue` | `QueueHandle_t` | `nullptr` | **Required.** Handle to application queue where incoming DATA/COMMAND messages are posted |
-| `wifi_channel` | `uint8_t` | `1` | Initial WiFi channel (1-14) |
+| `wifi_channel` | `uint8_t` | `1` | Initial starting point for discovery scan in `SCAN` mode. (Hardware WiFi channel setup is the application's responsibility). |
 | `ack_timeout_ms` | `uint32_t` | `500` | Timeout for logical ACKs |
 | `heartbeat_interval_ms` | `uint32_t` | `60000` | Heartbeat interval (0 disables) |
 | `channel_monitor_interval_ms` | `uint32_t` | `10000` | Channel monitoring interval |
@@ -235,6 +235,27 @@ switch (state) {
 
 ---
 
+### `espnow::ChannelPolicy`
+
+Controls whether the `DiscoveryManager` is allowed to change the WiFi channel during discovery scanning.
+
+```cpp
+enum class espnow::ChannelPolicy : uint8_t
+{
+    SCAN,   ///< Dynamic scanning mode: discovery scan iterates through channels using wifi_set_channel()
+    FIXED,  ///< Fixed channel mode: node is connected to a WiFi AP; channel is owned by AP and scanning is disabled
+};
+```
+
+**Enum Values:**
+
+| Value | Description | Use Case |
+|-------|-------------|----------|
+| `SCAN` | Node iterates through channels 1-13 during discovery scans. | Standalone ESP-NOW (no AP connection) |
+| `FIXED` | Discovery scan skips channel switching and assumes shared AP channel. | Simultaneous WiFi STA + ESP-NOW operation |
+
+---
+
 ### `espnow::PeerInfo`
 
 Detailed information about a registered peer.
@@ -373,6 +394,31 @@ Stops all background tasks, releases memory, and deinitializes the ESP-NOW drive
 manager.deinit();
 // Safe to call again
 manager.deinit();
+```
+
+---
+
+### `set_channel_policy()`
+
+Sets the channel policy for discovery scanning.
+
+```cpp
+void set_channel_policy(espnow::ChannelPolicy policy)
+```
+
+**Description:**  
+Informs `EspNowManager` whether it is permitted to change WiFi channels when scanning for a HUB.
+
+- Use `ChannelPolicy::FIXED` when the device is connected to a WiFi Access Point (STA mode). When connected, channel ownership belongs to the WiFi connection and attempts to call `esp_wifi_set_channel()` will fail or disrupt the AP link.
+- Use `ChannelPolicy::SCAN` (default) when operating in standalone ESP-NOW mode without an active WiFi AP connection.
+
+**Example:**
+```cpp
+// When connected to a WiFi AP:
+manager.set_channel_policy(espnow::ChannelPolicy::FIXED);
+
+// If WiFi disconnects:
+manager.set_channel_policy(espnow::ChannelPolicy::SCAN);
 ```
 
 ---

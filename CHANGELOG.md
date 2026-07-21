@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-20
+
+### Added
+- `ChannelPolicy` enum (`SCAN`, `FIXED`) to control WiFi channel management behavior during discovery scans.
+- `set_channel_policy()` method in `IEspNowManager` and `EspNowManager` to switch between dynamic channel scanning (`SCAN`) and fixed channel mode (`FIXED`).
+
+### Changed
+- Removed automatic `wifi_set_channel()` call from `EspNowDriver::init()`. Setting the WiFi channel is now the responsibility of the application (or WiFi Manager).
+- `EspNowConfig::wifi_channel` now serves strictly as the initial starting point for scanning in `SCAN` mode, rather than configuring hardware channel state upon initialization.
+
+### Documentation
+- Documented `ChannelPolicy` usage, simultaneous WiFi STA + ESP-NOW coexistence, and channel ownership guidelines in `README.md` and `API.md`.
+
 ## [1.1.2] - 2026-05-01
 ### Fixed
 - DiscoveryManager: Add device ID check to handle_scan_response to prevent unintended node state transitions.

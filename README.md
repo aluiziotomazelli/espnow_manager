@@ -604,6 +604,31 @@ esp_sleep_enable_timer_wakeup(60 * 1000000); // Wake in 60 seconds
 // No re-pairing required
 ```
 
+### Simultaneous WiFi (AP/STA) + ESP-NOW & Channel Policy
+
+When running ESP-NOW alongside an active WiFi AP or Station (STA) connection:
+
+- **Channel Ownership**: WiFi channel setting is the responsibility of the application layer or WiFi Manager. `EspNowManager` does not alter the hardware WiFi channel upon initialization. `EspNowConfig::wifi_channel` is only used as an initial starting point for scanning in `SCAN` mode.
+- **Channel Policy (`ChannelPolicy`)**:
+  - `espnow::ChannelPolicy::SCAN` (default): Dynamic channel scanning. Used in standalone ESP-NOW mode (no AP connection). The discovery manager cycles through WiFi channels during discovery probes.
+  - `espnow::ChannelPolicy::FIXED`: Fixed channel mode. Used when connected to a WiFi Access Point. The discovery manager skips channel switching and assumes both HUB and NODE operate on the shared AP channel.
+
+**Example Integration (WiFi State Callback):**
+
+```cpp
+// In your WiFi Manager state change callback:
+void on_wifi_state_changed(WiFiState state)
+{
+    if (state == WiFiState::CONNECTED) {
+        // Connected to AP: Channel is owned by AP link. Disable channel switching scans.
+        EspNowManager::instance().set_channel_policy(espnow::ChannelPolicy::FIXED);
+    } else if (state == WiFiState::DISCONNECTED) {
+        // Disconnected from AP: Fall back to dynamic multi-channel discovery scan.
+        EspNowManager::instance().set_channel_policy(espnow::ChannelPolicy::SCAN);
+    }
+}
+```
+
 ## Testing Strategy
 
 ### Host-Based Testing
