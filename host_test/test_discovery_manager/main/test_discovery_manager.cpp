@@ -475,3 +475,32 @@ TEST_F(DiscoveryManagerTest, ScanChannelGoesToNextChannelIfAllAttemptsFail)
     EXPECT_EQ(VALID_CHANNEL + 1, scanner->get_channel()); // found on channel VALID_CHANNEL + 1
     EXPECT_FALSE(scanner->is_scanning());
 }
+
+TEST_F(DiscoveryManagerTest, DefaultChannelPolicyIsScan)
+{
+    init_node();
+    EXPECT_EQ(ChannelPolicy::SCAN, scanner->get_channel_policy());
+}
+
+TEST_F(DiscoveryManagerTest, SetAndGetChannelPolicy)
+{
+    init_node();
+    scanner->set_channel_policy(ChannelPolicy::FIXED);
+    EXPECT_EQ(ChannelPolicy::FIXED, scanner->get_channel_policy());
+
+    scanner->set_channel_policy(ChannelPolicy::SCAN);
+    EXPECT_EQ(ChannelPolicy::SCAN, scanner->get_channel_policy());
+}
+
+TEST_F(DiscoveryManagerTest, ScanChannelSkipsChannelSwitchingWhenPolicyFixed)
+{
+    init_node();
+    scanner->set_channel_policy(ChannelPolicy::FIXED);
+
+    // wifi_set_channel must NEVER be called when policy is FIXED
+    EXPECT_CALL(wifi_hal, wifi_set_channel(_, _)).Times(0);
+    EXPECT_CALL(espnow_hal, hal_esp_now_send(_, _, _)).Times(0);
+
+    EXPECT_EQ(ESP_OK, scanner->scan_channel());
+    EXPECT_FALSE(scanner->is_scanning());
+}

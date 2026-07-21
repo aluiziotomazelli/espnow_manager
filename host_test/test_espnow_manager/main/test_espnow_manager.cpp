@@ -1204,3 +1204,12 @@ TEST_F(EspNowManagerTest, PairingNotificationTriggersSyncPeers)
 
     sut_->handle_notifications(NOTIFY_PEER_ADDED, should_stop);
 }
+
+TEST_F(EspNowManagerTest, SetChannelPolicyDelegatesToScanner)
+{
+    EXPECT_CALL(*scanner_, set_channel_policy(ChannelPolicy::FIXED)).Times(1);
+    sut_->set_channel_policy(ChannelPolicy::FIXED);
+
+    EXPECT_CALL(*scanner_, set_channel_policy(ChannelPolicy::SCAN)).Times(1);
+    sut_->set_channel_policy(ChannelPolicy::SCAN);
+}
