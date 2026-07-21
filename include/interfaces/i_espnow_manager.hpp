@@ -66,6 +66,17 @@ public:
      */
     virtual void deinit() = 0;
 
+    /**
+     * @brief Set the WiFi channel scanning policy.
+     *
+     * Call with ChannelPolicy::FIXED when the node connects to a WiFi AP so that
+     * the discovery manager does not attempt to change the channel.
+     * Call with ChannelPolicy::SCAN when the node is not connected to any AP.
+     *
+     * @param policy ChannelPolicy::SCAN (default) or ChannelPolicy::FIXED
+     */
+    virtual void set_channel_policy(ChannelPolicy policy) = 0;
+
     // ========================================
     // Data Communication
     // ========================================

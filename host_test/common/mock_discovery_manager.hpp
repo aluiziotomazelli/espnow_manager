@@ -23,6 +23,8 @@ public:
     MOCK_METHOD(void, handle_scan_response, (const DecodedRxPacket& decoded), (override));
     MOCK_METHOD(void, set_channel, (uint8_t channel), (override));
     MOCK_METHOD(uint8_t, get_channel, (), (const, override));
+    MOCK_METHOD(void, set_channel_policy, (ChannelPolicy policy), (override));
+    MOCK_METHOD(ChannelPolicy, get_channel_policy, (), (const, override));
 };
 
 } // namespace espnow

@@ -42,11 +42,6 @@ esp_err_t EspNowDriver::init(const EspNowConfig& config, esp_now_recv_cb_t recv_
         return init_fail(err, "Failed to register ESP-NOW send callback");
     }
 
-    err = wifi_hal_.wifi_set_channel(config.wifi_channel, WIFI_SECOND_CHAN_NONE);
-    if (err != ESP_OK) {
-        return init_fail(err, "Failed to set WiFi channel");
-    }
-
     err = add_broadcast_peer();
     if (err != ESP_OK) {
         return init_fail(err, "Failed to add broadcast peer");

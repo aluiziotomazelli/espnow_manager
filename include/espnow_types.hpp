@@ -205,6 +205,22 @@ struct PeerStatisticsPersist
 };
 
 /**
+ * @brief Controls whether the DiscoveryManager is allowed to change the WiFi
+ *        channel when scanning for the hub.
+ *
+ * Use SCAN when the node is not connected to any AP (standalone ESP-NOW only).
+ * Use FIXED when the node is connected to a WiFi AP: the channel is locked by
+ * the AP association and cannot be changed; both the hub and this node are
+ * assumed to be on the same AP channel.
+ *
+ * Default: SCAN (preserves original behavior).
+ */
+enum class ChannelPolicy : uint8_t {
+    SCAN,   ///< Node may call wifi_set_channel() during discovery scan (standalone mode)
+    FIXED,  ///< Node is WiFi-connected; channel is owned by the AP — no scanning allowed
+};
+
+/**
  * @brief Configuration structure for initializing the EspNowManager.
  */
 struct EspNowConfig

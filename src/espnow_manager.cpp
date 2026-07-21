@@ -323,6 +323,13 @@ void EspNowManager::deinit()
     ESP_LOGI(TAG, "EspNow component deinitialized.");
 }
 
+void EspNowManager::set_channel_policy(ChannelPolicy policy)
+{
+    if (scanner_ != nullptr) {
+        scanner_->set_channel_policy(policy);
+    }
+}
+
 esp_err_t EspNowManager::reconnect()
 {
     if (node_fsm_->get_state() != NodeState::IDLE) {

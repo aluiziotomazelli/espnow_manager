@@ -79,6 +79,9 @@ public:
     /** @copydoc IEspNowManager::deinit */
     void deinit() override;
 
+    /** @copydoc IEspNowManager::set_channel_policy */
+    void set_channel_policy(ChannelPolicy policy) override;
+
     // ========================================
     // Data Communication
     // ========================================

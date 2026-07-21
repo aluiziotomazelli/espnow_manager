@@ -53,6 +53,12 @@ public:
     /** @copydoc IDiscoveryManager::get_channel */
     uint8_t get_channel() const override { return current_channel_.load(); };
 
+    /** @copydoc IDiscoveryManager::set_channel_policy */
+    void set_channel_policy(ChannelPolicy policy) override;
+
+    /** @copydoc IDiscoveryManager::get_channel_policy */
+    ChannelPolicy get_channel_policy() const override;
+
 protected:
     // Scan Probe helpers
     esp_err_t send_scan_probe();
@@ -90,6 +96,7 @@ private:
     std::atomic<bool> is_scanning_ = false;
 
     std::atomic<uint8_t> current_channel_ = 1;
+    std::atomic<uint8_t> policy_ = static_cast<uint8_t>(ChannelPolicy::SCAN);
 
     // Node info
     NodeId my_node_id_;

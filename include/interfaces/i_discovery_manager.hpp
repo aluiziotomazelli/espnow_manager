@@ -81,6 +81,18 @@ public:
      */
     virtual uint8_t get_channel() const = 0;
 
+    /**
+     * @brief Set the WiFi channel scanning policy.
+     * @param policy ChannelPolicy::SCAN or ChannelPolicy::FIXED
+     */
+    virtual void set_channel_policy(ChannelPolicy policy) = 0;
+
+    /**
+     * @brief Get the current channel scanning policy.
+     * @return Current ChannelPolicy
+     */
+    virtual ChannelPolicy get_channel_policy() const = 0;
+
     /** @internal */
     template <
         typename T1,

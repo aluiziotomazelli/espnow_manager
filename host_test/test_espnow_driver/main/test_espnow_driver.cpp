@@ -92,13 +92,6 @@ TEST_F(EspNowDriverTest, HalEspnowRegisterSendCbFails)
     ASSERT_EQ(ESP_FAIL, do_init());
 }
 
-TEST_F(EspNowDriverTest, HalWifiSetChannelFails)
-{
-    ON_CALL(hal_wifi, wifi_set_channel(_, _)).WillByDefault(Return(ESP_FAIL));
-    EXPECT_CALL(hal_espnow, hal_esp_now_add_peer(_)).Times(0); // Must not call esp_now_add_peer
-    ASSERT_EQ(ESP_FAIL, do_init());
-}
-
 TEST_F(EspNowDriverTest, HalEspNowAddPeerFails)
 {
     ON_CALL(hal_espnow, hal_esp_now_add_peer(_)).WillByDefault(Return(ESP_FAIL));
@@ -111,7 +104,6 @@ TEST_F(EspNowDriverTest, InitCompletesSuccessfully)
     EXPECT_CALL(hal_espnow, hal_esp_now_init()).Times(1);
     EXPECT_CALL(hal_espnow, hal_espnow_register_recv_cb(_)).Times(1);
     EXPECT_CALL(hal_espnow, hal_espnow_register_send_cb(_)).Times(1);
-    EXPECT_CALL(hal_wifi, wifi_set_channel(_, _)).Times(1);
     EXPECT_CALL(hal_espnow, hal_esp_now_add_peer(_)).Times(1);
 
     EXPECT_EQ(ESP_OK, do_init());

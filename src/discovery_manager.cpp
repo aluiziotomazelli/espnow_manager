@@ -133,6 +133,18 @@ void DiscoveryManager::set_channel(uint8_t channel)
     }
 }
 
+void DiscoveryManager::set_channel_policy(ChannelPolicy policy)
+{
+    policy_.store(static_cast<uint8_t>(policy));
+    ESP_LOGI(TAG, "Channel policy set to %s",
+             policy == ChannelPolicy::FIXED ? "FIXED (WiFi connected)" : "SCAN (standalone)");
+}
+
+ChannelPolicy DiscoveryManager::get_channel_policy() const
+{
+    return static_cast<ChannelPolicy>(policy_.load());
+}
+
 void DiscoveryManager::discovery_task_func(void* arg)
 {
     DiscoveryManager* self = static_cast<DiscoveryManager*>(arg);
@@ -176,6 +188,11 @@ void DiscoveryManager::discovery_task()
 
 esp_err_t DiscoveryManager::scan_channel()
 {
+    if (static_cast<ChannelPolicy>(policy_.load()) == ChannelPolicy::FIXED) {
+        ESP_LOGI(TAG, "ChannelPolicy::FIXED — skipping channel scan, assuming shared AP channel.");
+        return ESP_OK;
+    }
+
     ESP_LOGI(TAG, "Starting channel scan to find Hub.");
     is_scanning_.store(true);
     esp_err_t ret = ESP_FAIL;
