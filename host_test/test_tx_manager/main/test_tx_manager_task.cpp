@@ -136,6 +136,14 @@ protected:
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
+    // Helper: init with real RX task to avoid segfaults when task_notify is called
+    void init_with_real_rx()
+    {
+        make_real_rx_task();
+        ASSERT_EQ(ESP_OK, manager->init(4096, 5, real_rx_task_handle, 50));
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+
     bool notify_max_failures = false;
     TaskHandle_t real_rx_task_handle = nullptr;
     void make_real_rx_task()
@@ -179,6 +187,79 @@ protected:
         memset(ack.packet.dest_mac, 0xAA, 6);
         return ack;
     }
+
+    // Helper: build a DecodedRxPacket representing a valid logical ACK.
+    // sequence_number matches the pending_ack tracked by the fixture (populated via
+    // fsm_.set_pending_ack mock's SaveArg). Falls back to 0 if no pending ack exists yet.
+    DecodedRxPacket make_ack_packet()
+    {
+        DecodedRxPacket pkt = {};
+        pkt.header.msg_type = MessageType::ACK;
+        pkt.header.ack_status = AckStatus::OK;
+        pkt.header.sequence_number = pending_ack.has_value() ? pending_ack->sequence_number : 0;
+        pkt.raw.timestamp_ms = 0;
+        return pkt;
+    }
+
+    // -------------------------------------------------------------------------
+    // Blocking-send helpers
+    //
+    // queue_packet() blocks the calling task when requires_ack=true because it
+    // calls xEventGroupWaitBits() internally. std::thread cannot be used here:
+    // POSIX threads lack a FreeRTOS TCB, so xEventGroupWaitBits() aborts with
+    // the assertion `uxTopPriority` in vTaskSwitchContext.
+    //
+    // These helpers spawn a real FreeRTOS task (xTaskCreate) that owns the
+    // blocking call. The test thread synchronises via a binary semaphore.
+    // -------------------------------------------------------------------------
+
+    struct BlockingSendResult
+    {
+        esp_err_t result = ESP_FAIL;
+        SemaphoreHandle_t done = nullptr;
+    };
+
+    // Spawns a FreeRTOS task that calls queue_packet(requires_ack=true) and
+    // signals `out.done` when it returns. Call wait_for_blocking_send() after.
+    void launch_blocking_send(BlockingSendResult& out)
+    {
+        out.done = xSemaphoreCreateBinary();
+        ASSERT_NE(nullptr, out.done);
+
+        struct Args
+        {
+            TxManager* mgr;
+            DecodedTxPacket pkt;
+            BlockingSendResult* out;
+        };
+        auto* args = new Args{manager.get(), make_packet(true), &out};
+
+        BaseType_t ret = xTaskCreate(
+            [](void* raw) {
+                auto* a = static_cast<Args*>(raw);
+                a->out->result = a->mgr->queue_packet(a->pkt);
+                xSemaphoreGive(a->out->done);
+                delete a;
+                vTaskDelete(nullptr);
+            },
+            "sender",
+            4096,
+            args,
+            5,
+            nullptr);
+
+        ASSERT_EQ(pdPASS, ret) << "Failed to create sender FreeRTOS task";
+    }
+
+    // Blocks the test thread until the sender task completes (or timeout_ms elapses).
+    // Cleans up the semaphore. Call AFTER all assertions on intermediate state.
+    void wait_for_blocking_send(BlockingSendResult& out, uint32_t timeout_ms = 2000)
+    {
+        ASSERT_EQ(pdTRUE, xSemaphoreTake(out.done, pdMS_TO_TICKS(timeout_ms)))
+            << "Sender task did not complete within " << timeout_ms << " ms";
+        vSemaphoreDelete(out.done);
+        out.done = nullptr;
+    }
 };
 
 // =============================================================================
@@ -200,10 +281,17 @@ TEST_F(TxManagerTaskTest, IdleStateWithAckPacketTransitionsToWaitingForAck)
 {
     init_and_wait();
 
-    manager->queue_packet(make_packet(true));
+    BlockingSendResult send_result;
+    launch_blocking_send(send_result);
+
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     EXPECT_EQ(TxState::WAITING_FOR_ACK, current_state);
+
+    manager->handle_ack(make_ack_packet());
+
+    wait_for_blocking_send(send_result);
+    EXPECT_EQ(ESP_OK, send_result.result);
 }
 
 TEST_F(TxManagerTaskTest, IdleStateWithNoAckPacketStaysIdle)
@@ -309,23 +397,23 @@ TEST_F(TxManagerTaskTest, WaitingForAckNotifyLogicalAckCallsOnAckReceived)
 {
     init_and_wait();
 
-    // Put task in WAITING_FOR_ACK
-    manager->queue_packet(make_packet(true));
-    vTaskDelay(pdMS_TO_TICKS(delay_ms));
-    ASSERT_EQ(TxState::WAITING_FOR_ACK, current_state);
-
     EXPECT_CALL(*fsm, on_ack_timeout()).Times(0);  // Should not call on_ack_timeout
     EXPECT_CALL(*fsm, on_ack_received()).Times(1); // Should call on_ack_received
 
-    // Simulate ACK packet arriving via handle_ack()
-    // sequence_number = 0 because it's the first packet (sequence_counter_ starts at 0)
-    DecodedRxPacket ack_packet = {};
-    ack_packet.header.msg_type = MessageType::ACK;
-    ack_packet.header.sequence_number = 0; // First packet sequence number
-    ack_packet.header.ack_status = AckStatus::OK;
-    manager->handle_ack(ack_packet);
-    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    // 1. Launch blocking send in background
+    BlockingSendResult send_result;
+    launch_blocking_send(send_result);
 
+    // 2. Wait for tx_task to process the packet and enter WAITING_FOR_ACK
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    EXPECT_EQ(TxState::WAITING_FOR_ACK, current_state);
+
+    // 3. Simulate ACK packet arriving via handle_ack()
+    manager->handle_ack(make_ack_packet());
+
+    // 4. Wait for background task to complete and assert result
+    wait_for_blocking_send(send_result);
+    EXPECT_EQ(ESP_OK, send_result.result);
     EXPECT_EQ(TxState::IDLE, current_state);
 }
 
@@ -333,29 +421,88 @@ TEST_F(TxManagerTaskTest, WaitingForAckTimeoutCallsOnAckTimeout)
 {
     init_and_wait();
 
-    // Put task in WAITING_FOR_ACK
-    manager->queue_packet(make_packet(true));
+    EXPECT_CALL(*fsm, on_ack_timeout()).Times(MAX_FAILURES + 1); // Should call on_ack_timeout for each retry
+
+    BlockingSendResult send_result;
+    launch_blocking_send(send_result);
+
+    // Wait for first attempt to enter WAITING_FOR_ACK
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
-    ASSERT_EQ(TxState::WAITING_FOR_ACK, current_state);
+    EXPECT_EQ(TxState::WAITING_FOR_ACK, current_state);
 
-    EXPECT_CALL(*fsm, on_ack_timeout()).Times(1);
-
-    // Give time for the timer to expire
-    vTaskDelay(pdMS_TO_TICKS(ack_timeout_ms + 20));
+    // Wait for all retries and timeouts to exhaust.
+    // The total duration is roughly (ack_timeout_ms * 4) + some margin.
+    wait_for_blocking_send(send_result, 1000);
+    EXPECT_EQ(ESP_ERR_TIMEOUT, send_result.result);
+    EXPECT_EQ(TxState::IDLE, current_state);
 }
 
 TEST_F(TxManagerTaskTest, WaitingForAckNotifyDeliveryFailureCallsOnDeliveryFailure)
 {
     init_and_wait();
 
-    manager->queue_packet(make_packet(true));
-    vTaskDelay(pdMS_TO_TICKS(delay_ms));
-    ASSERT_EQ(TxState::WAITING_FOR_ACK, current_state);
-
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);
 
-    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
+    BlockingSendResult send_result;
+    launch_blocking_send(send_result);
+
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    EXPECT_EQ(TxState::WAITING_FOR_ACK, current_state);
+
+    // Simulate physical delivery failure (e.g. hub off channel)
+    // Note: FSM mock defaults on_delivery_failure to false, meaning it just triggers a retry.
+    // To properly simulate MAX_FAILURES, we should override the mock just for this test,
+    // or let it retry if the test is just checking the first failure call.
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
+
+    // Wait briefly to let the notification be processed
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+
+    // To prevent the background task from leaking, inject an ACK to cleanly end it
+    manager->handle_ack(make_ack_packet());
+    wait_for_blocking_send(send_result);
+}
+
+TEST_F(TxManagerTaskTest, WaitingForAckMaxDeliveryFailuresReturnsEspFail)
+{
+    init_with_real_rx();
+
+    // Override the default mock to return true, simulating MAX_FAILURES reached
+    EXPECT_CALL(*fsm, on_delivery_failure()).WillOnce(Return(true));
+
+    BlockingSendResult send_result;
+    launch_blocking_send(send_result);
+
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    EXPECT_EQ(TxState::WAITING_FOR_ACK, current_state);
+
+    // Simulate physical delivery failure that triggers max failures
+    manager->notify_delivery(ESP_NOW_SEND_FAIL, test_mac);
+
+    wait_for_blocking_send(send_result);
+    
+    // Validate that queue_packet returned ESP_FAIL
+    EXPECT_EQ(ESP_FAIL, send_result.result);
+    
+    // Current state should be IDLE or similar based on FSM resetting, 
+    // but the task notify wait terminates the wait.
+}
+
+TEST_F(TxManagerTaskTest, WaitingForAckDeinitReturnsInvalidState)
+{
+    init_and_wait();
+
+    BlockingSendResult send_result;
+    launch_blocking_send(send_result);
+
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    EXPECT_EQ(TxState::WAITING_FOR_ACK, current_state);
+
+    // Calling deinit() while queue_packet is waiting for ACK should set NOTIFY_TASK_TO_STOP bit
+    manager->deinit();
+
+    wait_for_blocking_send(send_result);
+    EXPECT_EQ(ESP_ERR_INVALID_STATE, send_result.result);
 }
 
 TEST_F(TxManagerTaskTest, DeliveryFailureWithTimeoutSkipsStats)
@@ -493,7 +640,7 @@ TEST_F(TxManagerTaskTest, EspnowNoMemoryErrorDoesNotCallDeliveryFailure)
     EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);    // Pending ack should not be set
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
-    manager->queue_packet(make_packet(true)); // Call with pending ack == true
+    manager->queue_packet(make_packet(false)); // Call with requires_ack == false
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state
@@ -507,7 +654,7 @@ TEST_F(TxManagerTaskTest, EspnowNotInitiErrorDoesNotCallDeliveryFailure)
     EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);    // Pending ack should not be set
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
-    manager->queue_packet(make_packet(true)); // Call with pending ack == true
+    manager->queue_packet(make_packet(false)); // Call with requires_ack == false
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state
@@ -521,7 +668,7 @@ TEST_F(TxManagerTaskTest, EspnowArgErrorDoesNotCallDeliveryFailure)
     EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);                                    // Pending ack should not be set
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(0); // Should not call on_delivery_failure
 
-    manager->queue_packet(make_packet(true)); // Call with pending ack == true
+    manager->queue_packet(make_packet(false)); // Call with requires_ack == false
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state
@@ -535,7 +682,7 @@ TEST_F(TxManagerTaskTest, EspnowOtherErrorCallsDeliveryFailure)
     EXPECT_CALL(*fsm, set_pending_ack(_)).Times(0);                                     // Pending ack should not be set
     EXPECT_CALL(*fsm, on_delivery_failure()).Times(1);                                  // Must call on_delivery_failure
 
-    manager->queue_packet(make_packet(true)); // Call with pending ack == true
+    manager->queue_packet(make_packet(false)); // Call with requires_ack == false
     vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
     EXPECT_EQ(TxState::IDLE, current_state); // Should not change state

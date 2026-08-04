@@ -42,6 +42,15 @@ public:
     MOCK_METHOD(BaseType_t, semaphore_take, (SemaphoreHandle_t, TickType_t), (override));
     MOCK_METHOD(BaseType_t, semaphore_give, (SemaphoreHandle_t), (override));
     MOCK_METHOD(void, semaphore_delete, (SemaphoreHandle_t), (override));
+
+    MOCK_METHOD(EventGroupHandle_t, event_group_create, (), (override));
+    MOCK_METHOD(EventBits_t, event_group_set_bits, (EventGroupHandle_t, EventBits_t), (override));
+    MOCK_METHOD(
+        EventBits_t,
+        event_group_wait_bits,
+        (EventGroupHandle_t, EventBits_t, BaseType_t, BaseType_t, TickType_t),
+        (override));
+    MOCK_METHOD(void, event_group_delete, (EventGroupHandle_t), (override));
 };
 
 } // namespace espnow

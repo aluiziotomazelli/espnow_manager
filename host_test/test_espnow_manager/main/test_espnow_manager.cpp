@@ -669,6 +669,42 @@ TEST_F(EspNowManagerTest, SendDataWithOversizedPayloadReturnsInvalidArg)
     EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, large_payload, sizeof(large_payload)), ESP_ERR_INVALID_ARG);
 }
 
+TEST_F(EspNowManagerTest, SendDataAndCommandSetsRequiresAckHeaderCorrectly)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+    add_peer_to_storage();
+
+    // Verify send_data with require_ack = true
+    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillOnce([](const DecodedTxPacket& pkt) {
+        EXPECT_TRUE(pkt.header.requires_ack);
+        return ESP_OK;
+    });
+    EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, nullptr, 0, true), ESP_OK);
+
+    // Verify send_command with require_ack = false
+    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillOnce([](const DecodedTxPacket& pkt) {
+        EXPECT_FALSE(pkt.header.requires_ack);
+        return ESP_OK;
+    });
+    EXPECT_EQ(sut_->send_command(kHubId, kCommandType, nullptr, 0, false), ESP_OK);
+}
+
+TEST_F(EspNowManagerTest, SendDataPropagatesTxManagerErrorCodes)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+    add_peer_to_storage();
+
+    // Verify ESP_ERR_TIMEOUT from queue_packet is propagated
+    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_ERR_TIMEOUT));
+    EXPECT_EQ(sut_->send_data(kHubId, kPayloadType, nullptr, 0, true), ESP_ERR_TIMEOUT);
+
+    // Verify ESP_FAIL from queue_packet is propagated
+    EXPECT_CALL(*tx_mgr_, queue_packet(_)).WillOnce(Return(ESP_FAIL));
+    EXPECT_EQ(sut_->send_command(kHubId, kCommandType, nullptr, 0, true), ESP_FAIL);
+}
+
 // ===========================================================================
 // confirm_reception()
 // ===========================================================================

@@ -79,6 +79,10 @@ private:
 
     // FreeRTOS delivery event queue (ISR → tx_task)
     QueueHandle_t delivery_queue_ = nullptr;
+
+    // EventGroup handle for pending ACKs, nullptr if not pending
+    // Captured from DecodedTxPacket on dequeue; cleared on final signal
+    EventGroupHandle_t caller_ack_event_group_ = nullptr;
 };
 
 } // namespace espnow

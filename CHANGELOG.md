@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-08-04
+
+### Changed
+- `send_data()` and `send_command()` in `IEspNowManager` / `EspNowManager` now block the calling task when `require_ack = true` for up to `(ack_timeout_ms * (MAX_FAILURES + 1) + 200)` ms, returning explicit status (`ESP_OK`, `ESP_ERR_TIMEOUT`, `ESP_FAIL`, `ESP_ERR_INVALID_STATE`).
+- Updated `TxManager::queue_packet` to create a dedicated FreeRTOS `EventGroup` per reliable transmission and block synchronously until logical ACK confirmation, ACK timeout, or system teardown.
+
+### Documentation
+- Updated Doxygen comments in `include/interfaces/i_espnow_manager.hpp` and `API.md` with blocking behavior specifications, timeout calculations, and complete return code mappings.
+
 ## [1.2.0] - 2026-07-20
 
 ### Added

@@ -8,6 +8,7 @@
 #include "esp_now.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/event_groups.h"
 
 #include "protocol_types.hpp"
 #include "protocol_messages.hpp"
@@ -128,6 +129,8 @@ struct DecodedTxPacket
     MessageHeader header;              ///< Header to be encoded
     uint8_t payload[MAX_PAYLOAD_SIZE]; ///< Raw payload bytes
     size_t payload_len;                ///< Number of valid bytes in payload
+    EventGroupHandle_t ack_event_group =
+        nullptr; ///< Event group for ACKs, internally managed by TxManager::queue_packet
 };
 
 /**
@@ -215,9 +218,10 @@ struct PeerStatisticsPersist
  *
  * Default: SCAN (preserves original behavior).
  */
-enum class ChannelPolicy : uint8_t {
-    SCAN,   ///< Node may call wifi_set_channel() during discovery scan (standalone mode)
-    FIXED,  ///< Node is WiFi-connected; channel is owned by the AP — no scanning allowed
+enum class ChannelPolicy : uint8_t
+{
+    SCAN,  ///< Node may call wifi_set_channel() during discovery scan (standalone mode)
+    FIXED, ///< Node is WiFi-connected; channel is owned by the AP — no scanning allowed
 };
 
 /**

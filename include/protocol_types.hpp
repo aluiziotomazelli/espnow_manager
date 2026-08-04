@@ -44,7 +44,7 @@ constexpr size_t MAX_PAYLOAD_SIZE = ESP_NOW_MAX_DATA_LEN - MESSAGE_HEADER_SIZE -
 
 // Default values (can be overridden in config)
 /** @brief Default acknowledgment timeout in milliseconds */
-constexpr uint32_t DEFAULT_ACK_TIMEOUT_MS = 500;
+constexpr uint32_t DEFAULT_ACK_TIMEOUT_MS = 300;
 /** @brief Default interval between heartbeat messages in milliseconds */
 constexpr uint32_t DEFAULT_HEARTBEAT_INTERVAL_MS = 60000;
 /** @brief Default WiFi channel to use if none is specified */

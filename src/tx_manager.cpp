@@ -138,15 +138,61 @@ esp_err_t TxManager::queue_packet(const DecodedTxPacket& packet)
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (freertos_hal_.queue_send(tx_queue_, &packet, 100) != pdTRUE) {
+    const bool requires_ack = packet.header.requires_ack;
+    EventGroupHandle_t eg = nullptr;
+    DecodedTxPacket pkt_copy = packet;
+
+    if (requires_ack) {
+        eg = freertos_hal_.event_group_create();
+        if (eg == nullptr)
+            return ESP_ERR_NO_MEM;
+        pkt_copy.ack_event_group = eg;
+    }
+
+    if (freertos_hal_.queue_send(tx_queue_, &pkt_copy, 100) != pdTRUE) {
+        if (eg != nullptr) {
+            freertos_hal_.event_group_delete(eg);
+        }
         return ESP_FAIL;
     }
 
+    // Notify the TX task that a new packet is available in the queue
     if (tx_task_handle_ != nullptr) {
         freertos_hal_.task_notify(tx_task_handle_, NOTIFY_DATA, eSetBits);
     }
 
-    return ESP_OK;
+    // If not require ack, returns imediately if message has queued successfully
+    if (!requires_ack) {
+        return ESP_OK;
+    }
+
+    // If requires ack, wait for the Ack, max retries reached or timeout (from ack or internal timer)
+    const EventBits_t RESULT_BITS = NOTIFY_LOGICAL_ACK | NOTIFY_ACK_TIMEOUT | NOTIFY_MAX_FAILURES | NOTIFY_TASK_TO_STOP;
+    const TickType_t wait_ticks = pdMS_TO_TICKS(ack_timeout_ms_ * (MAX_FAILURES + 1) + 100);
+
+    EventBits_t bits = freertos_hal_.event_group_wait_bits(
+        eg,
+        RESULT_BITS,
+        pdFALSE, // don't clear bits — the group is deleted shortly
+        pdFALSE, // any bit (not all)
+        wait_ticks);
+
+    freertos_hal_.event_group_delete(eg); // Delete the event group after waiting
+
+    // If task stopped,
+    if ((bits & NOTIFY_TASK_TO_STOP) == NOTIFY_TASK_TO_STOP) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if ((bits & NOTIFY_LOGICAL_ACK) == NOTIFY_LOGICAL_ACK) {
+        return ESP_OK;
+    }
+    if ((bits & NOTIFY_ACK_TIMEOUT) == NOTIFY_ACK_TIMEOUT) {
+        return ESP_ERR_TIMEOUT;
+    }
+    if ((bits & NOTIFY_MAX_FAILURES) == NOTIFY_MAX_FAILURES) {
+        return ESP_FAIL;
+    }
+    return ESP_ERR_TIMEOUT; // Timeout waiting for ACK or max failures
 }
 
 void TxManager::notify_delivery(esp_now_send_status_t status, const uint8_t* dest_mac)
@@ -238,6 +284,9 @@ void TxManager::tx_task()
         {
             // Non-blocking queue read: the queue alone does not control sleep.
             if (freertos_hal_.queue_receive(tx_queue_, &structured_packet, 0) == pdTRUE) {
+                // Captures the event group from the packet (nullptr if non-blocking)
+                caller_ack_event_group_ = structured_packet.ack_event_group;
+
                 // Update sequence number only for non-ACK packets.
                 // ACKs must preserve the sequence number of the packet they are acknowledging.
                 if (structured_packet.header.msg_type != MessageType::ACK) {
@@ -336,6 +385,12 @@ void TxManager::tx_task()
                     stats_mgr_.on_packet_lost(pending_opt->node_id);
                 }
                 fsm_.on_max_retries();
+
+                // Notify queue_packet() that peers has reacheable but no logical ACK was received, if applicable
+                if (caller_ack_event_group_ != nullptr) {
+                    freertos_hal_.event_group_set_bits(caller_ack_event_group_, NOTIFY_ACK_TIMEOUT);
+                    caller_ack_event_group_ = nullptr;
+                }
             }
             break;
         }
@@ -350,8 +405,7 @@ void TxManager::tx_task()
     ESP_LOGI(TAG, "TX Manager task exiting.");
     tx_task_handle_ = nullptr;
     freertos_hal_.semaphore_give(task_done_semaphore_);
-    freertos_hal_.task_suspend(nullptr); // NULL / nullptr == current task
-    freertos_hal_.task_delete(nullptr);  // NULL / nullptr == current task
+    freertos_hal_.task_delete(nullptr); // NULL / nullptr == current task
 }
 
 // =====================================================================================
@@ -386,6 +440,12 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
         if (max_failures) {
             ESP_LOGW(TAG, "Max failures reached, notifying RX task");
             freertos_hal_.task_notify(rx_task_handle_, NOTIFY_MAX_FAILURES, eSetBits);
+
+            // Notify queue_packet() that max failures were reached, if applicable
+            if (caller_ack_event_group_ != nullptr) {
+                freertos_hal_.event_group_set_bits(caller_ack_event_group_, NOTIFY_MAX_FAILURES);
+                caller_ack_event_group_ = nullptr;
+            }
         }
     }
     if ((notifications & NOTIFY_DELIVERY_SUCCESS) == NOTIFY_DELIVERY_SUCCESS) {
@@ -408,12 +468,22 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
     if ((notifications & NOTIFY_LOGICAL_ACK) == NOTIFY_LOGICAL_ACK) {
         fsm_.on_ack_received();
         freertos_hal_.timer_stop(ack_timeout_timer_, pdMS_TO_TICKS(10));
+
+        // Signal the waiting queue_packet() call that the ACK was received, if applicable
+        if (caller_ack_event_group_ != nullptr) {
+            freertos_hal_.event_group_set_bits(caller_ack_event_group_, NOTIFY_LOGICAL_ACK);
+            caller_ack_event_group_ = nullptr;
+        }
     }
     if ((notifications & NOTIFY_ACK_TIMEOUT) == NOTIFY_ACK_TIMEOUT) {
         fsm_.on_ack_timeout();
     }
     if ((notifications & NOTIFY_TASK_TO_STOP) == NOTIFY_TASK_TO_STOP) {
         should_stop = true;
+        if (caller_ack_event_group_ != nullptr) {
+            freertos_hal_.event_group_set_bits(caller_ack_event_group_, NOTIFY_TASK_TO_STOP);
+            caller_ack_event_group_ = nullptr;
+        }
     }
 }
 
