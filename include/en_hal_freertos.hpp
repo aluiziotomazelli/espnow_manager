@@ -92,5 +92,21 @@ public:
     }
     BaseType_t semaphore_give(SemaphoreHandle_t semaphore_handle) override { return xSemaphoreGive(semaphore_handle); }
     void semaphore_delete(SemaphoreHandle_t semaphore_handle) override { vSemaphoreDelete(semaphore_handle); }
+
+    EventGroupHandle_t event_group_create() override { return xEventGroupCreate(); }
+    EventBits_t event_group_set_bits(EventGroupHandle_t eg, EventBits_t bits) override
+    {
+        return xEventGroupSetBits(eg, bits);
+    }
+    EventBits_t event_group_wait_bits(
+        EventGroupHandle_t eg,
+        EventBits_t bits,
+        BaseType_t clear_on_exit,
+        BaseType_t wait_all,
+        TickType_t ticks) override
+    {
+        return xEventGroupWaitBits(eg, bits, clear_on_exit, wait_all, ticks);
+    }
+    void event_group_delete(EventGroupHandle_t eg) override { vEventGroupDelete(eg); }
 };
 } // namespace espnow

@@ -5,8 +5,10 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
-namespace espnow {
+#include "freertos/semphr.h"
+#include "freertos/event_groups.h"
 
+namespace espnow {
 static constexpr uint32_t PORT_MAX_DELAY = 0xffffffffUL; ///< Equivalent to portMAX_DELAY — wait forever
 
 /**
@@ -29,11 +31,11 @@ public:
     /** @copydoc xTaskCreate() */
     virtual BaseType_t task_create(
         TaskFunction_t pvTaskCode,
-        const char *const pcName,
+        const char* const pcName,
         const uint32_t usStackDepth,
-        void *const pvParameters,
+        void* const pvParameters,
         UBaseType_t uxPriority,
-        TaskHandle_t *const pxCreatedTask) = 0;
+        TaskHandle_t* const pxCreatedTask) = 0;
 
     /** @copydoc vTaskDelete() */
     virtual void task_delete(TaskHandle_t task_handle) = 0;
@@ -46,7 +48,7 @@ public:
 
     /** @copydoc xTaskNotifyWait() */
     virtual BaseType_t
-    task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t *value, TickType_t xTicksToWait) = 0;
+    task_notify_wait(uint32_t bits_clear_entry, uint32_t bits_clear_exit, uint32_t* value, TickType_t xTicksToWait) = 0;
 
     // Queue
     /** @copydoc xQueueCreate() */
@@ -56,22 +58,22 @@ public:
     virtual void queue_delete(QueueHandle_t queue_handle) = 0;
 
     /** @copydoc xQueueSend() */
-    virtual BaseType_t queue_send(QueueHandle_t queue_handle, const void *data, TickType_t xTicksToWait) = 0;
+    virtual BaseType_t queue_send(QueueHandle_t queue_handle, const void* data, TickType_t xTicksToWait) = 0;
 
     /** @copydoc xQueueReceive() */
-    virtual BaseType_t queue_receive(QueueHandle_t queue_handle, void *data, TickType_t xTicksToWait) = 0;
+    virtual BaseType_t queue_receive(QueueHandle_t queue_handle, void* data, TickType_t xTicksToWait) = 0;
 
     /** @copydoc xQueueSendFromISR() */
     virtual BaseType_t
-    queue_send_fromISR(QueueHandle_t queue_handle, const void *data, BaseType_t *pxHigherPriorityTaskWoken) = 0;
+    queue_send_fromISR(QueueHandle_t queue_handle, const void* data, BaseType_t* pxHigherPriorityTaskWoken) = 0;
 
     // Timer
     /** @copydoc xTimerCreate() */
     virtual TimerHandle_t timer_create(
-        const char *name,
+        const char* name,
         TickType_t xTimerPeriodInTicks,
         UBaseType_t auto_reload,
-        void *id,
+        void* id,
         TimerCallbackFunction_t callback) = 0;
 
     /** @copydoc xTimerStart() */
@@ -84,7 +86,7 @@ public:
     virtual BaseType_t timer_delete(TimerHandle_t timer_handle, TickType_t xTicksToWait) = 0;
 
     /** @copydoc pvTimerGetTimerID() */
-    virtual void *timer_get_id(TimerHandle_t timer_handle) = 0;
+    virtual void* timer_get_id(TimerHandle_t timer_handle) = 0;
 
     // Mutex and Semaphore
     /** @copydoc xSemaphoreCreateMutex() */
@@ -101,5 +103,22 @@ public:
 
     /** @copydoc vSemaphoreDelete() */
     virtual void semaphore_delete(SemaphoreHandle_t semaphore_handle) = 0;
+
+    /** @copydoc xEventGroupCreate() */
+    virtual EventGroupHandle_t event_group_create() = 0;
+
+    /** @copydoc xEventGroupSetBits() */
+    virtual EventBits_t event_group_set_bits(EventGroupHandle_t eg, EventBits_t bits) = 0;
+
+    /** @copydoc xEventGroupWaitBits() */
+    virtual EventBits_t event_group_wait_bits(
+        EventGroupHandle_t eg,
+        EventBits_t bits_to_wait,
+        BaseType_t clear_on_exit,
+        BaseType_t wait_all_bits,
+        TickType_t ticks_to_wait) = 0;
+
+    /** @copydoc vEventGroupDelete() */
+    virtual void event_group_delete(EventGroupHandle_t eg) = 0;
 };
 } // namespace espnow
