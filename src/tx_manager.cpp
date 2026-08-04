@@ -168,7 +168,7 @@ esp_err_t TxManager::queue_packet(const DecodedTxPacket& packet)
 
     // If requires ack, wait for the Ack, max retries reached or timeout (from ack or internal timer)
     const EventBits_t RESULT_BITS = NOTIFY_LOGICAL_ACK | NOTIFY_ACK_TIMEOUT | NOTIFY_MAX_FAILURES | NOTIFY_TASK_TO_STOP;
-    const TickType_t wait_ticks = pdMS_TO_TICKS(ack_timeout_ms_ * (MAX_FAILURES + 1) + 200);
+    const TickType_t wait_ticks = pdMS_TO_TICKS(ack_timeout_ms_ * (MAX_FAILURES + 1) + 100);
 
     EventBits_t bits = freertos_hal_.event_group_wait_bits(
         eg,

@@ -1,5 +1,5 @@
 # WiFiManager Component Manifest
-version: "1.2.0"
+version: "1.2.1"
 description: "ESP-NOW manager star configuration."
 maintainers:
   - "Aluizio Tomazelli <aluiziotomazelli@gmail.com>"

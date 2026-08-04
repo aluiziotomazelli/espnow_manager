@@ -454,14 +454,16 @@ Encapsulates the payload into a standard message format and queues it for transm
 **Returns:**
 | Error Code | Description |
 |------------|-------------|
-| `ESP_OK` | Packet successfully queued |
-| `ESP_ERR_INVALID_STATE` | Manager not in `OPERATIONAL` state or `tx_queue` not initialized |
-| `ESP_ERR_NOT_FOUND` | Peer is not registered |
+| `ESP_OK` | Packet sent successfully (if `require_ack=true`, logical ACK confirmed by destination) |
+| `ESP_ERR_INVALID_STATE` | Manager not in `OPERATIONAL` state, `tx_queue` uninitialized, or manager stopped during wait |
+| `ESP_ERR_NOT_FOUND` | Peer is not registered in peer storage |
 | `ESP_ERR_INVALID_ARG` | Payload length exceeds `MAX_PAYLOAD_SIZE` (230 bytes) |
-| `ESP_FAIL` | Failed to send message to `tx_queue_` |
+| `ESP_ERR_TIMEOUT` | `require_ack=true` and no logical ACK was received within maximum retry duration |
+| `ESP_FAIL` | Failed to queue message, or maximum physical delivery failures reached (peer unreachable) |
 
 **Notes:**
-- Non-blocking unless `require_ack=true`
+- Non-blocking when `require_ack=false`
+- When `require_ack=true`, the calling task blocks for up to `(ack_timeout_ms * (MAX_FAILURES + 1) + 200)` ms
 - Enters `espnow::NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
 
 **Warning:** Maximum payload is 230 bytes (ESP-NOW limit − header − CRC)
@@ -479,7 +481,9 @@ esp_err_t err = manager.send_data(
 );
 
 if (err == ESP_OK) {
-    ESP_LOGI(TAG, "Data sent");
+    ESP_LOGI(TAG, "Data sent and ACK received");
+} else if (err == ESP_ERR_TIMEOUT) {
+    ESP_LOGE(TAG, "ACK timeout expired");
 } else if (err == ESP_ERR_NOT_FOUND) {
     ESP_LOGE(TAG, "HUB not found");
 }
@@ -523,11 +527,17 @@ Similar to `send_data()`, but specifically for control commands. For HUB: Used t
 **Returns:**
 | Error Code | Description |
 |------------|-------------|
-| `ESP_OK` | Success |
-| `ESP_ERR_INVALID_STATE` | Manager not in `OPERATIONAL` state or `tx_queue` not initialized |
-| `ESP_ERR_NOT_FOUND` | Peer is not registered |
+| `ESP_OK` | Command sent successfully (if `require_ack=true`, logical ACK confirmed by destination) |
+| `ESP_ERR_INVALID_STATE` | Manager not in `OPERATIONAL` state, `tx_queue` uninitialized, or manager stopped during wait |
+| `ESP_ERR_NOT_FOUND` | Peer is not registered in peer storage |
 | `ESP_ERR_INVALID_ARG` | Payload length exceeds `MAX_PAYLOAD_SIZE` |
-| `ESP_FAIL` | Failed to send message to `tx_queue_` |
+| `ESP_ERR_TIMEOUT` | `require_ack=true` and no logical ACK was received within maximum retry duration |
+| `ESP_FAIL` | Failed to queue message, or maximum physical delivery failures reached (peer unreachable) |
+
+**Notes:**
+- Non-blocking when `require_ack=false`
+- When `require_ack=true`, the calling task blocks for up to `(ack_timeout_ms * (MAX_FAILURES + 1) + 200)` ms
+- Enters `espnow::NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
 
 **Notes:**
 - Non-blocking unless `require_ack=true`

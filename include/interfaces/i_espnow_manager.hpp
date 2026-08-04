@@ -92,15 +92,17 @@ public:
      * @param payload_type Type identifier for the payload (application-defined).
      * @param payload Pointer to the data buffer to be sent.
      * @param len Length of the payload in bytes.
-     * @param require_ack If true, the transmission will wait for a logical acknowledgment.
-     * @return ESP_OK: the packet was successfully queued.
-     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL state or tx_queue not initialized.
-     * @return ESP_ERR_NOT_FOUND: the peer is not registered.
+     * @param require_ack If true, the calling task blocks until a logical acknowledgment is received or a failure occurs.
+     * @return ESP_OK: packet sent successfully (if require_ack=true, logical ACK confirmed by destination node).
+     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL state, tx_queue not initialized, or manager stopped during wait.
+     * @return ESP_ERR_NOT_FOUND: the peer is not registered in peer storage.
      * @return ESP_ERR_INVALID_ARG: payload length exceeds MAX_PAYLOAD_SIZE.
-     * @return ESP_FAIL: failed to send message to tx_queue_.
+     * @return ESP_ERR_TIMEOUT: require_ack=true and no logical ACK was received within the maximum retry duration.
+     * @return ESP_FAIL: failed to queue message, or maximum physical delivery failures reached (peer unreachable).
      *
-     * @note Non-blocking unless require_ack=true
-     * @note Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
+     * @note If require_ack=false, this call is non-blocking and returns immediately after queueing.
+     * @note If require_ack=true, the calling task blocks for up to (ack_timeout_ms * (MAX_FAILURES + 1) + 200) ms.
+     * @note Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures.
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
      */
@@ -140,15 +142,17 @@ public:
      * @param command_type Type of command to execute.
      * @param payload Optional payload for the command.
      * @param len Length of the payload.
-     * @param require_ack If true, waits for a logical acknowledgment.
-     * @return ESP_OK: on success.
-     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL state or tx_queue not initialized.
-     * @return ESP_ERR_NOT_FOUND: the peer is not registered.
+     * @param require_ack If true, the calling task blocks until a logical acknowledgment is received or a failure occurs.
+     * @return ESP_OK: command sent successfully (if require_ack=true, logical ACK confirmed by destination node).
+     * @return ESP_ERR_INVALID_STATE: manager not in OPERATIONAL state, tx_queue not initialized, or manager stopped during wait.
+     * @return ESP_ERR_NOT_FOUND: the peer is not registered in peer storage.
      * @return ESP_ERR_INVALID_ARG: payload length exceeds MAX_PAYLOAD_SIZE.
-     * @return ESP_FAIL: failed to send message to tx_queue_.
+     * @return ESP_ERR_TIMEOUT: require_ack=true and no logical ACK was received within the maximum retry duration.
+     * @return ESP_FAIL: failed to queue message, or maximum physical delivery failures reached (peer unreachable).
      *
-     * @note Non-blocking unless require_ack=true
-     * @note Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures
+     * @note If require_ack=false, this call is non-blocking and returns immediately after queueing.
+     * @note If require_ack=true, the calling task blocks for up to (ack_timeout_ms * (MAX_FAILURES + 1) + 200) ms.
+     * @note Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures.
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
      */
