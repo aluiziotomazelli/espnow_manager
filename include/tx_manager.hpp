@@ -82,7 +82,7 @@ private:
 
     // EventGroup handle for pending ACKs, nullptr if not pending
     // Captured from DecodedTxPacket on dequeue; cleared on final signal
-    EventGroupHandle_t caller_ack_eveent_group_ = nullptr;
+    EventGroupHandle_t caller_ack_event_group_ = nullptr;
 };
 
 } // namespace espnow

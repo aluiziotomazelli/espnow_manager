@@ -190,7 +190,7 @@ esp_err_t TxManager::queue_packet(const DecodedTxPacket& packet)
         return ESP_ERR_TIMEOUT;
     }
     if ((bits & NOTIFY_MAX_FAILURES) == NOTIFY_MAX_FAILURES) {
-        return ESP_ERR_ESPNOW_NOT_FOUND;
+        return ESP_FAIL;
     }
     return ESP_ERR_TIMEOUT; // Timeout waiting for ACK or max failures
 }
@@ -271,9 +271,6 @@ void TxManager::tx_task()
         // This ensures they are handled even if the queue is full and we are IDLE,
         // or if we are returning from a non-blocking state like RETRYING or SCANNING.
         if (freertos_hal_.task_notify_wait(0, NOTIFY_ALL, &notifications, 0) == pdTRUE) {
-            // Captures the event group from the packet (nullptr if non-blocking)
-            caller_ack_eveent_group_ = structured_packet.ack_event_group;
-
             handle_notifications(notifications, should_stop);
             if (should_stop) {
                 break;
@@ -287,6 +284,9 @@ void TxManager::tx_task()
         {
             // Non-blocking queue read: the queue alone does not control sleep.
             if (freertos_hal_.queue_receive(tx_queue_, &structured_packet, 0) == pdTRUE) {
+                // Captures the event group from the packet (nullptr if non-blocking)
+                caller_ack_event_group_ = structured_packet.ack_event_group;
+
                 // Update sequence number only for non-ACK packets.
                 // ACKs must preserve the sequence number of the packet they are acknowledging.
                 if (structured_packet.header.msg_type != MessageType::ACK) {
@@ -387,9 +387,9 @@ void TxManager::tx_task()
                 fsm_.on_max_retries();
 
                 // Notify queue_packet() that peers has reacheable but no logical ACK was received, if applicable
-                if (caller_ack_eveent_group_ != nullptr) {
-                    freertos_hal_.event_group_set_bits(caller_ack_eveent_group_, NOTIFY_ACK_TIMEOUT);
-                    caller_ack_eveent_group_ = nullptr;
+                if (caller_ack_event_group_ != nullptr) {
+                    freertos_hal_.event_group_set_bits(caller_ack_event_group_, NOTIFY_ACK_TIMEOUT);
+                    caller_ack_event_group_ = nullptr;
                 }
             }
             break;
@@ -405,8 +405,7 @@ void TxManager::tx_task()
     ESP_LOGI(TAG, "TX Manager task exiting.");
     tx_task_handle_ = nullptr;
     freertos_hal_.semaphore_give(task_done_semaphore_);
-    freertos_hal_.task_suspend(nullptr); // NULL / nullptr == current task
-    freertos_hal_.task_delete(nullptr);  // NULL / nullptr == current task
+    freertos_hal_.task_delete(nullptr); // NULL / nullptr == current task
 }
 
 // =====================================================================================
@@ -443,9 +442,9 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
             freertos_hal_.task_notify(rx_task_handle_, NOTIFY_MAX_FAILURES, eSetBits);
 
             // Notify queue_packet() that max failures were reached, if applicable
-            if (caller_ack_eveent_group_ != nullptr) {
-                freertos_hal_.event_group_set_bits(caller_ack_eveent_group_, NOTIFY_MAX_FAILURES);
-                caller_ack_eveent_group_ = nullptr;
+            if (caller_ack_event_group_ != nullptr) {
+                freertos_hal_.event_group_set_bits(caller_ack_event_group_, NOTIFY_MAX_FAILURES);
+                caller_ack_event_group_ = nullptr;
             }
         }
     }
@@ -471,9 +470,9 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
         freertos_hal_.timer_stop(ack_timeout_timer_, pdMS_TO_TICKS(10));
 
         // Signal the waiting queue_packet() call that the ACK was received, if applicable
-        if (caller_ack_eveent_group_ != nullptr) {
-            freertos_hal_.event_group_set_bits(caller_ack_eveent_group_, NOTIFY_LOGICAL_ACK);
-            caller_ack_eveent_group_ = nullptr;
+        if (caller_ack_event_group_ != nullptr) {
+            freertos_hal_.event_group_set_bits(caller_ack_event_group_, NOTIFY_LOGICAL_ACK);
+            caller_ack_event_group_ = nullptr;
         }
     }
     if ((notifications & NOTIFY_ACK_TIMEOUT) == NOTIFY_ACK_TIMEOUT) {
@@ -481,9 +480,9 @@ void TxManager::handle_notifications(uint32_t notifications, bool& should_stop)
     }
     if ((notifications & NOTIFY_TASK_TO_STOP) == NOTIFY_TASK_TO_STOP) {
         should_stop = true;
-        if (caller_ack_eveent_group_ != nullptr) {
-            freertos_hal_.event_group_set_bits(caller_ack_eveent_group_, NOTIFY_TASK_TO_STOP);
-            caller_ack_eveent_group_ = nullptr;
+        if (caller_ack_event_group_ != nullptr) {
+            freertos_hal_.event_group_set_bits(caller_ack_event_group_, NOTIFY_TASK_TO_STOP);
+            caller_ack_event_group_ = nullptr;
         }
     }
 }

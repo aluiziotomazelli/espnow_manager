@@ -35,6 +35,7 @@ protected:
     TaskHandle_t fake_task = reinterpret_cast<TaskHandle_t>(0x4);
     SemaphoreHandle_t fake_mutex = reinterpret_cast<SemaphoreHandle_t>(0x5);
     TaskHandle_t fake_rx_task = reinterpret_cast<TaskHandle_t>(0x6);
+    EventGroupHandle_t fake_event_group = reinterpret_cast<EventGroupHandle_t>(0x7);
 
     void SetUp() override
     {
@@ -332,4 +333,63 @@ TEST_F(TxManagerTest, QueueSendFailOnQueuePacketReturnsError)
     DecodedTxPacket packet = {};
     ON_CALL(freertos_hal, queue_send(_, _, _)).WillByDefault(Return(pdFAIL)); // Simulate queue send failure
     EXPECT_EQ(ESP_FAIL, manager->queue_packet(packet));                       // Must return error
+}
+
+TEST_F(TxManagerTest, QueuePacketWithRequiresAckAllocatesAndDeletesEventGroupOnSendFailure)
+{
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task, 10));
+    DecodedTxPacket packet = {};
+    packet.header.requires_ack = true;
+    
+    EXPECT_CALL(freertos_hal, event_group_create()).WillOnce(Return(fake_event_group));
+    EXPECT_CALL(freertos_hal, queue_send(_, _, _)).WillOnce(Return(pdFAIL)); // Fail queue send
+    EXPECT_CALL(freertos_hal, event_group_delete(fake_event_group)).Times(1);
+    
+    EXPECT_EQ(ESP_FAIL, manager->queue_packet(packet));
+}
+
+TEST_F(TxManagerTest, QueuePacketWithRequiresAckBlocksAndReturnsOkOnLogicalAck)
+{
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task, 10));
+    DecodedTxPacket packet = {};
+    packet.header.requires_ack = true;
+    
+    EXPECT_CALL(freertos_hal, event_group_create()).WillOnce(Return(fake_event_group));
+    EXPECT_CALL(freertos_hal, queue_send(_, _, _)).WillOnce(Return(pdTRUE));
+    EXPECT_CALL(freertos_hal, task_notify(_, NOTIFY_DATA, eSetBits)).Times(1);
+    
+    EXPECT_CALL(freertos_hal, event_group_wait_bits(fake_event_group, _, _, _, _)).WillOnce(Return(NOTIFY_LOGICAL_ACK));
+    EXPECT_CALL(freertos_hal, event_group_delete(fake_event_group)).Times(1);
+    
+    EXPECT_EQ(ESP_OK, manager->queue_packet(packet));
+}
+
+TEST_F(TxManagerTest, QueuePacketWithRequiresAckBlocksAndReturnsTimeoutOnAckTimeout)
+{
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task, 10));
+    DecodedTxPacket packet = {};
+    packet.header.requires_ack = true;
+    
+    EXPECT_CALL(freertos_hal, event_group_create()).WillOnce(Return(fake_event_group));
+    EXPECT_CALL(freertos_hal, queue_send(_, _, _)).WillOnce(Return(pdTRUE));
+    
+    EXPECT_CALL(freertos_hal, event_group_wait_bits(fake_event_group, _, _, _, _)).WillOnce(Return(NOTIFY_ACK_TIMEOUT));
+    EXPECT_CALL(freertos_hal, event_group_delete(fake_event_group)).Times(1);
+    
+    EXPECT_EQ(ESP_ERR_TIMEOUT, manager->queue_packet(packet));
+}
+
+TEST_F(TxManagerTest, QueuePacketWithRequiresAckBlocksAndReturnsEspFailOnMaxFailures)
+{
+    EXPECT_EQ(ESP_OK, manager->init(1000, 1, fake_rx_task, 10));
+    DecodedTxPacket packet = {};
+    packet.header.requires_ack = true;
+    
+    EXPECT_CALL(freertos_hal, event_group_create()).WillOnce(Return(fake_event_group));
+    EXPECT_CALL(freertos_hal, queue_send(_, _, _)).WillOnce(Return(pdTRUE));
+    
+    EXPECT_CALL(freertos_hal, event_group_wait_bits(fake_event_group, _, _, _, _)).WillOnce(Return(NOTIFY_MAX_FAILURES));
+    EXPECT_CALL(freertos_hal, event_group_delete(fake_event_group)).Times(1);
+    
+    EXPECT_EQ(ESP_FAIL, manager->queue_packet(packet));
 }
