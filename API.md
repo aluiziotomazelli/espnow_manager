@@ -806,8 +806,8 @@ Retrieves current link quality metrics for a specific peer identified by `node_i
 ```cpp
 espnow::PeerStatistics stats;
 if (manager.get_peer_stats(espnow::ReservedIds::HUB, stats)) {
-    ESP_LOGI(TAG, "HUB RSSI: %d dBm (avg), RTT: %lu ms",
-             stats.rssi_avg, (unsigned long)stats.rtt_avg_ms);
+    ESP_LOGI(TAG, "HUB RSSI: %d dBm (avg), RTT: %lu us",
+             stats.rssi_avg, (unsigned long)stats.rtt_avg_us);
     ESP_LOGI(TAG, "Packets: rx=%lu, tx=%lu, lost=%lu",
              (unsigned long)stats.packets_rx,
              (unsigned long)stats.packets_sent,
@@ -844,11 +844,11 @@ auto all_stats = manager.get_all_peer_stats();
 
 ESP_LOGI(TAG, "Tracking %d peers:", all_stats.size());
 for (const auto& stats : all_stats) {
-    ESP_LOGI(TAG, "  Node %d: RSSI=%d dBm, RTT=%lu ms, "
+    ESP_LOGI(TAG, "  Node %d: RSSI=%d dBm, RTT=%lu us, "
              "tx=%lu, rx=%lu, lost=%lu",
              stats.node_id,
              stats.rssi_avg,
-             (unsigned long)stats.rtt_avg_ms,
+             (unsigned long)stats.rtt_avg_us,
              (unsigned long)stats.packets_sent,
              (unsigned long)stats.packets_rx,
              (unsigned long)stats.packets_lost);
@@ -874,8 +874,8 @@ struct espnow::PeerStatistics
     uint32_t driver_errors;           ///< hal_esp_now_send() returned error
     uint32_t packets_lost;            ///< ACK timeouts after retries exhausted
     uint32_t retries;                 ///< Number of retransmissions
-    uint32_t rtt_last_ms;             ///< Last round-trip time (ms)
-    uint32_t rtt_avg_ms;              ///< Exponential moving average of RTT (0 = unknown)
+    uint32_t rtt_last_us;             ///< Last round-trip time (us)
+    uint32_t rtt_avg_us;              ///< Exponential moving average of RTT (0 = unknown)
 };
 ```
 
@@ -893,8 +893,8 @@ struct espnow::PeerStatistics
 | `driver_errors` | `uint32_t` | ESP-NOW driver send errors (NO_MEM, CHAN, etc.) |
 | `packets_lost` | `uint32_t` | Packets lost due to ACK timeout after all retries |
 | `retries` | `uint32_t` | Total retransmission attempts |
-| `rtt_last_ms` | `uint32_t` | Most recent round-trip time in milliseconds |
-| `rtt_avg_ms` | `uint32_t` | EMA-smoothed RTT average. `0` means no data yet |
+| `rtt_last_us` | `uint32_t` | Most recent round-trip time in microseconds |
+| `rtt_avg_us` | `uint32_t` | EMA-smoothed RTT average. `0` means no data yet |
 
 **EMA Details:**
 - RSSI alpha is derived from heartbeat interval: shorter intervals → smoother (less reactive)

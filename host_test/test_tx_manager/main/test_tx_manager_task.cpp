@@ -9,6 +9,7 @@
 #include "mock_discovery_manager.hpp"
 #include "mock_statistics_manager.hpp"
 #include "mock_peer_manager.hpp"
+#include "mock_en_hal_timer.hpp"
 #include "hal_real_freertos.hpp"
 #include "tx_manager.hpp"
 using namespace espnow;
@@ -32,6 +33,7 @@ protected:
     // Owned pointers to correct destruction and no mock leakage on tests
     std::unique_ptr<NiceMock<MockTxStateMachine>> fsm_owned;
     std::unique_ptr<NiceMock<MockEspNowHAL>> hal_owned;
+    std::unique_ptr<NiceMock<MockTimerHAL>> hal_timer_owned;
     std::unique_ptr<NiceMock<MockMessageCodec>> codec_owned;
     std::unique_ptr<NiceMock<MockStatisticsManager>> statistics_mgr_owned;
     std::unique_ptr<NiceMock<MockPeerManager>> peer_mgr_owned;
@@ -39,6 +41,7 @@ protected:
     // Raw pointers to use in tests
     NiceMock<MockTxStateMachine>* fsm;
     NiceMock<MockEspNowHAL>* hal;
+    NiceMock<MockTimerHAL>* hal_timer;
     NiceMock<MockMessageCodec>* codec;
     NiceMock<MockStatisticsManager>* statistics_mgr;
     NiceMock<MockPeerManager>* peer_mgr;
@@ -58,12 +61,14 @@ protected:
     {
         fsm_owned = std::make_unique<NiceMock<MockTxStateMachine>>();
         hal_owned = std::make_unique<NiceMock<MockEspNowHAL>>();
+        hal_timer_owned = std::make_unique<NiceMock<MockTimerHAL>>();
         codec_owned = std::make_unique<NiceMock<MockMessageCodec>>();
         statistics_mgr_owned = std::make_unique<NiceMock<MockStatisticsManager>>();
         peer_mgr_owned = std::make_unique<NiceMock<MockPeerManager>>();
 
         fsm = fsm_owned.get();
         hal = hal_owned.get();
+        hal_timer = hal_timer_owned.get();
         codec = codec_owned.get();
         statistics_mgr = statistics_mgr_owned.get();
         peer_mgr = peer_mgr_owned.get();
@@ -115,7 +120,7 @@ protected:
         }));
 
         manager = std::make_unique<TxManager>(
-            *fsm_owned, *hal_owned, freertos_hal, *codec_owned, *statistics_mgr_owned, *peer_mgr_owned);
+            *fsm_owned, *hal_owned, freertos_hal, *hal_timer_owned, *codec_owned, *statistics_mgr_owned, *peer_mgr_owned);
     }
 
     void TearDown() override
@@ -197,7 +202,7 @@ protected:
         pkt.header.msg_type = MessageType::ACK;
         pkt.header.ack_status = AckStatus::OK;
         pkt.header.sequence_number = pending_ack.has_value() ? pending_ack->sequence_number : 0;
-        pkt.raw.timestamp_ms = 0;
+        pkt.raw.timestamp_us = 0;
         return pkt;
     }
 

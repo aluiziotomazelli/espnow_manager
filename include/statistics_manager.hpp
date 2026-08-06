@@ -62,7 +62,7 @@ public:
     void on_packet_received(NodeId node_id, int8_t rssi) override;
 
     /** @copydoc IStatisticsManager::on_ack_received */
-    void on_ack_received(NodeId node_id, uint32_t rtt_ms) override;
+    void on_ack_received(NodeId node_id, uint32_t rtt_us) override;
 
     /** @copydoc IStatisticsManager::on_delivery_success */
     void on_delivery_success(NodeId node_id) override;

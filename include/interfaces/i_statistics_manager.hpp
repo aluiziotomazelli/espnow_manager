@@ -111,9 +111,9 @@ public:
      * threshold is reached.
      *
      * @param node_id The unique identifier of the peer node that sent the ACK.
-     * @param rtt_ms The round-trip time in milliseconds.
+     * @param rtt_us The round-trip time in microseconds.
      */
-    virtual void on_ack_received(NodeId node_id, uint32_t rtt_ms) = 0;
+    virtual void on_ack_received(NodeId node_id, uint32_t rtt_us) = 0;
 
     // --- Tx delivery events (called from tx_task via callback) ---
 

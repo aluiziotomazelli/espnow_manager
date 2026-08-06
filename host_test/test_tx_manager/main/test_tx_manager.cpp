@@ -5,6 +5,7 @@
 #include "mock_en_hal_espnow.hpp"
 #include "mock_message_codec.hpp"
 #include "mock_en_hal_freertos.hpp"
+#include "mock_en_hal_timer.hpp"
 #include "mock_statistics_manager.hpp"
 #include "mock_peer_manager.hpp"
 #include "tx_manager.hpp"
@@ -23,6 +24,7 @@ protected:
     NiceMock<MockTxStateMachine> fsm;
     NiceMock<MockEspNowHAL> hal;
     NiceMock<MockFreeRTOSHAL> freertos_hal;
+    NiceMock<MockTimerHAL> timer;
     NiceMock<MockMessageCodec> codec;
     NiceMock<MockStatisticsManager> stats;
     NiceMock<MockPeerManager> peer_mgr;
@@ -57,7 +59,7 @@ protected:
         ON_CALL(freertos_hal, queue_delete(_)).WillByDefault(Return());
         ON_CALL(freertos_hal, timer_delete(_, _)).WillByDefault(Return(pdPASS));
 
-        manager = std::make_unique<TxManager>(fsm, hal, freertos_hal, codec, stats, peer_mgr);
+        manager = std::make_unique<TxManager>(fsm, hal, freertos_hal, timer, codec, stats, peer_mgr);
     }
 
     void deinit_after_init()
@@ -288,7 +290,7 @@ TEST_F(TxManagerTest, HandleAckUpdateStats)
     ack_packet.header.msg_type = MessageType::ACK;
     ack_packet.header.sequence_number = 42; // Matches pending ACK
     ack_packet.header.ack_status = AckStatus::OK;
-    ack_packet.raw.timestamp_ms = 100;
+    ack_packet.raw.timestamp_us = 100;
 
     // Stats update expected on success status
     EXPECT_CALL(stats, on_ack_received(pending.node_id, 100)).Times(1);
