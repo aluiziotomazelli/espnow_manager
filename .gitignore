@@ -38,6 +38,7 @@ Thumbs.db
 **/__pycache__/
 *.pyc
 **/coverage/**
+**/Testing/
 
 #agents
 **/.gemini/
