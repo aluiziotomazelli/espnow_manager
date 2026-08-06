@@ -63,7 +63,7 @@ struct RxPacket
     uint8_t data[ESP_NOW_MAX_DATA_LEN]; /**< Raw payload data */
     size_t len;                         /**< Length of the payload in bytes */
     int8_t rssi;                        /**< Received Signal Strength Indicator (dBm) */
-    int64_t timestamp_ms;               /**< Millisecond timestamp (esp_timer_get_time / 1000) */
+    int64_t timestamp_us;               /**< Microsecond timestamp (esp_timer_get_time) */
 };
 
 /**
@@ -166,7 +166,7 @@ enum class NodeState
 struct PendingAck
 {
     uint16_t sequence_number; /**< Sequence number of the message being tracked */
-    int64_t timestamp_ms;     /**< Timestamp of the last attempt (ms) */
+    int64_t timestamp_us;     /**< Timestamp of the last attempt (us) */
     uint8_t retries_left;     /**< Remaining retransmission attempts */
     TxPacket packet;          /**< Copy of the packet to allow retransmission */
     NodeId node_id;           /**< Target Node ID for tracking and timeout logic */
@@ -187,8 +187,8 @@ struct PeerStatistics
     uint32_t delivery_failures = 0; ///< ESP-NOW callback reported ESP_NOW_SEND_FAIL
     uint32_t packets_lost = 0;      ///< Number of packets lost (ACK timeout after retries)
     uint32_t retries = 0;           ///< Number of retries
-    uint32_t rtt_last_ms = 0;       ///< Last round-trip time in milliseconds
-    uint32_t rtt_avg_ms = 0;        ///< Average round-trip time in milliseconds (0 = unknown)
+    uint32_t rtt_last_us = 0;       ///< Last round-trip time in microseconds
+    uint32_t rtt_avg_us = 0;        ///< Average round-trip time in microseconds (0 = unknown)
 };
 
 /**
@@ -204,7 +204,7 @@ struct PeerStatisticsPersist
     uint32_t delivery_failures = 0; ///< ESP-NOW callback reported ESP_NOW_SEND_FAIL
     uint32_t packets_lost = 0;      ///< Number of packets lost (ACK timeout after retries)
     uint32_t retries = 0;           ///< Number of retries
-    uint32_t rtt_avg_ms = 0;        ///< Average round-trip time in milliseconds
+    uint32_t rtt_avg_us = 0;        ///< Average round-trip time in microseconds
 };
 
 /**

@@ -274,7 +274,7 @@ extern "C" void app_main(void)
             draw_text(frame_buffer, 0, 16, buf);
 
             snprintf(
-                buf, sizeof(buf), "RTT:%lu AVG:%lu", (unsigned long)stats.rtt_last_ms, (unsigned long)stats.rtt_avg_ms);
+                buf, sizeof(buf), "RTT:%lu AVG:%lu", (unsigned long)stats.rtt_last_us, (unsigned long)stats.rtt_avg_us);
             draw_text(frame_buffer, 0, 32, buf);
 
             ESP_LOGI(
@@ -284,8 +284,8 @@ extern "C" void app_main(void)
                 stats.rssi_avg,
                 (unsigned long)stats.packets_sent,
                 (unsigned long)stats.packets_lost,
-                (unsigned long)stats.rtt_last_ms,
-                (unsigned long)stats.rtt_avg_ms);
+                (unsigned long)stats.rtt_last_us,
+                (unsigned long)stats.rtt_avg_us);
         }
         else {
             draw_text(frame_buffer, 0, 0, "WAITING HUB...");

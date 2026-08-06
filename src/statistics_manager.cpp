@@ -40,7 +40,7 @@ esp_err_t StatisticsManager::init()
             entry.stats.packets_rx = p.packets_rx;
             entry.stats.packets_sent = p.packets_sent;
             entry.stats.packets_lost = p.packets_lost;
-            entry.stats.rtt_avg_ms = p.rtt_avg_ms;
+            entry.stats.rtt_avg_us = p.rtt_avg_us;
             entry.stats.retries = p.retries;
             entries_.push_back(entry);
         }
@@ -144,19 +144,19 @@ void StatisticsManager::on_packet_received(NodeId node_id, int8_t rssi)
     }
 }
 
-void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_ms)
+void StatisticsManager::on_ack_received(NodeId node_id, uint32_t rtt_us)
 {
     std::optional<etl::vector<PeerStatisticsPersist, MAX_PEERS>> snapshot;
 
     if (hal_freertos_.semaphore_take(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         auto entry = find_entry(node_id);
         if (entry != nullptr) {
-            entry->stats.rtt_last_ms = rtt_ms;
-            if (entry->stats.rtt_avg_ms == 0) {
-                entry->stats.rtt_avg_ms = rtt_ms;
+            entry->stats.rtt_last_us = rtt_us;
+            if (entry->stats.rtt_avg_us == 0) {
+                entry->stats.rtt_avg_us = rtt_us;
             }
             else {
-                entry->stats.rtt_avg_ms = update_ema_u32(entry->stats.rtt_avg_ms, rtt_ms, RTT_EMA_ALPHA);
+                entry->stats.rtt_avg_us = update_ema_u32(entry->stats.rtt_avg_us, rtt_us, RTT_EMA_ALPHA);
             }
             entry->dirty_rtt++;
             snapshot = maybe_build_flush_snapshot(*entry);
@@ -394,7 +394,7 @@ etl::vector<PeerStatisticsPersist, MAX_PEERS> StatisticsManager::build_persist_s
         p.driver_errors = entry.stats.driver_errors;
         p.delivery_failures = entry.stats.delivery_failures;
         p.packets_lost = entry.stats.packets_lost;
-        p.rtt_avg_ms = entry.stats.rtt_avg_ms;
+        p.rtt_avg_us = entry.stats.rtt_avg_us;
         p.retries = entry.stats.retries;
         snapshot.push_back(p);
     }

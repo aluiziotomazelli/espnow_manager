@@ -16,7 +16,7 @@ public:
     MOCK_METHOD(void, on_peer_removed, (NodeId node_id), (override));
 
     MOCK_METHOD(void, on_packet_received, (NodeId node_id, int8_t rssi), (override));
-    MOCK_METHOD(void, on_ack_received, (NodeId node_id, uint32_t rtt_ms), (override));
+    MOCK_METHOD(void, on_ack_received, (NodeId node_id, uint32_t rtt_us), (override));
 
     MOCK_METHOD(void, on_delivery_success, (NodeId node_id), (override));
     MOCK_METHOD(void, on_delivery_failure, (NodeId node_id), (override));

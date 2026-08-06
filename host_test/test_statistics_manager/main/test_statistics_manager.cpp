@@ -82,8 +82,8 @@ TEST_F(StatisticsManagerTest, AckReceivedUpdatesRttAvg)
 
     // Assert
     auto all_stats = sut->get_all();
-    EXPECT_GT(all_stats[0].rtt_avg_ms, rtt1);
-    EXPECT_LT(all_stats[0].rtt_avg_ms, rtt2);
+    EXPECT_GT(all_stats[0].rtt_avg_us, rtt1);
+    EXPECT_LT(all_stats[0].rtt_avg_us, rtt2);
 }
 
 // Flush thresholds
@@ -313,10 +313,10 @@ TEST_F(StatisticsManagerTest, MultiplePeersMaintainIndependentStats)
     // Independent validations
     EXPECT_EQ(stats1.packets_rx, 1);
     EXPECT_EQ(stats1.packets_sent, 0);
-    EXPECT_EQ(stats1.rtt_avg_ms, 0);
+    EXPECT_EQ(stats1.rtt_avg_us, 0);
 
     EXPECT_EQ(stats2.packets_rx, 0);
-    EXPECT_EQ(stats2.rtt_avg_ms, 30);
+    EXPECT_EQ(stats2.rtt_avg_us, 30);
 }
 
 TEST_F(StatisticsManagerTest, InitLoadsPersistedStats)
@@ -329,7 +329,7 @@ TEST_F(StatisticsManagerTest, InitLoadsPersistedStats)
     persisted.packets_rx = 50;
     persisted.packets_sent = 40;
     persisted.packets_lost = 2;
-    persisted.rtt_avg_ms = 15;
+    persisted.rtt_avg_us = 15;
 
     etl::vector<PeerStatisticsPersist, MAX_PEERS> persisted_list;
     persisted_list.push_back(persisted);
@@ -354,7 +354,7 @@ TEST_F(StatisticsManagerTest, InitLoadsPersistedStats)
     EXPECT_EQ(stats.node_id, node_id);
     EXPECT_EQ(stats.rssi_avg, -55);
     EXPECT_EQ(stats.packets_rx, 50);
-    EXPECT_EQ(stats.rtt_avg_ms, 15);
+    EXPECT_EQ(stats.rtt_avg_us, 15);
 }
 
 TEST_F(StatisticsManagerTest, SyncPeersRemovesOrphanEntry)

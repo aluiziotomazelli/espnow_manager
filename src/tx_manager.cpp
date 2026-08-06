@@ -12,6 +12,7 @@ TxManager::TxManager(
     ITxStateMachine& fsm,
     IEspNowHAL& hal_espnow,
     IFreeRTOSHAL& freertos_hal,
+    ITimerHAL& hal_timer,
     IMessageCodec& codec,
     IStatisticsManager& stats_mgr,
     IPeerManager& peer_mgr)
@@ -19,6 +20,7 @@ TxManager::TxManager(
     , hal_espnow_(hal_espnow)
     , codec_(codec)
     , freertos_hal_(freertos_hal)
+    , hal_timer_(hal_timer)
     , stats_mgr_(stats_mgr)
     , peer_mgr_(peer_mgr)
     , sequence_counter_(0)
@@ -240,9 +242,9 @@ void TxManager::handle_ack(const DecodedRxPacket& decoded)
         return;
     }
 
-    // Calculate RTT: current packet timestamp (ms) - pending packet timestamp (ms)
-    uint32_t rtt_ms = static_cast<uint32_t>(decoded.raw.timestamp_ms - pending_ack->timestamp_ms);
-    stats_mgr_.on_ack_received(pending_ack->node_id, rtt_ms);
+    // Calculate RTT: current packet timestamp (us) - pending packet timestamp (us)
+    uint32_t rtt_us = static_cast<uint32_t>(decoded.raw.timestamp_us - pending_ack->timestamp_us);
+    stats_mgr_.on_ack_received(pending_ack->node_id, rtt_us);
 
     notify_logical_ack();
 }
@@ -317,7 +319,7 @@ void TxManager::tx_task()
                     if (next == TxState::WAITING_FOR_ACK) {
                         PendingAck pending = {
                             .sequence_number = structured_packet.header.sequence_number,
-                            .timestamp_ms = structured_packet.header.timestamp_ms,
+                            .timestamp_us = hal_timer_.get_time_us(),
                             .retries_left = 3,
                             .packet = raw_packet,
                             .node_id = structured_packet.header.dest_node_id};

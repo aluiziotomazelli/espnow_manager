@@ -3,6 +3,7 @@
 
 #include "i_en_hal_espnow.hpp"
 #include "i_en_hal_freertos.hpp"
+#include "i_en_hal_timer.hpp"
 #include "i_message_codec.hpp"
 #include "i_tx_manager.hpp"
 #include "i_tx_state_machine.hpp"
@@ -17,6 +18,7 @@ public:
         ITxStateMachine& fsm,
         IEspNowHAL& hal_espnow,
         IFreeRTOSHAL& freertos_hal,
+        ITimerHAL& hal_timer,
         IMessageCodec& codec,
         IStatisticsManager& stats_mgr,
         IPeerManager& peer_mgr);
@@ -52,6 +54,7 @@ private:
     IEspNowHAL& hal_espnow_;
     IMessageCodec& codec_;
     IFreeRTOSHAL& freertos_hal_;
+    ITimerHAL& hal_timer_;
     IStatisticsManager& stats_mgr_;
     IPeerManager& peer_mgr_;
 

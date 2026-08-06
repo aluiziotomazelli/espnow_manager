@@ -73,7 +73,7 @@ EspNowManager& EspNowManager::instance()
     static auto stats_mgr = std::make_unique<StatisticsManager>(*storage, *hal_freertos);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
     static auto tx_manager =
-        std::make_unique<TxManager>(*tx_fsm, *hal_espnow, *hal_freertos, *message_codec, *stats_mgr, *peer_manager);
+        std::make_unique<TxManager>(*tx_fsm, *hal_espnow, *hal_freertos, *hal_timer, *message_codec, *stats_mgr, *peer_manager);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *hal_timer);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *hal_freertos, *hal_timer);
     static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
@@ -503,8 +503,8 @@ void EspNowManager::esp_now_recv_cb(const esp_now_recv_info_t* info, const uint8
     memcpy(packet.data, data, len);
     packet.len = len;
     packet.rssi = static_cast<int8_t>(info->rx_ctrl->rssi);
-    // Raw timestamp in us, will be converted to ms in rx_task
-    packet.timestamp_ms = self->hal_timer_->get_time_us();
+    // Raw microsecond timestamp
+    packet.timestamp_us = self->hal_timer_->get_time_us();
     self->hal_freertos_->queue_send_fromISR(self->rx_queue_handle_, &packet, 0);
 }
 
@@ -553,9 +553,6 @@ void EspNowManager::rx_task(void* arg)
 
         // Wait for incoming packets with a timeout to periodically check for notifications and tick managers.
         if (self->hal_freertos_->queue_receive(self->rx_queue_handle_, &packet, pdMS_TO_TICKS(100)) == pdTRUE) {
-            // Convert raw timestamp from us to ms
-            packet.timestamp_ms /= 1000;
-
             // Validate CRC
             if (self->message_codec_->validate_crc(packet.data, packet.len)) {
                 // Decode header
