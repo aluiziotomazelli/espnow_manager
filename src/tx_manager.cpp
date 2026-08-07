@@ -238,7 +238,13 @@ void TxManager::handle_ack(const DecodedRxPacket& decoded)
     }
 
     if (decoded.header.ack_status != AckStatus::OK) {
+        ESP_LOGW(
+            TAG,
+            "Command rejected by node 0x%02X (status: %d). Aborting retries.",
+            static_cast<uint8_t>(pending_ack->node_id),
+            static_cast<int>(decoded.header.ack_status));
         stats_mgr_.on_delivery_failure(pending_ack->node_id);
+        notify_logical_ack(); // Stop retrying a rejected command
         return;
     }
 
