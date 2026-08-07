@@ -242,17 +242,30 @@ sequenceDiagram
     CD-->>TM: TxPacket (Wire Format)
     TM->>HE: hal_esp_now_send(TxPacket)
 
-    alt Requires ACK
-        TM->>TM: Start ACK Timeout
-        alt ACK received
-            TM->>TM: Reset failure counter
-        else ACK timeout
-            TM->>TM: Increment failure counter
-            alt failures >= MAX_FAILURES
-                TM->>RX: NOTIFY_MAX_FAILURES
-                Note over RX: rx_task decides<br/>RECOVERY_SCAN or PAIRING_SCAN
-            else failures < MAX_FAILURES
-                TM->>TM: Retry transmission
+    alt MAC Delivery Failure (ESP_NOW_SEND_FAIL)
+        TM->>TS: on_delivery_failure()
+        TS->>TS: Increment MAC fail count
+        alt MAC failures >= MAX_FAILURES
+            TM->>RX: NOTIFY_MAX_FAILURES
+            Note over RX: rx_task decides<br/>RECOVERY_SCAN or PAIRING_SCAN
+        else MAC failures < MAX_FAILURES
+            TM->>TM: Retry MAC transmission
+        end
+    else MAC Delivery Success (ESP_NOW_SEND_SUCCESS)
+        TM->>TS: on_delivery_success() (Resets MAC fail count)
+        alt Requires Logical ACK
+            TM->>TM: Start ACK Timeout (100ms)
+            alt Logical ACK received
+                TM->>TS: on_ack_received() (Success)
+            else Logical ACK timeout
+                TM->>TS: on_ack_timeout()
+                alt Application retries > 0
+                    TM->>TM: Retry full transmission (MAC + Logical)
+                else Application retries == 0
+                    TM->>TS: on_max_retries()
+                    Note over TM: Packet lost (Application-level).<br/>Does NOT trigger scan.
+                    TM->>HM: Return ESP_ERR_TIMEOUT to caller
+                end
             end
         end
     end
