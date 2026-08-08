@@ -66,9 +66,10 @@ public:
 
     /**
      * @brief Event: Channel scan requested (typically by TxManager on failure).
+     * @param is_hub True if the node is a HUB.
      * @return ESP_OK or ESP_ERR_INVALID_STATE.
      */
-    virtual esp_err_t on_scan_requested() = 0;
+    virtual esp_err_t on_scan_requested(bool is_hub) = 0;
 
     /**
      * @brief Event: Channel rediscovered.

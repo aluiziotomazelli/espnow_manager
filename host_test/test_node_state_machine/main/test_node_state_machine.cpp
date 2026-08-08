@@ -65,7 +65,7 @@ TEST_F(NodeStateMachineTest, PairingRequestedInPairingScanReturnsError)
 TEST_F(NodeStateMachineTest, PairingRequestedInRecoveryScanReturnsError)
 {
     fsm.on_init(false, true);
-    fsm.on_scan_requested(); // RECOVERY_SCAN
+    fsm.on_scan_requested(false); // RECOVERY_SCAN
     EXPECT_EQ(fsm.on_pairing_requested(false, false), ESP_ERR_INVALID_STATE);
     EXPECT_EQ(fsm.get_state(), NodeState::RECOVERY_SCAN);
 }
@@ -93,8 +93,8 @@ TEST_F(NodeStateMachineTest, PairingRequestedFromIdleWithoutPeersTransitionsToPa
 // From IDLE (but has peers, e.g. after a recovery scan failed), pairing request can start directly.
 TEST_F(NodeStateMachineTest, PairingRequestedFromIdleWithPeersTransitionsToPairing)
 {
-    fsm.on_init(true, false);
-    fsm.on_scan_requested();
+    fsm.on_init(false, false);
+    fsm.on_scan_requested(false);
     fsm.on_scan_failed(); // Go to IDLE (per revised table)
     ASSERT_EQ(fsm.get_state(), NodeState::IDLE);
 
@@ -129,7 +129,7 @@ TEST_F(NodeStateMachineTest, PairingRequestedFromOperationalWithoutPeersTransiti
 // Scan requested in UNINITIALIZED state should return error.
 TEST_F(NodeStateMachineTest, ScanRequestedInUninitializedReturnsError)
 {
-    EXPECT_EQ(fsm.on_scan_requested(), ESP_ERR_INVALID_STATE);
+    EXPECT_EQ(fsm.on_scan_requested(false), ESP_ERR_INVALID_STATE);
     EXPECT_EQ(fsm.get_state(), NodeState::UNINITIALIZED);
 }
 
@@ -137,7 +137,7 @@ TEST_F(NodeStateMachineTest, ScanRequestedInUninitializedReturnsError)
 TEST_F(NodeStateMachineTest, ScanRequestedInPairingScanReturnsError)
 {
     fsm.on_init(false, false); // PAIRING_SCAN
-    EXPECT_EQ(fsm.on_scan_requested(), ESP_ERR_INVALID_STATE);
+    EXPECT_EQ(fsm.on_scan_requested(false), ESP_ERR_INVALID_STATE);
     EXPECT_EQ(fsm.get_state(), NodeState::PAIRING_SCAN);
 }
 
@@ -146,7 +146,7 @@ TEST_F(NodeStateMachineTest, ScanRequestedFromPairingTransitionsToRecoveryScan)
 {
     fsm.on_init(false, false);
     fsm.on_channel_found(); // PAIRING
-    EXPECT_EQ(fsm.on_scan_requested(), ESP_OK);
+    EXPECT_EQ(fsm.on_scan_requested(false), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::RECOVERY_SCAN);
 }
 
@@ -155,16 +155,25 @@ TEST_F(NodeStateMachineTest, ScanRequestedFromIdleTransitionsToRecoveryScan)
 {
     fsm.on_init(false, false);
     fsm.on_scan_failed(); // IDLE
-    EXPECT_EQ(fsm.on_scan_requested(), ESP_OK);
+    EXPECT_EQ(fsm.on_scan_requested(false), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::RECOVERY_SCAN);
 }
 
-// When link is lost in OPERATIONAL, it should start RECOVERY_SCAN.
+// When link is lost in OPERATIONAL, it should start RECOVERY_SCAN for non-HUB.
 TEST_F(NodeStateMachineTest, ScanRequestedFromOperationalTransitionsToRecoveryScan)
 {
     fsm.on_init(false, true);
-    EXPECT_EQ(fsm.on_scan_requested(), ESP_OK);
+    EXPECT_EQ(fsm.on_scan_requested(false), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::RECOVERY_SCAN);
+}
+
+// Scan requested on HUB stays OPERATIONAL.
+TEST_F(NodeStateMachineTest, ScanRequestedOnHubStaysOperational)
+{
+    fsm.on_init(true, true);
+    EXPECT_EQ(fsm.get_state(), NodeState::OPERATIONAL);
+    EXPECT_EQ(fsm.on_scan_requested(true), ESP_OK);
+    EXPECT_EQ(fsm.get_state(), NodeState::OPERATIONAL);
 }
 
 // If channel found during PAIRING_SCAN, move to PAIRING.
@@ -179,7 +188,7 @@ TEST_F(NodeStateMachineTest, ChannelFoundInPairingScanTransitionsToPairing)
 TEST_F(NodeStateMachineTest, ChannelFoundInRecoveryScanTransitionsToOperational)
 {
     fsm.on_init(false, true);
-    fsm.on_scan_requested(); // RECOVERY_SCAN
+    fsm.on_scan_requested(false); // RECOVERY_SCAN
     EXPECT_EQ(fsm.on_channel_found(), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::OPERATIONAL);
 }
@@ -225,7 +234,7 @@ TEST_F(NodeStateMachineTest, ScanFailedInPairingScanTransitionsToIdle)
 TEST_F(NodeStateMachineTest, ScanFailedInRecoveryScanTransitionsToIdle)
 {
     fsm.on_init(false, true);
-    fsm.on_scan_requested(); // RECOVERY_SCAN
+    fsm.on_scan_requested(false); // RECOVERY_SCAN
     EXPECT_EQ(fsm.on_scan_failed(), ESP_OK);
     EXPECT_EQ(fsm.get_state(), NodeState::IDLE);
 }

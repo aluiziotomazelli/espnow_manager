@@ -155,7 +155,7 @@ protected:
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
         // Submodule inits succeed
-        ON_CALL(*tx_mgr_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*tx_mgr_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*scanner_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*channel_monitor_, init(_, _)).WillByDefault(Return(ESP_OK));
@@ -440,7 +440,7 @@ TEST_F(EspNowManagerTaskTest, ChannelFoundFromRecoveryScanTransitionsToOperation
     node_fsm_->set_state(NodeState::OPERATIONAL);
 
     // Simulate link loss → RECOVERY_SCAN
-    sut_->node_fsm_->on_scan_requested();
+    sut_->node_fsm_->on_scan_requested(false);
     ASSERT_EQ(sut_->get_node_state(), NodeState::RECOVERY_SCAN);
 
     ON_CALL(*scanner_, get_channel()).WillByDefault(Return(6));
@@ -482,6 +482,34 @@ TEST_F(EspNowManagerTaskTest, MaxFailuresFromOperationalTransitionsToRecoverySca
     vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
 
     EXPECT_EQ(sut_->get_node_state(), NodeState::RECOVERY_SCAN);
+}
+
+TEST_F(EspNowManagerTaskTest, MaxFailuresOnHubDoesNotTriggerRecoveryScan)
+{
+    EspNowConfig cfg{};
+    cfg.node_id = kHubId;
+    cfg.node_type = ReservedTypes::HUB;
+    cfg.wifi_channel = 1;
+    app_queue_handle = xQueueCreate(10, sizeof(AppMessage));
+    cfg.app_rx_queue = app_queue_handle;
+    cfg.rx_queue_length = rx_queue_length;
+    cfg.stack_size_rx_task = 2048;
+    cfg.priority_rx_task = 5;
+    cfg.stack_size_tx_task = 2048;
+    cfg.priority_tx_task = 5;
+
+    sut_->init(cfg);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+    ASSERT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
+
+    EXPECT_CALL(*scanner_, start_scan()).Times(0);
+
+    send_notification_to_rx_task(NOTIFY_MAX_FAILURES);
+    vTaskDelay(pdMS_TO_TICKS(notify_delay_ms));
+
+    EXPECT_EQ(sut_->get_node_state(), NodeState::OPERATIONAL);
 }
 
 // ===========================================================================
@@ -802,7 +830,7 @@ TEST_F(EspNowManagerTaskTest, TickScanRetryInactiveDoesNothing)
     // Ensure scan_retry_ is inactive
     sut_->scan_retry_.active = false;
 
-    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(0);
+    EXPECT_CALL(*node_fsm_, on_scan_requested(_)).Times(0);
     sut_->tick_scan_retry(999999); // Far in the future — should not trigger
 }
 
@@ -813,7 +841,7 @@ TEST_F(EspNowManagerTaskTest, TickScanRetryBeforeNextAttemptDoesNothing)
     sut_->scan_retry_.active = true;
     sut_->scan_retry_.next_attempt_ms = 999999; // Far in the future
 
-    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(0);
+    EXPECT_CALL(*node_fsm_, on_scan_requested(_)).Times(0);
     sut_->tick_scan_retry(0); // now_ms is before next_attempt_ms
 }
 
@@ -834,7 +862,7 @@ TEST_F(EspNowManagerTaskTest, TickScanRetryWhenNotIdleResetsAndDoesNothing)
     sut_->scan_retry_.active = true;
     sut_->scan_retry_.next_attempt_ms = 0; // Ready to trigger
 
-    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(0);
+    EXPECT_CALL(*node_fsm_, on_scan_requested(_)).Times(0);
     sut_->tick_scan_retry(999999);
 
     // Should have reset the retry state
@@ -858,7 +886,7 @@ TEST_F(EspNowManagerTaskTest, TickScanRetryWhenIdleTriggersRecoveryScan)
     sut_->scan_retry_.active = true;
     sut_->scan_retry_.next_attempt_ms = 0; // Ready to trigger
 
-    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(1);
+    EXPECT_CALL(*node_fsm_, on_scan_requested(_)).Times(1);
     sut_->tick_scan_retry(999999);
 
     // Should have deactivated the retry state

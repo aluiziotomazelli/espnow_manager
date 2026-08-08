@@ -237,6 +237,7 @@ struct EspNowConfig
     uint32_t heartbeat_interval_ms; /**< Interval for heartbeats; 0 disables generation (ms) */
     uint32_t channel_monitor_interval_ms; /**< Interval for channel monitoring (ms) */
     uint8_t scan_max_retries;             /**< Maximum retries for recovery scan. Defaults to SCAN_MAX_RETRIES. */
+    uint8_t logical_ack_retries = 0;      /**< Maximum retries for logical ACK timeout. Defaults to 0 (no resend on L7 timeout). */
 
     uint32_t stack_size_rx_task;        /**< Stack size for the internal packet dispatcher task */
     uint32_t stack_size_tx_task;        /**< Stack size for the transmission manager task */

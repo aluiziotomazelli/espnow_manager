@@ -51,7 +51,12 @@ public:
      * @return ESP_ERR_INVALID_STATE: Already initialized.
      * @internal
      */
-    virtual esp_err_t init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle, uint32_t ack_timeout_ms) = 0;
+    virtual esp_err_t init(
+        uint32_t stack_size,
+        UBaseType_t priority,
+        TaskHandle_t rx_task_handle,
+        uint32_t ack_timeout_ms,
+        uint8_t logical_ack_retries = 0) = 0;
 
     /**
      * @brief Stops the background task and cleans up all allocated resources.

@@ -26,8 +26,12 @@ public:
     ~TxManager() override;
 
     /** @copydoc ITxManager::init */
-    esp_err_t
-    init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle, uint32_t ack_timeout_ms) override;
+    esp_err_t init(
+        uint32_t stack_size,
+        UBaseType_t priority,
+        TaskHandle_t rx_task_handle,
+        uint32_t ack_timeout_ms,
+        uint8_t logical_ack_retries = 0) override;
 
     /** @copydoc ITxManager::deinit */
     void deinit() override;
@@ -60,6 +64,7 @@ private:
 
     uint16_t sequence_counter_ = 0;
     uint32_t ack_timeout_ms_;
+    uint8_t logical_ack_retries_ = 0;
     TaskHandle_t rx_task_handle_ = nullptr;
 
     // FreeRTOS resources

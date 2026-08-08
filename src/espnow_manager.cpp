@@ -341,7 +341,8 @@ esp_err_t EspNowManager::reconnect()
 
     scan_retry_.reset(); // Reset counter - full attempts restored
     NodeState old_state = node_fsm_->get_state();
-    esp_err_t ret = node_fsm_->on_scan_requested(); // IDLE -> RECOVERY_SCAN
+    bool is_hub = (config_.node_type == ReservedTypes::HUB);
+    esp_err_t ret = node_fsm_->on_scan_requested(is_hub); // IDLE -> RECOVERY_SCAN
     if (ret == ESP_OK) {
         handle_state_transition(old_state, node_fsm_->get_state());
     }
@@ -687,7 +688,8 @@ void EspNowManager::handle_notifications(uint32_t notifications, bool& should_st
     // If we receive NOTIFY_MAX_FAILURES from TxManager::tx_task()
     if ((notifications & NOTIFY_MAX_FAILURES) == NOTIFY_MAX_FAILURES) {
         NodeState old_state = node_fsm_->get_state();
-        node_fsm_->on_scan_requested();
+        bool is_hub = (config_.node_type == ReservedTypes::HUB);
+        node_fsm_->on_scan_requested(is_hub);
         handle_state_transition(old_state, node_fsm_->get_state());
     }
 
@@ -805,7 +807,8 @@ void EspNowManager::tick_scan_retry(int64_t now_ms)
     NodeState old_state = node_fsm_->get_state();
 
     // Always RECOVERY_SCAN because we only schedule if we have peers
-    node_fsm_->on_scan_requested();
+    bool is_hub = (config_.node_type == ReservedTypes::HUB);
+    node_fsm_->on_scan_requested(is_hub);
     handle_state_transition(old_state, node_fsm_->get_state());
 }
 
@@ -867,7 +870,11 @@ esp_err_t EspNowManager::init_tx_manager()
         return ESP_FAIL;
     }
     return tx_manager_->init(
-        config_.stack_size_tx_task, config_.priority_tx_task, rx_task_handle_, config_.ack_timeout_ms);
+        config_.stack_size_tx_task,
+        config_.priority_tx_task,
+        rx_task_handle_,
+        config_.ack_timeout_ms,
+        config_.logical_ack_retries);
 }
 
 esp_err_t EspNowManager::init_discovery_manager()

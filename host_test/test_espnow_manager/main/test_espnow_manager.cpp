@@ -211,7 +211,7 @@ protected:
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
         // submódule inits succeed by default
-        ON_CALL(*tx_mgr_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*tx_mgr_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(fake_rx_task));
         ON_CALL(*scanner_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _, fake_rx_task, _)).WillByDefault(Return(ESP_OK));
@@ -386,13 +386,13 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfEspNowDriverInitFails)
 
 TEST_F(EspNowManagerTest, InitCallsTxManagerInit)
 {
-    EXPECT_CALL(*tx_mgr_, init(_, _, _, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*tx_mgr_, init(_, _, _, _, _)).WillOnce(Return(ESP_OK));
     sut_->init(make_valid_config());
 }
 
 TEST_F(EspNowManagerTest, InitReturnsFailIfTxManagerInitFails)
 {
-    ON_CALL(*tx_mgr_, init(_, _, _, _)).WillByDefault(Return(ESP_FAIL));
+    ON_CALL(*tx_mgr_, init(_, _, _, _, _)).WillByDefault(Return(ESP_FAIL));
     EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }
@@ -965,7 +965,7 @@ TEST_F(EspNowManagerTest, NotifyMaxFailuresCallsOnScanRequested)
 {
     // NOTIFY_MAX_FAILURES → NodeFSM: on_scan_requested()
     init_sut();
-    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(1);
+    EXPECT_CALL(*node_fsm_, on_scan_requested(_)).Times(1);
     sut_->handle_notifications(NOTIFY_MAX_FAILURES, should_stop);
 }
 
@@ -1146,7 +1146,7 @@ TEST_F(EspNowManagerTest, ReconnectWithPeersTransitionsToRecoveryScan)
     node_fsm_->set_state(NodeState::IDLE);
 
     // reconnect() should call on_scan_requested() to transition to RECOVERY_SCAN
-    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(1);
+    EXPECT_CALL(*node_fsm_, on_scan_requested(_)).Times(1);
     EXPECT_EQ(sut_->reconnect(), ESP_OK);
 }
 
@@ -1158,7 +1158,7 @@ TEST_F(EspNowManagerTest, ReconnectResetsScanRetryCounter)
 
     // Verify that scan_retry_.reset() is called (internal behavior)
     // This is indirectly verified by the successful transition
-    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(1);
+    EXPECT_CALL(*node_fsm_, on_scan_requested(_)).Times(1);
     EXPECT_EQ(sut_->reconnect(), ESP_OK);
 }
 

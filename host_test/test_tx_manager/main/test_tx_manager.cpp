@@ -241,10 +241,10 @@ TEST_F(TxManagerTest, HandleAckWithNonOkStatusCallsDeliveryFailure)
     ack_packet.header.sequence_number = 42; // Matches pending ACK
     ack_packet.header.ack_status = AckStatus::ERROR_INVALID_DATA;
 
-    // Should call on_delivery_failure on stats manager (not task notify)
+    // Should call on_delivery_failure on stats manager
     EXPECT_CALL(stats, on_delivery_failure(0)).Times(1);
-    // Should NOT call notify_logical_ack (which would use NOTIFY_LOGICAL_ACK)
-    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_LOGICAL_ACK, _)).Times(0);
+    // Should call notify_logical_ack to unblock pending queue_packet
+    EXPECT_CALL(freertos_hal, task_notify(fake_task, NOTIFY_LOGICAL_ACK, _)).Times(1);
 
     manager->handle_ack(ack_packet);
     deinit_after_init();
