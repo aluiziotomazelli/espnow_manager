@@ -870,7 +870,11 @@ esp_err_t EspNowManager::init_tx_manager()
         return ESP_FAIL;
     }
     return tx_manager_->init(
-        config_.stack_size_tx_task, config_.priority_tx_task, rx_task_handle_, config_.ack_timeout_ms);
+        config_.stack_size_tx_task,
+        config_.priority_tx_task,
+        rx_task_handle_,
+        config_.ack_timeout_ms,
+        config_.logical_ack_retries);
 }
 
 esp_err_t EspNowManager::init_discovery_manager()

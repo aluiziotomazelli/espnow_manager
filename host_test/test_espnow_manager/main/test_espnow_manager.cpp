@@ -211,7 +211,7 @@ protected:
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
         // submódule inits succeed by default
-        ON_CALL(*tx_mgr_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*tx_mgr_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*tx_mgr_, get_task_handle()).WillByDefault(Return(fake_rx_task));
         ON_CALL(*scanner_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _, fake_rx_task, _)).WillByDefault(Return(ESP_OK));
@@ -386,13 +386,13 @@ TEST_F(EspNowManagerTest, InitReturnsFailIfEspNowDriverInitFails)
 
 TEST_F(EspNowManagerTest, InitCallsTxManagerInit)
 {
-    EXPECT_CALL(*tx_mgr_, init(_, _, _, _)).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*tx_mgr_, init(_, _, _, _, _)).WillOnce(Return(ESP_OK));
     sut_->init(make_valid_config());
 }
 
 TEST_F(EspNowManagerTest, InitReturnsFailIfTxManagerInitFails)
 {
-    ON_CALL(*tx_mgr_, init(_, _, _, _)).WillByDefault(Return(ESP_FAIL));
+    ON_CALL(*tx_mgr_, init(_, _, _, _, _)).WillByDefault(Return(ESP_FAIL));
     EXPECT_NE(sut_->init(make_valid_config()), ESP_OK);
     EXPECT_EQ(sut_->get_node_state(), NodeState::UNINITIALIZED);
 }

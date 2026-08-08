@@ -43,8 +43,12 @@ void TxManager::ack_timeout_callback(TimerHandle_t xTimer)
     self->freertos_hal_.task_notify(self->tx_task_handle_, NOTIFY_ACK_TIMEOUT, eSetBits);
 }
 
-esp_err_t
-TxManager::init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_handle, uint32_t ack_timeout_ms)
+esp_err_t TxManager::init(
+    uint32_t stack_size,
+    UBaseType_t priority,
+    TaskHandle_t rx_task_handle,
+    uint32_t ack_timeout_ms,
+    uint8_t logical_ack_retries)
 {
     if (rx_task_handle == nullptr) {
         ESP_LOGE(TAG, "RX task handle is null");
@@ -52,6 +56,7 @@ TxManager::init(uint32_t stack_size, UBaseType_t priority, TaskHandle_t rx_task_
     }
     rx_task_handle_ = rx_task_handle;
     ack_timeout_ms_ = ack_timeout_ms;
+    logical_ack_retries_ = logical_ack_retries;
 
     tx_queue_ = freertos_hal_.queue_create(20, sizeof(DecodedTxPacket));
     if (tx_queue_ == nullptr) {
@@ -326,7 +331,7 @@ void TxManager::tx_task()
                         PendingAck pending = {
                             .sequence_number = structured_packet.header.sequence_number,
                             .timestamp_us = hal_timer_.get_time_us(),
-                            .retries_left = 3,
+                            .retries_left = logical_ack_retries_,
                             .packet = raw_packet,
                             .node_id = structured_packet.header.dest_node_id};
                         fsm_.set_pending_ack(pending);

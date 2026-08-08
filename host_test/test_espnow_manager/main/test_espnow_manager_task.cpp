@@ -155,7 +155,7 @@ protected:
         ON_CALL(*peer_mgr_, get_all()).WillByDefault(Return(etl::vector<PeerInfo, MAX_PEERS>{}));
 
         // Submodule inits succeed
-        ON_CALL(*tx_mgr_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
+        ON_CALL(*tx_mgr_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*scanner_, init(_, _, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*pairing_mgr_, init(_, _, _, _)).WillByDefault(Return(ESP_OK));
         ON_CALL(*channel_monitor_, init(_, _)).WillByDefault(Return(ESP_OK));

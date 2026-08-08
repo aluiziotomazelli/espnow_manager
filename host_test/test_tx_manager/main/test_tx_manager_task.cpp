@@ -424,7 +424,8 @@ TEST_F(TxManagerTaskTest, WaitingForAckNotifyLogicalAckCallsOnAckReceived)
 
 TEST_F(TxManagerTaskTest, WaitingForAckTimeoutCallsOnAckTimeout)
 {
-    init_and_wait();
+    manager->init(4096, 5, fake_rx_task, 50, 3);
+    vTaskDelay(pdMS_TO_TICKS(20));
 
     EXPECT_CALL(*fsm, on_ack_timeout()).Times(MAX_FAILURES + 1); // Should call on_ack_timeout for each retry
 
@@ -438,6 +439,23 @@ TEST_F(TxManagerTaskTest, WaitingForAckTimeoutCallsOnAckTimeout)
     // Wait for all retries and timeouts to exhaust.
     // The total duration is roughly (ack_timeout_ms * 4) + some margin.
     wait_for_blocking_send(send_result, 1000);
+    EXPECT_EQ(ESP_ERR_TIMEOUT, send_result.result);
+    EXPECT_EQ(TxState::IDLE, current_state);
+}
+
+TEST_F(TxManagerTaskTest, WaitingForAckTimeoutWithZeroRetriesReturnsTimeoutImmediately)
+{
+    init_and_wait(); // logical_ack_retries default = 0
+
+    EXPECT_CALL(*fsm, on_ack_timeout()).Times(1);
+
+    BlockingSendResult send_result;
+    launch_blocking_send(send_result);
+
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    EXPECT_EQ(TxState::WAITING_FOR_ACK, current_state);
+
+    wait_for_blocking_send(send_result, 200);
     EXPECT_EQ(ESP_ERR_TIMEOUT, send_result.result);
     EXPECT_EQ(TxState::IDLE, current_state);
 }
