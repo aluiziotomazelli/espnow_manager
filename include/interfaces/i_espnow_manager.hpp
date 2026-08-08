@@ -101,7 +101,7 @@ public:
      * @return ESP_FAIL: failed to queue message, or maximum physical delivery failures reached (peer unreachable).
      *
      * @note If require_ack=false, this call is non-blocking and returns immediately after queueing.
-     * @note If require_ack=true, the calling task blocks for up to (ack_timeout_ms * (MAX_FAILURES + 1) + 200) ms.
+     * @note If require_ack=true, the calling task blocks for up to (ack_timeout_ms * (logical_ack_retries + 1) + 200) ms.
      * @note Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures.
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
@@ -151,7 +151,7 @@ public:
      * @return ESP_FAIL: failed to queue message, or maximum physical delivery failures reached (peer unreachable).
      *
      * @note If require_ack=false, this call is non-blocking and returns immediately after queueing.
-     * @note If require_ack=true, the calling task blocks for up to (ack_timeout_ms * (MAX_FAILURES + 1) + 200) ms.
+     * @note If require_ack=true, the calling task blocks for up to (ack_timeout_ms * (logical_ack_retries + 1) + 200) ms.
      * @note Enters `NodeState::RECOVERY_SCAN` mode after `MAX_FAILURES` consecutive transmission failures.
      *
      * @warning Maximum payload: 230 bytes (ESP-NOW limit - header - CRC)
