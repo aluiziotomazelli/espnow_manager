@@ -965,7 +965,7 @@ TEST_F(EspNowManagerTest, NotifyMaxFailuresCallsOnScanRequested)
 {
     // NOTIFY_MAX_FAILURES → NodeFSM: on_scan_requested()
     init_sut();
-    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(1);
+    EXPECT_CALL(*node_fsm_, on_scan_requested(_)).Times(1);
     sut_->handle_notifications(NOTIFY_MAX_FAILURES, should_stop);
 }
 
@@ -1146,7 +1146,7 @@ TEST_F(EspNowManagerTest, ReconnectWithPeersTransitionsToRecoveryScan)
     node_fsm_->set_state(NodeState::IDLE);
 
     // reconnect() should call on_scan_requested() to transition to RECOVERY_SCAN
-    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(1);
+    EXPECT_CALL(*node_fsm_, on_scan_requested(_)).Times(1);
     EXPECT_EQ(sut_->reconnect(), ESP_OK);
 }
 
@@ -1158,7 +1158,7 @@ TEST_F(EspNowManagerTest, ReconnectResetsScanRetryCounter)
 
     // Verify that scan_retry_.reset() is called (internal behavior)
     // This is indirectly verified by the successful transition
-    EXPECT_CALL(*node_fsm_, on_scan_requested()).Times(1);
+    EXPECT_CALL(*node_fsm_, on_scan_requested(_)).Times(1);
     EXPECT_EQ(sut_->reconnect(), ESP_OK);
 }
 

@@ -33,7 +33,7 @@ public:
     esp_err_t on_pairing_timeout(bool has_peers) override;
 
     /** @copydoc INodeStateMachine::on_scan_requested */
-    esp_err_t on_scan_requested() override;
+    esp_err_t on_scan_requested(bool is_hub) override;
 
     /** @copydoc INodeStateMachine::on_channel_found */
     esp_err_t on_channel_found() override;

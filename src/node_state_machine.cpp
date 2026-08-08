@@ -87,8 +87,11 @@ esp_err_t NodeStateMachine::on_pairing_timeout(bool has_peers)
     return transition_to(has_peers ? NodeState::OPERATIONAL : NodeState::IDLE);
 }
 
-esp_err_t NodeStateMachine::on_scan_requested()
+esp_err_t NodeStateMachine::on_scan_requested(bool is_hub)
 {
+    if (is_hub) {
+        return transition_to(NodeState::OPERATIONAL);
+    }
     NodeState current = state_.load();
     if (current != NodeState::OPERATIONAL && current != NodeState::PAIRING && current != NodeState::IDLE) {
         return ESP_ERR_INVALID_STATE;
@@ -122,8 +125,10 @@ esp_err_t NodeStateMachine::on_scan_failed()
 
 esp_err_t NodeStateMachine::transition_to(NodeState new_state)
 {
-    ESP_LOGI(TAG, "NodeState: %d -> %d", static_cast<int>(state_.load()), static_cast<int>(new_state));
-    state_.store(new_state);
+    if (state_.load() != new_state) {
+        ESP_LOGI(TAG, "NodeState: %d -> %d", static_cast<int>(state_.load()), static_cast<int>(new_state));
+        state_.store(new_state);
+    }
     return ESP_OK;
 }
 
