@@ -52,6 +52,8 @@ struct espnow::EspNowConfig
     uint32_t ack_timeout_ms;
     uint32_t heartbeat_interval_ms;
     uint32_t channel_monitor_interval_ms;
+    uint8_t scan_max_retries;
+    uint8_t logical_ack_retries;
     uint32_t stack_size_rx_task;
     uint32_t stack_size_tx_task;
     uint32_t stack_size_discovery_task;
@@ -74,6 +76,8 @@ struct espnow::EspNowConfig
 | `ack_timeout_ms` | `uint32_t` | `500` | Timeout for logical ACKs |
 | `heartbeat_interval_ms` | `uint32_t` | `60000` | Heartbeat interval (0 disables) |
 | `channel_monitor_interval_ms` | `uint32_t` | `10000` | Channel monitoring interval |
+| `scan_max_retries` | `uint8_t` | `SCAN_MAX_RETRIES` | Maximum retries for recovery channel scan |
+| `logical_ack_retries` | `uint8_t` | `0` | Number of times `TxManager` retransmits on L7 logical ACK timeout when physical MAC delivery succeeds |
 | `stack_size_rx_task` | `uint32_t` | `4096` | RX task stack size |
 | `stack_size_tx_task` | `uint32_t` | `4096` | TX task stack size |
 | `stack_size_discovery_task` | `uint32_t` | `4096` | Discovery task stack size |
