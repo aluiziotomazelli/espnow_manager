@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Standardized `EspNowConfig` with modern in-class member initializers, removing redundant constructor logic and enabling pure C++ aggregate initialization.
 
+### Fixed
+- Fixed spurious `Stats CRC mismatch` on cold boot by validating RTC memory integrity in `StorageManager::is_data_dirty()` before relying on logical field comparison (closes #20).
+
 ### Documentation
 - Clarified difference between contractual timeout (`heartbeat_interval_ms`) and autonomous emission (`enable_heartbeat`) in Doxygen headers and `README.md`.
 - Added link health verification examples using `is_peer_online()` to `README.md`.

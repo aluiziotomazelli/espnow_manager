@@ -238,6 +238,11 @@ bool StorageManager::is_data_dirty(const PersistentPeers& new_peers)
         return true;
     }
 
+    // If RTC data is corrupted or uninitialized (e.g. cold boot), force save to persist valid CRC
+    if (validate_peers_data(current_rtc) != ESP_OK) {
+        return true;
+    }
+
     // Using our safe custom comparison operator. This compares only actual field
     // values instead of the entire raw memory block, preventing struct padding bytes
     // or unused array elements from triggering a false "dirty" state, thus
@@ -294,6 +299,11 @@ bool StorageManager::is_data_dirty(const PersistentChannel& new_channel)
         return true;
     }
 
+    // If RTC data is corrupted or uninitialized (e.g. cold boot), force save to persist valid CRC
+    if (validate_channel_data(current_rtc) != ESP_OK) {
+        return true;
+    }
+
     return (current_rtc != new_channel);
 }
 
@@ -347,6 +357,11 @@ bool StorageManager::is_data_dirty(const PersistentStats& new_stats)
 
     // If we can't load from RTC, assume it's dirty to be safe
     if (rtc_stats_backend_->load(&current_rtc, sizeof(PersistentStats)) != ESP_OK) {
+        return true;
+    }
+
+    // If RTC data is corrupted or uninitialized (e.g. cold boot), force save to persist valid CRC
+    if (validate_stats_data(current_rtc) != ESP_OK) {
         return true;
     }
 
