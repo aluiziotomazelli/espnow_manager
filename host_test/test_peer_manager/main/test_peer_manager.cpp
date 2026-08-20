@@ -624,3 +624,63 @@ TEST_F(PeerManagerTest, FindNodeIdByMacReturnsTimeoutOnMutexFailure)
     NodeId out_id = 0;
     EXPECT_EQ(ESP_ERR_TIMEOUT, manager->find_node_id_by_mac(mac, out_id));
 }
+
+// ===========================================================================
+// PeerManager::is_online
+// ===========================================================================
+
+TEST_F(PeerManagerTest, IsOnlineReturnsTrueWhenPeerSeenWithinTimeout)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 1000); // timeout = 1000 * 3 = 3000 ms
+
+    manager->update_last_seen(ID_2, 5000);
+
+    // Seen at 5000, checking at 7000 (elapsed = 2000 ms <= 3000 ms) -> online
+    EXPECT_TRUE(manager->is_online(ID_2, 7000));
+}
+
+TEST_F(PeerManagerTest, IsOnlineReturnsFalseWhenTimeoutExpired)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 1000); // timeout = 3000 ms
+
+    manager->update_last_seen(ID_2, 5000);
+
+    // Seen at 5000, checking at 8001 (elapsed = 3001 ms > 3000 ms) -> offline
+    EXPECT_FALSE(manager->is_online(ID_2, 8001));
+}
+
+TEST_F(PeerManagerTest, IsOnlineReturnsFalseWhenPeerNeverSeen)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 1000);
+
+    // last_seen_ms is 0 by default
+    EXPECT_FALSE(manager->is_online(ID_2, 5000));
+}
+
+TEST_F(PeerManagerTest, IsOnlineReturnsFalseWhenPeerNotFound)
+{
+    EXPECT_FALSE(manager->is_online(ID_4, 5000));
+}
+
+TEST_F(PeerManagerTest, IsOnlineReturnsFalseWhenHeartbeatIntervalIsZero)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 0); // interval = 0 (not monitored by timeout)
+
+    manager->update_last_seen(ID_2, 5000);
+
+    EXPECT_FALSE(manager->is_online(ID_2, 5100));
+}
+
+TEST_F(PeerManagerTest, IsOnlineReturnsFalseOnMutexFailure)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE));
+    EXPECT_FALSE(manager->is_online(ID_2, 5000));
+}

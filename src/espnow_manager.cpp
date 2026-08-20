@@ -895,7 +895,8 @@ esp_err_t EspNowManager::init_heartbeat_manager()
     if (heartbeat_manager_ == nullptr) {
         return ESP_FAIL;
     }
-    heartbeat_manager_->init(config_.node_id, config_.node_type, config_.heartbeat_interval_ms);
+    heartbeat_manager_->init(
+        config_.node_id, config_.node_type, config_.heartbeat_interval_ms, config_.enable_heartbeat);
     return ESP_OK;
 }
 
