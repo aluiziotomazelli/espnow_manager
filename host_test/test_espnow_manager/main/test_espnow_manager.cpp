@@ -475,9 +475,19 @@ TEST_F(EspNowManagerTest, InitPropagatesCorrectIntervalAndTypeToHeartbeatManager
 {
     EspNowConfig cfg = make_valid_config();
     cfg.heartbeat_interval_ms = 5000;
+    cfg.enable_heartbeat = true;
 
-    // heartbeat_manager::init(interval_ms, node_type) — order matters
-    EXPECT_CALL(*heartbeat_mgr_, init(kNodeId, kNodeType, cfg.heartbeat_interval_ms)).Times(1);
+    EXPECT_CALL(*heartbeat_mgr_, init(kNodeId, kNodeType, cfg.heartbeat_interval_ms, cfg.enable_heartbeat)).Times(1);
+    sut_->init(cfg);
+}
+
+TEST_F(EspNowManagerTest, InitPropagatesEnableHeartbeatFalseToHeartbeatManager)
+{
+    EspNowConfig cfg = make_valid_config();
+    cfg.heartbeat_interval_ms = 5000;
+    cfg.enable_heartbeat = false;
+
+    EXPECT_CALL(*heartbeat_mgr_, init(kNodeId, kNodeType, cfg.heartbeat_interval_ms, false)).Times(1);
     sut_->init(cfg);
 }
 
@@ -785,6 +795,33 @@ TEST_F(EspNowManagerTest, GetOfflinePeersNotOperationalReturnsEmptyVector)
 {
     EXPECT_CALL(*peer_mgr_, get_offline(_)).Times(0);
     EXPECT_TRUE(sut_->get_offline_peers().empty());
+}
+
+TEST_F(EspNowManagerTest, IsPeerOnlineCallsPeerManagerIsOnlineWhenOperational)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::OPERATIONAL);
+
+    EXPECT_CALL(*peer_mgr_, is_online(kNodeId, _)).Times(1).WillOnce(Return(true));
+    EXPECT_TRUE(sut_->is_peer_online(kNodeId));
+}
+
+TEST_F(EspNowManagerTest, IsPeerOnlineCallsPeerManagerIsOnlineWhenPairing)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::PAIRING);
+
+    EXPECT_CALL(*peer_mgr_, is_online(kNodeId, _)).Times(1).WillOnce(Return(false));
+    EXPECT_FALSE(sut_->is_peer_online(kNodeId));
+}
+
+TEST_F(EspNowManagerTest, IsPeerOnlineReturnsFalseWhenNotOperationalOrPairing)
+{
+    init_sut();
+    node_fsm_->set_state(NodeState::IDLE);
+
+    EXPECT_CALL(*peer_mgr_, is_online(_, _)).Times(0);
+    EXPECT_FALSE(sut_->is_peer_online(kNodeId));
 }
 // ===========================================================================
 // add and remove peers

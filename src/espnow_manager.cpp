@@ -457,6 +457,15 @@ etl::vector<NodeId, MAX_PEERS> EspNowManager::get_offline_peers() const
     return peer_manager_->get_offline(get_time_ms());
 }
 
+bool EspNowManager::is_peer_online(NodeId node_id) const
+{
+    NodeState state = node_fsm_->get_state();
+    if (state != NodeState::OPERATIONAL && state != NodeState::PAIRING) {
+        return false;
+    }
+    return peer_manager_->is_online(node_id, get_time_ms());
+}
+
 // Getters
 NodeState EspNowManager::get_node_state() const
 {
