@@ -92,7 +92,9 @@ public:
 
     using EspNowManager::build_app_message;
     using EspNowManager::handle_notifications;
+    using EspNowManager::handle_scan_retries;
     using EspNowManager::node_fsm_;
+    using EspNowManager::scan_retry_;
     using EspNowManager::tick_scan_retry;
 
     void set_node_state_operational()
@@ -1136,6 +1138,41 @@ TEST_F(EspNowManagerTest, ScanRetrySchedulesAndTriggersStartScan)
     int64_t after_delay_ms = 2500;
     EXPECT_CALL(*scanner_, start_scan()).Times(1);
     sut_->tick_scan_retry(after_delay_ms);
+}
+
+TEST_F(EspNowManagerTest, ScanRetryCapsAtMaxBackoffInterval)
+{
+    EspNowConfig cfg = make_valid_config();
+    cfg.scan_max_backoff_ms = 10000;
+    ASSERT_EQ(sut_->init(cfg), ESP_OK);
+    add_peer_to_storage();
+
+    // Simulate 10 consecutive scan failures
+    for (int i = 0; i < 10; ++i) {
+        node_fsm_->set_state(NodeState::RECOVERY_SCAN);
+        sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
+        EXPECT_TRUE(sut_->scan_retry_.active);
+        EXPECT_EQ(sut_->scan_retry_.count, static_cast<uint32_t>(i + 1));
+    }
+
+    // Delay at attempt 10 should be capped at scan_max_backoff_ms (10000 ms)
+    // next_attempt_ms should be now (0 in test) + 10000 ms
+    EXPECT_EQ(sut_->scan_retry_.next_attempt_ms, 10000);
+}
+
+TEST_F(EspNowManagerTest, ScanRetryContinuesRetryingIndefinitelyWithPeers)
+{
+    init_sut();
+    add_peer_to_storage();
+
+    // Simulate 20 consecutive scan failures
+    for (int i = 0; i < 20; ++i) {
+        node_fsm_->set_state(NodeState::RECOVERY_SCAN);
+        sut_->handle_notifications(NOTIFY_SCAN_FAILED, should_stop);
+        EXPECT_TRUE(sut_->scan_retry_.active);
+    }
+
+    EXPECT_EQ(sut_->scan_retry_.count, 20);
 }
 
 TEST_F(EspNowManagerTest, NotifyChannelChangedChecksCurrentChannel)

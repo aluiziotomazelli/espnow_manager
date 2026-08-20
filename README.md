@@ -571,11 +571,10 @@ When a HUB changes WiFi channels, connected nodes automatically:
 4. Resume normal operation once channel is found
 
 If the recovery scan fails, the node retries with exponential backoff:
-- **`SCAN_MAX_RETRIES = 7`** maximum retries
-- **Exponential backoff**: 2s, 4s, 8s, 16s, 32s, 64s, 128s (~4m14s total)
-- After all retries are exhausted, the node transitions to `IDLE`
+- **Exponential backoff**: 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s... up to `scan_max_backoff_ms` (defaults to 5 minutes)
+- **Persistent recovery**: Retries continue indefinitely at the capped interval while the node has known peers in storage
 
-This retry mechanism allows the node to recover from transient issues (temporary interference, HUB temporarily offline) without requiring manual intervention. The backoff duration doubles with each attempt to avoid overwhelming the wireless medium.
+This retry mechanism allows the node to recover from transient issues (temporary interference, HUB temporarily offline) without requiring manual intervention or getting stuck permanently offline. The backoff duration doubles with each attempt up to the configured cap to avoid overwhelming the wireless medium.
 
 > **Note on Peer Channel Configuration:** All peers are registered with ESP-NOW using **channel 0 (automatic)**. This means peers automatically use whatever channel the WiFi is currently set to. This design choice simplifies channel management — when the HUB changes channels, nodes detect the change via failed transmissions and automatically scan to rediscover the HUB on the new channel. Using fixed channels per peer would require updating all registered peers when the channel changes, adding complexity without benefit since ESP-NOW does not automatically sync peer channels with WiFi channel changes.
 

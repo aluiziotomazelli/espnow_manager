@@ -237,7 +237,7 @@ struct EspNowConfig
     uint32_t      heartbeat_interval_ms{DEFAULT_HEARTBEAT_INTERVAL_MS}; /**< Contractual maximum reporting interval (ms) communicated to the Hub during pairing. The Hub marks the peer offline after (heartbeat_interval_ms * HEARTBEAT_OFFLINE_MULTIPLIER) ms of silence. */
     bool          enable_heartbeat{true};             /**< Controls autonomous HEARTBEAT packet emission. Set to true for continuous background keep-alive; set to false for nodes with frequent application DATA transmissions or deep-sleep sensors to avoid redundant packets while preserving the timeout contract. */
     uint32_t      channel_monitor_interval_ms{DEFAULT_CHANNEL_MONITOR_INTERVAL_MS}; /**< Interval for channel monitoring (ms) */
-    uint8_t       scan_max_retries{SCAN_MAX_RETRIES}; /**< Maximum retries for recovery scan. Defaults to SCAN_MAX_RETRIES. */
+    uint32_t      scan_max_backoff_ms{SCAN_MAX_BACKOFF_MS}; /**< Maximum backoff interval between recovery scan attempts (ms). Defaults to SCAN_MAX_BACKOFF_MS (5 min). */
     uint8_t       logical_ack_retries{0};             /**< Maximum retries for logical ACK timeout. Defaults to 0 (no resend on L7 timeout). */
 
     uint32_t      stack_size_rx_task{6144};           /**< Stack size for the internal packet dispatcher task */

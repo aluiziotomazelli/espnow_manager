@@ -72,8 +72,8 @@ EspNowManager& EspNowManager::instance()
     static auto scanner = std::make_unique<DiscoveryManager>(*hal_wifi, *hal_espnow, *message_codec, *hal_freertos);
     static auto stats_mgr = std::make_unique<StatisticsManager>(*storage, *hal_freertos);
     static auto tx_fsm = std::make_unique<TxStateMachine>();
-    static auto tx_manager =
-        std::make_unique<TxManager>(*tx_fsm, *hal_espnow, *hal_freertos, *hal_timer, *message_codec, *stats_mgr, *peer_manager);
+    static auto tx_manager = std::make_unique<TxManager>(
+        *tx_fsm, *hal_espnow, *hal_freertos, *hal_timer, *message_codec, *stats_mgr, *peer_manager);
     static auto heartbeat_mgr = std::make_unique<HeartbeatManager>(*tx_manager, *peer_manager, *hal_timer);
     static auto pairing_mgr = std::make_unique<PairingManager>(*tx_manager, *peer_manager, *hal_freertos, *hal_timer);
     static auto message_router = std::make_unique<MessageRouter>(*scanner, *tx_manager, *heartbeat_mgr, *pairing_mgr);
@@ -850,21 +850,14 @@ void EspNowManager::handle_scan_retries(bool has_peers)
     if (!has_peers) {
         return;
     }
-    if (scan_retry_.count < config_.scan_max_retries) {
-        uint32_t delay = SCAN_BACKOFF_BASE_MS << scan_retry_.count;
-        scan_retry_.active = true;
-        scan_retry_.next_attempt_ms = get_time_ms() + delay;
-        scan_retry_.count++;
-        ESP_LOGI(
-            TAG,
-            "Recovery scan failed. Retry %d/%d in %lu ms",
-            scan_retry_.count,
-            config_.scan_max_retries,
-            (unsigned long)delay);
-    }
-    else {
-        ESP_LOGW(TAG, "Recovery scan max retries (%d) exhausted. Node is IDLE.", config_.scan_max_retries);
-    }
+    static constexpr uint32_t max_backoff_shift_bits = 15;
+    uint32_t shift = (scan_retry_.count < max_backoff_shift_bits) ? scan_retry_.count : max_backoff_shift_bits;
+    uint32_t delay = std::min(SCAN_BACKOFF_BASE_MS << shift, config_.scan_max_backoff_ms);
+    scan_retry_.active = true;
+    scan_retry_.next_attempt_ms = get_time_ms() + delay;
+    scan_retry_.count++;
+
+    ESP_LOGI(TAG, "Recovery scan failed. Retry in %lu ms (attempt %u)", (unsigned long)delay, scan_retry_.count);
 }
 
 // ==================================================================

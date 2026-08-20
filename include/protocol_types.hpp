@@ -59,10 +59,11 @@ static constexpr uint32_t PAIRING_PERIODIC_INTERVAL_MS = 5000;
 /** @brief Maximum number of physical transmission failures before giving up or scanning */
 constexpr uint8_t MAX_FAILURES = 3;
 
-/** @brief Maximum number of recovery scan retries (exponential backoff: 2+4+8+...+128s ≈ 4m14s total) */
-constexpr uint8_t SCAN_MAX_RETRIES = 7;
 /** @brief Base backoff duration for the first recovery scan retry (ms); doubles each attempt */
 constexpr uint32_t SCAN_BACKOFF_BASE_MS = 2000;
+
+/** @brief Maximum backoff duration between recovery scan retries (ms); defaults to 5 minutes */
+constexpr uint32_t SCAN_MAX_BACKOFF_MS = 300000;
 
 /** @brief Timeout for scanning a single channel during discovery (ms) */
 constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 50;

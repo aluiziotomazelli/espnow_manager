@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-20
+
+### Added
+- `scan_max_backoff_ms` field in `EspNowConfig` (defaults to `SCAN_MAX_BACKOFF_MS = 300000` ms / 5 minutes) to cap the maximum interval between recovery channel scans.
+- `MAX_BACKOFF_SHIFT_BITS` constant to protect against 32-bit integer overflow in exponential backoff calculation.
+
+### Changed
+- Replaced finite recovery scan retry limit (`SCAN_MAX_RETRIES`) with persistent, capped exponential backoff. Nodes with known peers in storage no longer give up and stall in `IDLE` after transient network outages or Hub reboots; they automatically and indefinitely attempt to rediscover the Hub at the capped backoff interval.
+
 ## [1.3.0] - 2026-08-19
 
 ### Added
