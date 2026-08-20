@@ -823,6 +823,33 @@ TEST_F(EspNowManagerTest, IsPeerOnlineReturnsFalseWhenNotOperationalOrPairing)
     EXPECT_CALL(*peer_mgr_, is_online(_, _)).Times(0);
     EXPECT_FALSE(sut_->is_peer_online(kNodeId));
 }
+
+TEST_F(EspNowManagerTest, SetEnableHeartbeatDelegatesToHeartbeatManager)
+{
+    init_sut();
+    EXPECT_CALL(*heartbeat_mgr_, set_enable_heartbeat(false)).Times(1);
+    sut_->set_enable_heartbeat(false);
+
+    EXPECT_CALL(*heartbeat_mgr_, set_enable_heartbeat(true)).Times(1);
+    sut_->set_enable_heartbeat(true);
+}
+
+TEST_F(EspNowManagerTest, IsHeartbeatEnabledDelegatesToHeartbeatManager)
+{
+    init_sut();
+    EXPECT_CALL(*heartbeat_mgr_, is_heartbeat_enabled()).WillOnce(Return(true));
+    EXPECT_TRUE(sut_->is_heartbeat_enabled());
+
+    EXPECT_CALL(*heartbeat_mgr_, is_heartbeat_enabled()).WillOnce(Return(false));
+    EXPECT_FALSE(sut_->is_heartbeat_enabled());
+}
+
+TEST_F(EspNowManagerTest, SetHeartbeatIntervalMsDelegatesToHeartbeatManager)
+{
+    init_sut();
+    EXPECT_CALL(*heartbeat_mgr_, set_interval_ms(15000)).Times(1);
+    sut_->set_heartbeat_interval_ms(15000);
+}
 // ===========================================================================
 // add and remove peers
 // ===========================================================================

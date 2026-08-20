@@ -394,6 +394,34 @@ public:
     virtual esp_err_t reconnect() = 0;
 
     // ========================================
+    // Heartbeat Control
+    // ========================================
+
+    /**
+     * @brief Enables or disables autonomous heartbeat packet generation at runtime
+     *
+     * @param enable True to enable autonomous heartbeat sending, false to disable.
+     * @note This method does not return errors. Does nothing if manager is uninitialized.
+     */
+    virtual void set_enable_heartbeat(bool enable) = 0;
+
+    /**
+     * @brief Checks if autonomous heartbeat packet generation is currently enabled
+     *
+     * @return True if heartbeat generation is enabled and manager is initialized.
+     * @note This method does not return errors.
+     */
+    virtual bool is_heartbeat_enabled() const = 0;
+
+    /**
+     * @brief Sets the heartbeat generation interval in milliseconds at runtime
+     *
+     * @param interval_ms Interval in milliseconds between autonomous heartbeat packets.
+     * @note This method does not return errors. Does nothing if manager is uninitialized.
+     */
+    virtual void set_heartbeat_interval_ms(uint32_t interval_ms) = 0;
+
+    // ========================================
     // Status
     // ========================================
 

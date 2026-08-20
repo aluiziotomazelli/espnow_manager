@@ -133,6 +133,19 @@ public:
     esp_err_t start_pairing(uint32_t timeout_ms = 30000) override;
 
     // ========================================
+    // Heartbeat Control
+    // ========================================
+
+    /** @copydoc IEspNowManager::set_enable_heartbeat */
+    void set_enable_heartbeat(bool enable) override;
+
+    /** @copydoc IEspNowManager::is_heartbeat_enabled */
+    bool is_heartbeat_enabled() const override;
+
+    /** @copydoc IEspNowManager::set_heartbeat_interval_ms */
+    void set_heartbeat_interval_ms(uint32_t interval_ms) override;
+
+    // ========================================
     // Status
     // ========================================
 
