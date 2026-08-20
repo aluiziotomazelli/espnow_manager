@@ -466,6 +466,29 @@ bool EspNowManager::is_peer_online(NodeId node_id) const
     return peer_manager_->is_online(node_id, get_time_ms());
 }
 
+// Heartbeat Control
+void EspNowManager::set_enable_heartbeat(bool enable)
+{
+    if (heartbeat_manager_) {
+        heartbeat_manager_->set_enable_heartbeat(enable);
+    }
+}
+
+bool EspNowManager::is_heartbeat_enabled() const
+{
+    if (heartbeat_manager_) {
+        return heartbeat_manager_->is_heartbeat_enabled();
+    }
+    return false;
+}
+
+void EspNowManager::set_heartbeat_interval_ms(uint32_t interval_ms)
+{
+    if (heartbeat_manager_) {
+        heartbeat_manager_->set_interval_ms(interval_ms);
+    }
+}
+
 // Getters
 NodeState EspNowManager::get_node_state() const
 {

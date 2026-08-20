@@ -524,3 +524,51 @@ TEST_F(StorageManagerTest, SaveStatsTruncatesWhenExceedingMax)
     });
     EXPECT_EQ(ESP_OK, manager->store_stats(oversized_stats));
 }
+
+TEST_F(StorageManagerTest, SaveEmptyStatsWhenRtcHasCorruptedCrcForcesSave)
+{
+    // Simulate uninitialized or corrupted RTC RAM (e.g. cold boot with zeros)
+    PersistentStats corrupted_rtc = {}; // magic=0, version=0, num_stats=0, crc=0
+    ON_CALL(*rtc_stats_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
+        memcpy(data, &corrupted_rtc, size);
+        return ESP_OK;
+    });
+
+    // Storing empty stats must NOT early-return; it must persist valid magic + CRC to RTC and NVS
+    etl::vector<PeerStatisticsPersist, MAX_PEERS> empty_stats;
+    EXPECT_CALL(*rtc_stats_mock, save(_, _)).Times(1).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*nvs_stats_mock, save(_, _)).Times(1).WillOnce(Return(ESP_OK));
+
+    EXPECT_EQ(ESP_OK, manager->store_stats(empty_stats));
+}
+
+TEST_F(StorageManagerTest, SaveEmptyPeersWhenRtcHasCorruptedCrcForcesSave)
+{
+    PersistentPeers corrupted_rtc = {};
+    ON_CALL(*rtc_peer_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
+        memcpy(data, &corrupted_rtc, size);
+        return ESP_OK;
+    });
+
+    etl::vector<PersistentPeer, MAX_PEERS> empty_peers;
+    EXPECT_CALL(*rtc_peer_mock, save(_, _)).Times(1).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*nvs_peer_mock, save(_, _)).Times(1).WillOnce(Return(ESP_OK));
+
+    EXPECT_EQ(ESP_OK, manager->store_peers(empty_peers));
+}
+
+TEST_F(StorageManagerTest, SaveChannelWhenRtcHasCorruptedCrcForcesSave)
+{
+    PersistentChannel corrupted_rtc = {};
+    corrupted_rtc.wifi_channel = 6;
+    corrupted_rtc.crc = 0xDEADBEEF; // invalid CRC
+    ON_CALL(*rtc_channel_mock, load(_, _)).WillByDefault([&](void* data, size_t size) {
+        memcpy(data, &corrupted_rtc, size);
+        return ESP_OK;
+    });
+
+    EXPECT_CALL(*rtc_channel_mock, save(_, _)).Times(1).WillOnce(Return(ESP_OK));
+    EXPECT_CALL(*nvs_channel_mock, save(_, _)).Times(1).WillOnce(Return(ESP_OK));
+
+    EXPECT_EQ(ESP_OK, manager->store_channel(6));
+}

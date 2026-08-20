@@ -11,9 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `is_peer_online(NodeId node_id)` method in `IEspNowManager` and `EspNowManager` (with enum template overload) for $O(N)$ direct link health verification without vector allocation.
 - `is_online(NodeId id, int64_t now_ms)` method in `IPeerManager` and `PeerManager` implementing strict timeout calculation against contractual `heartbeat_interval_ms * HEARTBEAT_OFFLINE_MULTIPLIER`.
 - `enable_heartbeat` flag in `EspNowConfig` (defaults to `true`), `IHeartbeatManager`, and `HeartbeatManager` to decouple the heartbeat timeout contract (sent during pairing) from autonomous background `HEARTBEAT` packet generation.
+- `set_enable_heartbeat(bool enable)`, `is_heartbeat_enabled()`, and `set_heartbeat_interval_ms(uint32_t interval_ms)` in `IEspNowManager` and `EspNowManager` for runtime control of heartbeat generation.
 
 ### Changed
 - Standardized `EspNowConfig` with modern in-class member initializers, removing redundant constructor logic and enabling pure C++ aggregate initialization.
+
+### Fixed
+- Fixed spurious `Stats CRC mismatch` on cold boot by validating RTC memory integrity in `StorageManager::is_data_dirty()` before relying on logical field comparison (closes #20).
 
 ### Documentation
 - Clarified difference between contractual timeout (`heartbeat_interval_ms`) and autonomous emission (`enable_heartbeat`) in Doxygen headers and `README.md`.
