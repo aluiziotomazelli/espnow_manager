@@ -229,50 +229,27 @@ enum class ChannelPolicy : uint8_t
  */
 struct EspNowConfig
 {
-    NodeId node_id;                 /**< Logical ID for this device */
-    NodeType node_type;             /**< Role/Type for this device */
-    QueueHandle_t app_rx_queue;     /**< Handle to the application queue where incoming DATA/COMMANDS are posted */
-    uint8_t wifi_channel;           /**< Initial WiFi channel to operate on */
-    uint32_t ack_timeout_ms;        /**< Timeout for logical acknowledgments (ms) */
-    uint32_t heartbeat_interval_ms; /**< Interval for heartbeats; 0 disables generation (ms) */
-    uint32_t channel_monitor_interval_ms; /**< Interval for channel monitoring (ms) */
-    uint8_t scan_max_retries;             /**< Maximum retries for recovery scan. Defaults to SCAN_MAX_RETRIES. */
-    uint8_t logical_ack_retries = 0;      /**< Maximum retries for logical ACK timeout. Defaults to 0 (no resend on L7 timeout). */
+    NodeId        node_id{ReservedIds::HUB};          /**< Logical ID for this device */
+    NodeType      node_type{ReservedTypes::UNKNOWN};  /**< Role/Type for this device */
+    QueueHandle_t app_rx_queue{nullptr};              /**< Handle to the application queue where incoming DATA/COMMANDS are posted */
+    uint8_t       wifi_channel{DEFAULT_WIFI_CHANNEL}; /**< Initial WiFi channel to operate on */
+    uint32_t      ack_timeout_ms{DEFAULT_ACK_TIMEOUT_MS}; /**< Timeout for logical acknowledgments (ms) */
+    uint32_t      heartbeat_interval_ms{DEFAULT_HEARTBEAT_INTERVAL_MS}; /**< Contractual maximum reporting interval (ms) communicated to the Hub during pairing. The Hub marks the peer offline after (heartbeat_interval_ms * HEARTBEAT_OFFLINE_MULTIPLIER) ms of silence. */
+    bool          enable_heartbeat{true};             /**< Controls autonomous HEARTBEAT packet emission. Set to true for continuous background keep-alive; set to false for nodes with frequent application DATA transmissions or deep-sleep sensors to avoid redundant packets while preserving the timeout contract. */
+    uint32_t      channel_monitor_interval_ms{DEFAULT_CHANNEL_MONITOR_INTERVAL_MS}; /**< Interval for channel monitoring (ms) */
+    uint8_t       scan_max_retries{SCAN_MAX_RETRIES}; /**< Maximum retries for recovery scan. Defaults to SCAN_MAX_RETRIES. */
+    uint8_t       logical_ack_retries{0};             /**< Maximum retries for logical ACK timeout. Defaults to 0 (no resend on L7 timeout). */
 
-    uint32_t stack_size_rx_task;        /**< Stack size for the internal packet dispatcher task */
-    uint32_t stack_size_tx_task;        /**< Stack size for the transmission manager task */
-    uint32_t stack_size_discovery_task; /**< Stack size for the discovery task */
+    uint32_t      stack_size_rx_task{6144};           /**< Stack size for the internal packet dispatcher task */
+    uint32_t      stack_size_tx_task{6144};           /**< Stack size for the transmission manager task */
+    uint32_t      stack_size_discovery_task{3072};    /**< Stack size for the discovery task */
 
-    UBaseType_t priority_rx_task;        /**< Priority for the internal packet dispatcher task */
-    UBaseType_t priority_tx_task;        /**< Priority for the transmission manager task */
-    UBaseType_t priority_discovery_task; /**< Priority for the discovery task */
+    UBaseType_t   priority_rx_task{10};               /**< Priority for the internal packet dispatcher task */
+    UBaseType_t   priority_tx_task{9};                /**< Priority for the transmission manager task */
+    UBaseType_t   priority_discovery_task{8};         /**< Priority for the discovery task */
 
-    uint32_t rx_queue_length; /**< Length of the internal packet dispatcher queue */
-    uint32_t tx_queue_length; /**< Length of the internal packet dispatcher queue */
-
-    /**
-     * @brief Default constructor with sensible defaults.
-     */
-    EspNowConfig()
-        : node_id(ReservedIds::HUB)
-        , node_type(ReservedTypes::UNKNOWN)
-        , app_rx_queue(nullptr)
-        , wifi_channel(DEFAULT_WIFI_CHANNEL)
-        , ack_timeout_ms(DEFAULT_ACK_TIMEOUT_MS)
-        , heartbeat_interval_ms(DEFAULT_HEARTBEAT_INTERVAL_MS)
-        , channel_monitor_interval_ms(DEFAULT_CHANNEL_MONITOR_INTERVAL_MS)
-        , scan_max_retries(SCAN_MAX_RETRIES)
-        , stack_size_rx_task(6144)
-        , stack_size_tx_task(6144)
-        , stack_size_discovery_task(3072)
-        , priority_rx_task(10)
-        , priority_tx_task(9)
-        , priority_discovery_task(8)
-        , rx_queue_length(30)
-        , tx_queue_length(30)
-
-    {
-    }
+    uint32_t      rx_queue_length{30};                /**< Length of the internal packet dispatcher queue */
+    uint32_t      tx_queue_length{30};                /**< Length of the internal packet dispatcher queue */
 };
 
 } // namespace espnow

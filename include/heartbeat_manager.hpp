@@ -18,7 +18,7 @@ public:
     using IHeartbeatManager::init;
 
     /** @copydoc IHeartbeatManager::init */
-    void init(NodeId id, NodeType type, uint32_t interval_ms) override;
+    void init(NodeId id, NodeType type, uint32_t interval_ms, bool enable_heartbeat = true) override;
 
     /** @copydoc IHeartbeatManager::deinit */
     void deinit() override;
@@ -28,6 +28,12 @@ public:
 
     /** @copydoc IHeartbeatManager::set_interval_ms */
     void set_interval_ms(uint32_t heartbeat_interval_ms) override;
+
+    /** @copydoc IHeartbeatManager::set_enable_heartbeat */
+    void set_enable_heartbeat(bool enable) override;
+
+    /** @copydoc IHeartbeatManager::is_heartbeat_enabled */
+    bool is_heartbeat_enabled() const override;
 
     /** @copydoc IHeartbeatManager::handle_response */
     void handle_response(const DecodedRxPacket& decoded) override;
@@ -49,6 +55,7 @@ private:
 
     NodeType my_type_;
     uint32_t interval_ms_;
+    bool enable_heartbeat_ = true;
     int8_t last_rssi_ = 0; /**< RSSI of the Hub as seen by this Node */
 
     bool is_initialized_ = false;

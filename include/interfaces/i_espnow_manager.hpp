@@ -325,6 +325,32 @@ public:
      */
     virtual etl::vector<NodeId, MAX_PEERS> get_offline_peers() const = 0;
 
+    /**
+     * @brief Checks if a specific peer is currently considered online
+     *
+     * A peer is considered online if it is registered, has been heard from in the current session,
+     * and the elapsed time since its last message does not exceed its configured heartbeat interval
+     * multiplied by HEARTBEAT_OFFLINE_MULTIPLIER.
+     *
+     * @param node_id Logical ID of the node to check.
+     * @return true if the peer is registered, active, and within its timeout window.
+     * @return false if the peer is unknown, has never sent a message, has no heartbeat interval, or timed out.
+     * @note This method does not return errors. Returns false if manager is not operational or pairing.
+     */
+    virtual bool is_peer_online(NodeId node_id) const = 0;
+
+    /**
+     * @brief Template overload for is_peer_online using enum for NodeId
+     *
+     * @tparam T Enum type for NodeId.
+     * @see is_peer_online() for full documentation
+     */
+    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
+    bool is_peer_online(T node_id) const
+    {
+        return is_peer_online(static_cast<NodeId>(node_id));
+    }
+
     // ========================================
     // Pairing
     // ========================================

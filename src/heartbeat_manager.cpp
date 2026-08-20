@@ -15,11 +15,12 @@ HeartbeatManager::HeartbeatManager(ITxManager& tx_mgr, IPeerManager& peer_mgr, I
 {
 }
 
-void HeartbeatManager::init(NodeId id, NodeType type, uint32_t interval_ms)
+void HeartbeatManager::init(NodeId id, NodeType type, uint32_t interval_ms, bool enable_heartbeat)
 {
     my_id_ = id;
     my_type_ = type;
     interval_ms_ = interval_ms;
+    enable_heartbeat_ = enable_heartbeat;
     is_initialized_ = true;
 }
 
@@ -33,9 +34,19 @@ void HeartbeatManager::set_interval_ms(uint32_t heartbeat_interval_ms)
     interval_ms_ = heartbeat_interval_ms;
 }
 
+void HeartbeatManager::set_enable_heartbeat(bool enable)
+{
+    enable_heartbeat_ = enable;
+}
+
+bool HeartbeatManager::is_heartbeat_enabled() const
+{
+    return enable_heartbeat_;
+}
+
 void HeartbeatManager::tick(int64_t now_ms)
 {
-    if (!is_initialized_ || my_type_ == ReservedTypes::HUB || interval_ms_ <= 0) {
+    if (!is_initialized_ || !enable_heartbeat_ || my_type_ == ReservedTypes::HUB || interval_ms_ <= 0) {
         return;
     }
 

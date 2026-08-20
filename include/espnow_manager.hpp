@@ -122,6 +122,9 @@ public:
     /** @copydoc IEspNowManager::get_offline_peers */
     etl::vector<NodeId, MAX_PEERS> get_offline_peers() const override;
 
+    /** @copydoc IEspNowManager::is_peer_online */
+    bool is_peer_online(NodeId node_id) const override;
+
     // ========================================
     // Pairing
     // ========================================

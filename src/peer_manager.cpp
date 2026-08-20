@@ -158,6 +158,31 @@ etl::vector<NodeId, MAX_PEERS> PeerManager::get_offline(int64_t now_ms)
     return offline;
 }
 
+bool PeerManager::is_online(NodeId id, int64_t now_ms) const
+{
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
+
+    bool online = false;
+    for (const auto& p : peers_) {
+        if (p.node_id == id) {
+            if (p.last_seen_ms == 0 || p.heartbeat_interval_ms == 0) {
+                break;
+            }
+
+            uint32_t timeout_ms = p.heartbeat_interval_ms * HEARTBEAT_OFFLINE_MULTIPLIER;
+            if (now_ms - p.last_seen_ms <= timeout_ms) {
+                online = true;
+            }
+            break;
+        }
+    }
+
+    hal_freertos_.semaphore_give(mutex_);
+    return online;
+}
+
 void PeerManager::update_last_seen(NodeId id, int64_t now_ms)
 {
     if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {

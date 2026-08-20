@@ -23,6 +23,7 @@ public:
     MOCK_METHOD(bool, find_mac, (NodeId id, uint8_t* mac), (override));
     MOCK_METHOD((etl::vector<PeerInfo, MAX_PEERS>), get_all, (), (override));
     MOCK_METHOD((etl::vector<NodeId, MAX_PEERS>), get_offline, (int64_t now_ms), (override));
+    MOCK_METHOD(bool, is_online, (NodeId id, int64_t now_ms), (const, override));
     MOCK_METHOD(void, update_last_seen, (NodeId id, int64_t now_ms), (override));
     MOCK_METHOD(esp_err_t, find_node_id_by_mac, (const uint8_t* mac, NodeId& out_id), (override));
     MOCK_METHOD(esp_err_t, load_peers_from_storage, (), (override));

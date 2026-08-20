@@ -318,3 +318,47 @@ TEST_F(HeartbeatManagerTest, SendHeartbeatHeaderIsCorrect)
     EXPECT_EQ(kNodeId, captured.header.sender_node_id);
     EXPECT_EQ(ReservedIds::HUB, captured.header.dest_node_id);
 }
+
+// ===========================================================================
+// enable_heartbeat tests
+// ===========================================================================
+
+TEST_F(HeartbeatManagerTest, TickWithEnableHeartbeatFalseDoesNotSendHeartbeat)
+{
+    ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
+    sut_->init(kNodeId, kNodeType, 5000, false); // enable_heartbeat = false
+
+    EXPECT_FALSE(sut_->is_heartbeat_enabled());
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+    sut_->tick(6000); // interval exceeded but generation disabled
+}
+
+TEST_F(HeartbeatManagerTest, SetEnableHeartbeatDynamicallyControlsSending)
+{
+    ON_CALL(hal_timer_, get_time_us()).WillByDefault(Return(0));
+    ON_CALL(tx_mgr_, queue_packet(_)).WillByDefault(Return(ESP_OK));
+
+    sut_->init(kNodeId, kNodeType, 5000, true);
+    EXPECT_TRUE(sut_->is_heartbeat_enabled());
+
+    // First send works
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(1);
+    sut_->tick(5000);
+
+    // Disable heartbeat generation
+    sut_->set_enable_heartbeat(false);
+    EXPECT_FALSE(sut_->is_heartbeat_enabled());
+
+    // Next tick at interval should NOT send
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(0);
+    sut_->tick(10000);
+
+    // Re-enable heartbeat generation
+    sut_->set_enable_heartbeat(true);
+    EXPECT_TRUE(sut_->is_heartbeat_enabled());
+
+    // Next tick should send again
+    EXPECT_CALL(tx_mgr_, queue_packet(_)).Times(1);
+    sut_->tick(15000);
+}
+

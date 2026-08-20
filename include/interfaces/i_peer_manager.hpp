@@ -107,6 +107,27 @@ public:
     virtual etl::vector<NodeId, MAX_PEERS> get_offline(int64_t now_ms) = 0;
 
     /**
+     * @brief Checks if a specific peer is currently considered online.
+     * @param id Node ID to check.
+     * @param now_ms Current time in milliseconds.
+     * @return true if the peer is registered, has been seen, has heartbeat_interval_ms > 0,
+     *         and (now_ms - last_seen_ms) <= (heartbeat_interval_ms * HEARTBEAT_OFFLINE_MULTIPLIER).
+     * @return false otherwise.
+     * @internal
+     */
+    virtual bool is_online(NodeId id, int64_t now_ms) const = 0;
+
+    /**
+     * @brief Template for checking if a peer is online using enums.
+     * @internal
+     */
+    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
+    bool is_online(T id, int64_t now_ms) const
+    {
+        return is_online(static_cast<NodeId>(id), now_ms);
+    }
+
+    /**
      * @brief Updates the last seen timestamp for a peer.
      * @param id Node ID.
      * @param now_ms Current time in milliseconds.

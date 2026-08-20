@@ -235,9 +235,16 @@ void app_task(void* pvParameters)
 }
 ```
 
-### 7. Check Peer Status
+### 7. Check Peer Status & Link Health
 
 ```cpp
+// Check if a specific peer is currently online and responding
+if (manager.is_peer_online(NodeId::WATER_TANK)) {
+    ESP_LOGI(TAG, "Water tank node is active and reachable");
+} else {
+    ESP_LOGW(TAG, "Water tank node is OFFLINE or has timed out");
+}
+
 // Get all registered peers
 auto peers = manager.get_peers();
 for (const auto& peer : peers) {
@@ -247,12 +254,19 @@ for (const auto& peer : peers) {
              peer.mac[3], peer.mac[4], peer.mac[5]);
 }
 
-// Check for offline peers
+// Check for all offline peers in batch
 auto offline = manager.get_offline_peers();
 if (!offline.empty()) {
     ESP_LOGW(TAG, "%d peers offline", offline.size());
 }
 ```
+
+> **💡 Heartbeat Contract vs Autonomous Emission**
+> 
+> - **`heartbeat_interval_ms` (Timeout Contract)**: The maximum silence duration expected between messages. Communicated to the Hub during pairing. The Hub marks the node offline after `heartbeat_interval_ms * 3` of total silence.
+> - **`enable_heartbeat` (Emission Flag)**: Controls whether the background task autonomously emits periodic `HEARTBEAT` packets. 
+>   - Set to `true` (default) on continuously powered nodes that have periods of application silence (e.g. Pump Controller in IDLE).
+>   - Set to `false` on high-frequency streaming nodes (e.g. Solar Sensor transmitting telemetry every 500ms) or deep-sleep sensors to eliminate redundant ping traffic while preserving the timeout contract.
 
 ## Complete Example: HUB Device
 

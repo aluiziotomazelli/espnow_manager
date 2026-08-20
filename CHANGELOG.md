@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-19
+
+### Added
+- `is_peer_online(NodeId node_id)` method in `IEspNowManager` and `EspNowManager` (with enum template overload) for $O(N)$ direct link health verification without vector allocation.
+- `is_online(NodeId id, int64_t now_ms)` method in `IPeerManager` and `PeerManager` implementing strict timeout calculation against contractual `heartbeat_interval_ms * HEARTBEAT_OFFLINE_MULTIPLIER`.
+- `enable_heartbeat` flag in `EspNowConfig` (defaults to `true`), `IHeartbeatManager`, and `HeartbeatManager` to decouple the heartbeat timeout contract (sent during pairing) from autonomous background `HEARTBEAT` packet generation.
+
+### Changed
+- Standardized `EspNowConfig` with modern in-class member initializers, removing redundant constructor logic and enabling pure C++ aggregate initialization.
+
+### Documentation
+- Clarified difference between contractual timeout (`heartbeat_interval_ms`) and autonomous emission (`enable_heartbeat`) in Doxygen headers and `README.md`.
+- Added link health verification examples using `is_peer_online()` to `README.md`.
+
 ## [1.2.2] - 2026-08-07
 
 ### Added
