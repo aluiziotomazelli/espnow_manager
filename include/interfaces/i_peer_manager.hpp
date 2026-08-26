@@ -92,6 +92,50 @@ public:
     }
 
     /**
+     * @brief Gets information for a specific peer.
+     * @param id Node ID.
+     * @param out Output parameter populated with peer info if found.
+     * @return true if peer was found and out populated, false otherwise.
+     * @internal
+     */
+    virtual bool get(NodeId id, PeerInfo& out) = 0;
+
+    /**
+     * @brief Template for getting peer info using enums.
+     * @internal
+     */
+    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
+    bool get(T id, PeerInfo& out)
+    {
+        return get(static_cast<NodeId>(id), out);
+    }
+
+    /**
+     * @brief Checks if a peer is registered in the list.
+     * @param id Node ID.
+     * @return true if peer is registered, false otherwise.
+     * @internal
+     */
+    virtual bool has_peer(NodeId id) const = 0;
+
+    /**
+     * @brief Template for checking peer registration using enums.
+     * @internal
+     */
+    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && sizeof(T) == sizeof(NodeId)>>
+    bool has_peer(T id) const
+    {
+        return has_peer(static_cast<NodeId>(id));
+    }
+
+    /**
+     * @brief Gets the number of registered peers.
+     * @return Number of registered peers.
+     * @internal
+     */
+    virtual size_t get_peer_count() const = 0;
+
+    /**
      * @brief Gets all registered peers.
      * @return Vector of all registered peers.
      * @internal

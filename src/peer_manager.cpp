@@ -125,6 +125,54 @@ bool PeerManager::find_mac(NodeId id, uint8_t* mac)
     return found;
 }
 
+bool PeerManager::get(NodeId id, PeerInfo& out)
+{
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
+
+    bool found = false;
+    for (const auto& p : peers_) {
+        if (p.node_id == id) {
+            out = p;
+            found = true;
+            break;
+        }
+    }
+
+    hal_freertos_.semaphore_give(mutex_);
+    return found;
+}
+
+bool PeerManager::has_peer(NodeId id) const
+{
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
+
+    bool found = false;
+    for (const auto& p : peers_) {
+        if (p.node_id == id) {
+            found = true;
+            break;
+        }
+    }
+
+    hal_freertos_.semaphore_give(mutex_);
+    return found;
+}
+
+size_t PeerManager::get_peer_count() const
+{
+    if (hal_freertos_.semaphore_take(mutex_, portMAX_DELAY) != pdTRUE) {
+        return 0;
+    }
+
+    size_t count = peers_.size();
+    hal_freertos_.semaphore_give(mutex_);
+    return count;
+}
+
 etl::vector<PeerInfo, MAX_PEERS> PeerManager::get_all()
 {
     etl::vector<PeerInfo, MAX_PEERS> copy;

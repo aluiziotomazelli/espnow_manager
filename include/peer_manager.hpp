@@ -17,6 +17,8 @@ public:
 
     using IPeerManager::add;
     using IPeerManager::find_mac;
+    using IPeerManager::get;
+    using IPeerManager::has_peer;
     using IPeerManager::remove;
     using IPeerManager::update_last_seen;
 
@@ -28,6 +30,15 @@ public:
 
     /** @copydoc IPeerManager::find_mac */
     bool find_mac(NodeId id, uint8_t* mac) override;
+
+    /** @copydoc IPeerManager::get */
+    bool get(NodeId id, PeerInfo& out) override;
+
+    /** @copydoc IPeerManager::has_peer */
+    bool has_peer(NodeId id) const override;
+
+    /** @copydoc IPeerManager::get_peer_count */
+    size_t get_peer_count() const override;
 
     /** @copydoc IPeerManager::get_all */
     etl::vector<PeerInfo, MAX_PEERS> get_all() override;

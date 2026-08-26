@@ -684,3 +684,78 @@ TEST_F(PeerManagerTest, IsOnlineReturnsFalseOnMutexFailure)
     EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE));
     EXPECT_FALSE(manager->is_online(ID_2, 5000));
 }
+
+// ===========================================================================
+// get(id, out), has_peer(id), get_peer_count() tests
+// ===========================================================================
+
+TEST_F(PeerManagerTest, GetReturnsTrueAndPopulatesPeerInfoWhenFound)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 1500);
+
+    PeerInfo out{};
+    EXPECT_TRUE(manager->get(ID_2, out));
+    EXPECT_EQ(out.node_id, ID_2);
+    EXPECT_EQ(memcmp(out.mac, mac, 6), 0);
+    EXPECT_EQ(out.type, PEER);
+    EXPECT_EQ(out.heartbeat_interval_ms, 1500);
+}
+
+TEST_F(PeerManagerTest, GetReturnsFalseWhenPeerNotFound)
+{
+    PeerInfo out{};
+    EXPECT_FALSE(manager->get(ID_4, out));
+}
+
+TEST_F(PeerManagerTest, GetReturnsFalseOnMutexFailure)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE));
+    PeerInfo out{};
+    EXPECT_FALSE(manager->get(ID_2, out));
+}
+
+TEST_F(PeerManagerTest, HasPeerReturnsTrueWhenPresentAndFalseWhenAbsent)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 1000);
+
+    EXPECT_TRUE(manager->has_peer(ID_2));
+    EXPECT_FALSE(manager->has_peer(ID_3));
+}
+
+TEST_F(PeerManagerTest, HasPeerReturnsFalseOnMutexFailure)
+{
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE));
+    EXPECT_FALSE(manager->has_peer(ID_2));
+}
+
+TEST_F(PeerManagerTest, GetPeerCountTracksNumberOfRegisteredPeers)
+{
+    EXPECT_EQ(manager->get_peer_count(), 0);
+
+    uint8_t mac2[6];
+    make_mac(mac2, ID_2);
+    manager->add(ID_2, mac2, PEER, 1000);
+    EXPECT_EQ(manager->get_peer_count(), 1);
+
+    uint8_t mac3[6];
+    make_mac(mac3, ID_3);
+    manager->add(ID_3, mac3, NODE, 2000);
+    EXPECT_EQ(manager->get_peer_count(), 2);
+
+    manager->remove(ID_2);
+    EXPECT_EQ(manager->get_peer_count(), 1);
+}
+
+TEST_F(PeerManagerTest, GetPeerCountReturnsZeroOnMutexFailure)
+{
+    uint8_t mac[6];
+    make_mac(mac, ID_2);
+    manager->add(ID_2, mac, PEER, 1000);
+
+    EXPECT_CALL(freertos_hal, semaphore_take(_, _)).WillOnce(Return(pdFALSE));
+    EXPECT_EQ(manager->get_peer_count(), 0);
+}
