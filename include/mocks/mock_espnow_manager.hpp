@@ -44,6 +44,9 @@ public:
 
     MOCK_METHOD(esp_err_t, remove_peer, (NodeId node_id), (override));
 
+    MOCK_METHOD(bool, get_peer, (NodeId node_id, PeerInfo& out), (override));
+    MOCK_METHOD(bool, has_peer, (NodeId node_id), (const, override));
+    MOCK_METHOD(size_t, get_peer_count, (), (const, override));
     MOCK_METHOD((etl::vector<PeerInfo, MAX_PEERS>), get_peers, (), (override));
     MOCK_METHOD(bool, get_peer_stats, (NodeId node_id, PeerStatistics& out), (const, override));
     MOCK_METHOD((etl::vector<PeerStatistics, MAX_PEERS>), get_all_peer_stats, (), (const, override));

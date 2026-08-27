@@ -30,15 +30,18 @@ static constexpr uint8_t MAX_PEERS = 19;
  * and posts this to the app_rx_queue — the application never needs to know
  * about MessageHeader, RxPacket, or any ESP-NOW internals.
  *
- * Usage:
- *   AppMessage msg;
- *   xQueueReceive(app_queue, &msg, portMAX_DELAY);
- *   if (msg.payload_type == MyPayloadType::SENSOR_REPORT) {
- *       auto *report = reinterpret_cast<const SensorReport *>(msg.payload);
- *   }
- *   if (msg.requires_ack) {
- *       espnow.confirm_reception(msg.sender_id, msg.sequence_number, AckStatus::OK);
- *   }
+ * @code{.cpp}
+ * espnow::AppMessage msg;
+ * if (xQueueReceive(app_queue, &msg, portMAX_DELAY) == pdTRUE) {
+ *     if (msg.payload_type == farm::PayloadType::WATER_LEVEL_REPORT) {
+ *         auto *report = reinterpret_cast<const WaterLevelReport *>(msg.payload);
+ *         process_report(report);
+ *     }
+ *     if (msg.requires_ack) {
+ *         manager.confirm_reception(msg.sender_id, msg.sequence_number, espnow::AckStatus::OK);
+ *     }
+ * }
+ * @endcode
  */
 struct AppMessage
 {
@@ -77,6 +80,16 @@ struct DecodedRxPacket
 
 /**
  * @brief Detailed information about a registered peer.
+ *
+ * @code{.cpp}
+ * espnow::PeerInfo peer{};
+ * if (manager.get_peer(farm::NodeId::PUMP_CONTROL, peer)) {
+ *     ESP_LOGI(TAG, "Peer Node: 0x%02X, Type: 0x%02X", peer.node_id, peer.type);
+ *     ESP_LOGI(TAG, "MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+ *              peer.mac[0], peer.mac[1], peer.mac[2],
+ *              peer.mac[3], peer.mac[4], peer.mac[5]);
+ * }
+ * @endcode
  */
 struct PeerInfo
 {
@@ -226,6 +239,20 @@ enum class ChannelPolicy : uint8_t
 
 /**
  * @brief Configuration structure for initializing the EspNowManager.
+ *
+ * @code{.cpp}
+ * // Create application queue
+ * QueueHandle_t app_queue = xQueueCreate(30, sizeof(espnow::AppMessage));
+ *
+ * // Configure with defaults, override what's needed
+ * espnow::EspNowConfig config;
+ * config.node_id = espnow::ReservedIds::HUB;
+ * config.node_type = espnow::ReservedTypes::HUB;
+ * config.app_rx_queue = app_queue; // Required!
+ * config.wifi_channel = 6;
+ *
+ * esp_err_t err = manager.init(config);
+ * @endcode
  */
 struct EspNowConfig
 {

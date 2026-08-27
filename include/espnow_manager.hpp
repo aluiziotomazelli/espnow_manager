@@ -116,6 +116,17 @@ public:
     /** @copydoc IEspNowManager::remove_peer */
     esp_err_t remove_peer(NodeId node_id) override;
 
+    using IEspNowManager::get_peer;
+    /** @copydoc IEspNowManager::get_peer */
+    bool get_peer(NodeId node_id, PeerInfo& out) override;
+
+    using IEspNowManager::has_peer;
+    /** @copydoc IEspNowManager::has_peer */
+    bool has_peer(NodeId node_id) const override;
+
+    /** @copydoc IEspNowManager::get_peer_count */
+    size_t get_peer_count() const override;
+
     /** @copydoc IEspNowManager::get_peers */
     etl::vector<PeerInfo, MAX_PEERS> get_peers() override;
 

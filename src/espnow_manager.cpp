@@ -500,8 +500,35 @@ bool EspNowManager::is_initialized() const
     return node_fsm_->get_state() != NodeState::UNINITIALIZED;
 }
 
+bool EspNowManager::get_peer(NodeId node_id, PeerInfo& out)
+{
+    if (peer_manager_ == nullptr) {
+        return false;
+    }
+    return peer_manager_->get(node_id, out);
+}
+
+bool EspNowManager::has_peer(NodeId node_id) const
+{
+    if (peer_manager_ == nullptr) {
+        return false;
+    }
+    return peer_manager_->has_peer(node_id);
+}
+
+size_t EspNowManager::get_peer_count() const
+{
+    if (peer_manager_ == nullptr) {
+        return 0;
+    }
+    return peer_manager_->get_peer_count();
+}
+
 etl::vector<PeerInfo, MAX_PEERS> EspNowManager::get_peers()
 {
+    if (peer_manager_ == nullptr) {
+        return {};
+    }
     return peer_manager_->get_all();
 }
 
