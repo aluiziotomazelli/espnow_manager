@@ -1,6 +1,7 @@
 #pragma once
 
 #include "protocol_types.hpp"
+#include "espnow_types.hpp"
 namespace espnow {
 
 /**

@@ -11,6 +11,19 @@
 #include "freertos/event_groups.h"
 
 #include "protocol_types.hpp"
+namespace espnow {
+
+/**
+ * @brief Logical acknowledgment status codes returned by the application.
+ */
+enum class AckStatus : uint8_t
+{
+    OK = 0x00,                 /**< Message received and processed successfully */
+    ERROR_INVALID_DATA = 0x01, /**< Message received but payload data is invalid */
+    ERROR_PROCESSING = 0x02,   /**< Message received but processing failed internally */
+};
+
+} // namespace espnow
 #include "protocol_messages.hpp"
 namespace espnow {
 
