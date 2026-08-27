@@ -1,0 +1,59 @@
+# ==============================================================================
+# Doxyfile for espnow_manager
+# Configured for XML output -> Markdown generation via Doxybook2
+# ==============================================================================
+
+# Project Configuration
+PROJECT_NAME           = "espnow_manager"
+PROJECT_BRIEF          = "ESP-NOW Manager Component for ESP32 / ESP-IDF"
+PROJECT_NUMBER         = "1.1.0"
+OUTPUT_DIRECTORY       = "build/docs/doxygen"
+CREATE_SUBDIRS         = NO
+OUTPUT_LANGUAGE        = English
+BRIEF_MEMBER_DESC      = YES
+REPEAT_BRIEF           = YES
+JAVADOC_AUTOBRIEF      = YES
+MULTILINE_CPP_IS_BRIEF = YES
+
+# Input files (Public API and Protocol definitions only)
+INPUT                  = include/interfaces/i_espnow_manager.hpp \
+                         include/espnow_types.hpp
+RECURSIVE              = NO
+FILE_PATTERNS          = *.hpp *.h
+EXTENSION_MAPPING      = hpp=C++ h=C++
+
+# Extraction settings
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_PACKAGE        = NO
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = NO
+EXTRACT_ANON_NSPACES   = NO
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+HIDE_FRIEND_COMPOUNDS  = YES
+CASE_SENSE_NAMES       = YES
+
+# Preprocessor & Parser
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+SEARCH_INCLUDES        = YES
+INCLUDE_PATH           = include include/interfaces
+
+# Warnings
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_NO_PARAMDOC       = NO
+
+# Output formats (XML only for Doxybook2 / Markdown pipelines)
+GENERATE_HTML          = NO
+GENERATE_LATEX         = NO
+GENERATE_RTF           = NO
+GENERATE_MAN           = NO
+GENERATE_DOCBOOK       = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+XML_PROGRAMLISTING     = NO
