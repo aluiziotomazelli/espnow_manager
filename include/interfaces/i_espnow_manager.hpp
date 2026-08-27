@@ -22,8 +22,8 @@ namespace espnow {
  * supporting both HUB (central controller) and NODE (peripheral) roles.
  *
  * @author [github.com/aluiziotomazelli]
- * @version 1.0.0
- * @date 2025
+ * @version 1.5.0
+ * @date 2026
  * @see EspNow for implementation details
  * @see espnow_types.hpp for data structures
  */
