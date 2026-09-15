@@ -162,7 +162,7 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
 
     // Storage needs to be initialized to load channel from storage before EspNowDriver
     if (storage_ != nullptr) {
-        uint8_t stored_channel;
+        uint8_t stored_channel = config_.wifi_channel;
         if (storage_->load_channel(stored_channel) == ESP_OK) {
             config_.wifi_channel = stored_channel;
         }
@@ -253,6 +253,10 @@ esp_err_t EspNowManager::init(const EspNowConfig& config)
     // Update scanner and storage with current channel
     scanner_->set_channel(config_.wifi_channel);
     storage_->store_channel(config_.wifi_channel);
+
+    if (hal_wifi_ != nullptr && scanner_ != nullptr && scanner_->get_channel_policy() == ChannelPolicy::SCAN) {
+        hal_wifi_->wifi_set_channel(config_.wifi_channel, WIFI_SECOND_CHAN_NONE);
+    }
 
     ESP_LOGI(TAG, "EspNow component initialized successfully.");
     return ret;
