@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-15
+
+### Fixed
+- Applied loaded Wi-Fi channel from storage/config to hardware Wi-Fi HAL during `EspNowManager::init()` when `ChannelPolicy` is `SCAN`. Prevents standalone nodes from booting on default Channel 1 and failing initial transmissions when communicating with Hubs operating on other channels.
+
 ## [1.5.0] - 2026-08-26
 
 ### Added

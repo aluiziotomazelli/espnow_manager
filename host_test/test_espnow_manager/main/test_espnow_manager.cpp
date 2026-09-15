@@ -1350,3 +1350,23 @@ TEST_F(EspNowManagerTest, SetChannelPolicyDelegatesToScanner)
     EXPECT_CALL(*scanner_, set_channel_policy(ChannelPolicy::SCAN)).Times(1);
     sut_->set_channel_policy(ChannelPolicy::SCAN);
 }
+
+TEST_F(EspNowManagerTest, InitAppliesWifiChannelWhenPolicyIsScan)
+{
+    constexpr uint8_t kLoadedChannel = 6;
+    EXPECT_CALL(*storage_, load_channel(_)).WillOnce(DoAll(SetArgReferee<0>(kLoadedChannel), Return(ESP_OK)));
+    EXPECT_CALL(*scanner_, get_channel_policy()).WillOnce(Return(ChannelPolicy::SCAN));
+    EXPECT_CALL(*hal_wifi_, wifi_set_channel(kLoadedChannel, WIFI_SECOND_CHAN_NONE)).Times(1);
+
+    init_sut();
+}
+
+TEST_F(EspNowManagerTest, InitDoesNotApplyWifiChannelWhenPolicyIsFixed)
+{
+    constexpr uint8_t kLoadedChannel = 6;
+    EXPECT_CALL(*storage_, load_channel(_)).WillOnce(DoAll(SetArgReferee<0>(kLoadedChannel), Return(ESP_OK)));
+    EXPECT_CALL(*scanner_, get_channel_policy()).WillOnce(Return(ChannelPolicy::FIXED));
+    EXPECT_CALL(*hal_wifi_, wifi_set_channel(_, _)).Times(0);
+
+    init_sut();
+}
