@@ -68,7 +68,7 @@ constexpr uint32_t SCAN_MAX_BACKOFF_MS = 300000;
 /** @brief Timeout for scanning a single channel during discovery (ms) */
 constexpr uint16_t SCAN_CHANNEL_TIMEOUT_MS = 50;
 /** @brief Number of scan attempts per channel */
-constexpr uint8_t SCAN_CHANNEL_ATTEMPTS = 1;
+constexpr uint8_t SCAN_CHANNEL_ATTEMPTS = 2;
 /** @brief Total maximum time allowed for a full channel scan */
 constexpr uint16_t MAX_SCAN_TIME_MS = SCAN_CHANNEL_TIMEOUT_MS * SCAN_CHANNEL_ATTEMPTS * 13 + 500;
 
